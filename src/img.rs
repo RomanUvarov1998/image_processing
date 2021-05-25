@@ -101,7 +101,7 @@ impl Img {
                 }
             }
 
-            let filter_result = filter.filter(&pixel_buf[0..pixel_buf_actual_size]);
+            let filter_result = filter.filter(&mut pixel_buf[0..pixel_buf_actual_size]);
             let res = filter_result as u8;
 
             let alpha = result.image.get_pixel(pos_im.col as u32, pos_im.row as u32).channels()[3];

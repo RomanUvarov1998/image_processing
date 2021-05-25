@@ -91,7 +91,8 @@ pub fn create_app() -> result::Result<(), MyError> {
     
     let mut img_initial: Option<(img::Img, BmpImage)> = None;
     let mut img_copy: Option<(img::Img, BmpImage)> = None;
-    let mut blur_filter = filter::LinearFilter::mean_filter_of_size(5);
+    //let mut blur_filter = filter::LinearFilter::mean_filter_of_size(5);
+    let mut blur_filter = filter::MedianFilter::new(3);
 
     wind.end();
     wind.make_resizable(true);
