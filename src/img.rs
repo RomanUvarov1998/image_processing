@@ -1,6 +1,5 @@
 use ImgLib::{GenericImage, GenericImageView, Pixel};
 use fltk::{
-    prelude::*,
     image
 };
 use ::image as ImgLib;
