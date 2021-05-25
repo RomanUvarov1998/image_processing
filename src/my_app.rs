@@ -1,7 +1,8 @@
-use std::{result};
-use crate::my_err::MyError;
-use fltk::{ prelude::*, *};
+use std::result;
+use crate::{filter, my_err::MyError};
+use fltk::{ prelude::*, * };
 use crate::img;
+use ::image as ImgLib;
 
 #[derive(Debug, Copy, Clone)]
 enum Message {
@@ -35,6 +36,8 @@ pub fn create_app() -> result::Result<(), MyError> {
     let mut img_copy: Option<img::Img> = None;
     pack_right.end();
 
+    let mut blur_filter = filter::LinearFilter::mean_filter_of_size(5);
+
     pack_main.end();
 
     wind.end();
@@ -47,13 +50,15 @@ pub fn create_app() -> result::Result<(), MyError> {
                 Message::LoadInitialImage => {
                     img_initial = Some(load_img()?);
                     img_copy = img_initial.clone();
-                    frame_left.set_image(Some(img_initial.unwrap().give_image()));
+                    frame_left.set_image(Some(img_initial.unwrap().give_image()?));
+                    frame_left.redraw();
                 },
                 Message::ProcessLoadedImage => {
                     match img_copy {
-                        Some(ref img_ref) => {
-                            img_ref.process();
-                            frame_right.set_image(Some(img_ref.clone().give_image()));
+                        Some(ref mut img_ref) => {
+                            let pixel_buf = img_ref.apply_filter(&mut blur_filter);
+                            frame_right.set_image(Some(pixel_buf.give_image()?));
+                            frame_right.redraw();
                         }
                         None => {
                             frame_right.set_label("You should choose image to process first");
@@ -71,7 +76,9 @@ fn load_img() -> result::Result<img::Img, MyError> {
     let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
     dlg.show();
     let path_buf = dlg.filename();
-    let img_bmp = image::BmpImage::load(path_buf.as_path())?;
 
-    Ok(img::Img::new(img_bmp))
+    let path_str = path_buf.to_str().unwrap();
+    let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;    
+
+    Ok(img::Img::new(img_dyn))
 }
