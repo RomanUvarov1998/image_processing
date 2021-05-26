@@ -1,5 +1,5 @@
 use std::result;
-use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, prelude::{ImageExt, WidgetBase, WidgetExt}};
+use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}};
 use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_err::MyError};
 
 pub enum StepType {
@@ -8,8 +8,6 @@ pub enum StepType {
 }
 
 pub const PADDING: i32 = 3;
-pub const WIN_WIDTH: i32 = 640;
-pub const WIN_HEIGHT: i32 = 480;
 pub const BTN_WIDTH: i32 = 100;
 pub const BTN_HEIGHT: i32 = 30;
 pub const BTN_TEXT_PADDING: i32 = 10;
@@ -17,14 +15,8 @@ pub const BTN_TEXT_PADDING: i32 = 10;
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
     LoadImage,
-    DoStep { step_num: usize }
-}
-
-pub struct ProcessingLine {
-    initial_img: Option<img::Img>,
-    frame_img: frame::Frame,
-    steps: Vec<ProcessingStep>,
-    max_height: i32
+    DoStep { step_num: usize },
+    AddStep
 }
 
 enum StepAction {
@@ -32,33 +24,48 @@ enum StepAction {
     Median(MedianFilter),
 }
 
+pub struct ProcessingLine {
+    initial_img: Option<img::Img>,
+    frame_img: frame::Frame,
+    steps: Vec<ProcessingStep>,
+    max_height: i32,
+    x: i32, y: i32, w: i32, h: i32,
+    scroll_area: group::Scroll,
+    sender: Sender<Message>
+}
+
 impl ProcessingLine {
-    pub fn new(sender: Sender<Message>) -> Self {
+    pub fn new(sender: Sender<Message>, x: i32, y: i32, w: i32, h: i32) -> Self {
+        let scroll_area = group::Scroll::default()
+            .with_pos(x, y)
+            .with_size(w, h);
+
         let mut max_height = 0_i32;
 
         let label = frame::Frame::default()
-            .with_pos(PADDING, max_height)
-            .with_size(WIN_WIDTH, BTN_HEIGHT)
+            .with_pos(x, y + max_height)
+            .with_size(w, BTN_HEIGHT)
             .with_label("Загрузка изображения");
         max_height += label.height() + PADDING;
 
         let mut btn = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
-            .with_pos(PADDING,  max_height)
+            .with_pos(x,  y + max_height)
             .with_label("Загрузить");
         btn.emit(sender, Message::LoadImage );
-
-        let (w, h) = btn.measure_label();
-        btn.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
+        
+        {
+            let (bw, bh) = btn.measure_label();
+            btn.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
+        }
         max_height += btn.height() + PADDING;
             
         let mut frame_img = frame::Frame::default()
-            .with_pos(PADDING,  max_height)
-            .with_size(WIN_WIDTH - PADDING * 2, WIN_HEIGHT - BTN_HEIGHT * 2);
+            .with_pos(x,  y + max_height)
+            .with_size(w, h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
-        frame_img.draw(|f: &mut frame::Frame| { 
+        frame_img.draw(move |f: &mut frame::Frame| { 
             match f.image() {
                 Some(mut img) => {
                     img.scale(f.width(), f.height(), true, true);
@@ -79,19 +86,21 @@ impl ProcessingLine {
             initial_img: None,
             frame_img,
             steps: Vec::<ProcessingStep>::new(),
-            max_height: max_height
+            max_height: max_height,
+            x, y, w, h,
+            scroll_area,
+            sender
         }
     }
 
     pub fn add(&mut self, step_type: StepType, sender: Sender<Message>) -> () {
         let label = frame::Frame::default()
-            .with_pos(PADDING, self.max_height)
-            .with_size(WIN_WIDTH, BTN_HEIGHT);   
+            .with_pos(self.x, self.y + self.max_height)
+            .with_size(self.w, BTN_HEIGHT);   
         self.max_height += label.height() + PADDING;
 
         let mut btn = button::Button::default()
-            .with_size(BTN_WIDTH, BTN_HEIGHT)
-            .with_pos(PADDING,  self.max_height);
+            .with_pos(self.x,  self.y + self.max_height);
 
         match step_type {
             StepType::LinearFilter(_) => {
@@ -110,8 +119,8 @@ impl ProcessingLine {
         self.max_height += btn.height() + PADDING;
             
         let mut frame_img = frame::Frame::default()
-            .with_pos(PADDING,  self.max_height)
-            .with_size(WIN_WIDTH - PADDING * 2, WIN_HEIGHT - BTN_HEIGHT * 2);
+            .with_pos(self.x,  self.y + self.max_height)
+            .with_size(self.w, self.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
         frame_img.draw(|f: &mut frame::Frame| { 
@@ -178,9 +187,18 @@ impl ProcessingLine {
                     }
                 }
             }
+            Message::AddStep => {
+                self.scroll_area.begin();
+                self.add(StepType::LinearFilter(3), self.sender);
+                self.scroll_area.end();
+            }
         }
 
         Ok(())
+    }
+
+    pub fn end(&self) {
+        self.scroll_area.end();
     }
 }
 
