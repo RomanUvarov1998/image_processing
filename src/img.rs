@@ -1,3 +1,5 @@
+use std::{path::PathBuf, result};
+
 use ImgLib::{GenericImage, GenericImageView, Pixel};
 use fltk::{
     image
@@ -18,18 +20,21 @@ pub const MAX_WINDOW_SIZE: usize = 11;
 pub const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
 
 impl Img {
-    pub fn new(image: ImgLib::DynamicImage) -> Self {
-        let im = image.to_rgba8();
+    pub fn load(path: PathBuf) -> result::Result<Self, MyError> {
+        let path_str = path.to_str().unwrap();
+        let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;
+
+        let im = img_dyn.to_rgba8();
         let width = im.width() as usize;
         let height = im.height() as usize;
         let pixels = im.to_vec();
 
-        Img {
-            image,
+        Ok(Img {
+            image: img_dyn,
             pixels,
             width,
             height
-        }
+        })
     }
 
     pub fn w(&self) -> usize { self.width }
@@ -62,7 +67,7 @@ impl Img {
         self.pixels[total_offset]
     }
 
-    pub fn give_image(&self) -> Result<image::BmpImage, MyError> { 
+    pub fn get_bmp_copy(&self) -> Result<image::BmpImage, MyError> { 
         let mut bytes = Vec::<u8>::new();
         self.image.write_to(&mut bytes, ImgLib::ImageOutputFormat::Bmp)?;        
         let img_bmp = image::BmpImage::from_data(bytes.as_slice())?;

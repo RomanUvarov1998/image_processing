@@ -1,7 +1,6 @@
 use std::result;
 use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, prelude::{ImageExt, WidgetBase, WidgetExt}};
 use crate::{filter::{LinearFilter, MedianFilter}, img, my_err::MyError};
-use ::image as ImgLib;
 
 pub enum StepType {
     LinearFilter (usize),
@@ -154,14 +153,11 @@ impl ProcessingLine {
                 dlg.show();
                 let path_buf = dlg.filename();
 
-                let path_str = path_buf.to_str().unwrap();
-                let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;
+                let init_image = img::Img::load(path_buf)?;
 
-                let init_image = img::Img::new(img_dyn);
-
-                let mut img_data = init_image.give_image()?;
-                img_data.scale(0, 0, true, true);
-                self.frame_img.set_image(Some(img_data));
+                let mut bmp_copy = init_image.get_bmp_copy()?;
+                bmp_copy.scale(0, 0, true, true);
+                self.frame_img.set_image(Some(bmp_copy));
                 self.frame_img.redraw();
 
                 self.initial_img = Some(init_image);
@@ -214,7 +210,7 @@ impl ProcessingStep {
     pub fn set_image(&mut self, image: img::Img) -> result::Result<(), MyError> {
         self.image = Some(image.clone());
 
-        let mut bmp_image = image.give_image()?;
+        let mut bmp_image = image.get_bmp_copy()?;
 
         self.label.set_label(&format!("Размер {}x{}", bmp_image.w(), bmp_image.h()));
                         
