@@ -111,7 +111,7 @@ pub fn create_app() -> result::Result<(), MyError> {
 
     while app.wait() {
         if let Some(msg) = r.recv() {
-            match steps_line.process_from_step(msg) {
+            match steps_line.process_message(msg) {
                 Err(err) => {
                     fltk::dialog::alert(
                         proc_steps::WIN_WIDTH / 2, 

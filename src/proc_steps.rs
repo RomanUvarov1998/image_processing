@@ -1,6 +1,6 @@
 use std::result;
 use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{filter::{LinearFilter, MedianFilter}, img, my_err::MyError};
+use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_err::MyError};
 
 pub enum StepType {
     LinearFilter (usize),
@@ -84,15 +84,10 @@ impl ProcessingLine {
     }
 
     pub fn add(&mut self, step_type: StepType, sender: Sender<Message>) -> () {
-        let mut label = frame::Frame::default()
+        let label = frame::Frame::default()
             .with_pos(PADDING, self.max_height)
             .with_size(WIN_WIDTH, BTN_HEIGHT);   
         self.max_height += label.height() + PADDING;
-    
-        match step_type {
-            StepType::LinearFilter(_) => label.set_label("Линейный фильтр"),
-            StepType::MedianFilter(_) => label.set_label("Медианный фильтр"),
-        };
 
         let mut btn = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
@@ -146,7 +141,7 @@ impl ProcessingLine {
         };
     }
 
-    pub fn process_from_step(&mut self, msg: Message) -> result::Result<(), MyError> {
+    pub fn process_message(&mut self, msg: Message) -> result::Result<(), MyError> {
         match msg {
             Message::LoadImage => {
                 let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
@@ -190,6 +185,7 @@ impl ProcessingLine {
 }
 
 struct ProcessingStep {
+    name: String,
     frame: Frame,
     label: Frame,
     action: StepAction,
@@ -198,8 +194,16 @@ struct ProcessingStep {
 }
 
 impl ProcessingStep {
-    fn new(frame: Frame, label: Frame, filter: StepAction) -> Self {
+    fn new(frame: Frame, mut label: Frame, filter: StepAction) -> Self {
+        let name = match filter {
+            StepAction::Linear(_) => "Линейный фильтр".to_string(),
+            StepAction::Median(_) => "Медианный фильтр".to_string()
+        };
+
+        label.set_label(&name);
+        
         ProcessingStep { 
+            name,
             frame, 
             label,
             action: filter,
@@ -212,20 +216,27 @@ impl ProcessingStep {
        self.image.clone()
     }
 
-    pub fn process_image(&mut self, image: img::Img) -> result::Result<(), MyError> {
-        self.image = match self.action {
-            StepAction::Linear(ref mut filter) => Some(image.apply_filter(filter)),
-            StepAction::Median(ref mut filter) => Some(image.apply_filter(filter)),
+    pub fn process_image(&mut self, ititial_img: img::Img) -> result::Result<(), MyError> {
+        let result_img = match self.action {
+            StepAction::Linear(ref mut filter) => ititial_img.apply_filter(filter),
+            StepAction::Median(ref mut filter) => ititial_img.apply_filter(filter),
         };
 
-        self.label.set_label(&format!("Размер {}x{}", image.w(), image.h()));
+        let fil_size = match self.action {
+            StepAction::Linear(ref f) => (f.w(), f.h()),
+            StepAction::Median(ref f) => (f.window_size(), f.window_size())
+        };
+        self.label.set_label(&format!("{} {}x{}, изображение {}x{}", 
+            &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
                         
-        let mut bmp_image = image.get_bmp_copy()?;
+        let mut bmp_image = result_img.get_bmp_copy()?;
         bmp_image.scale(0, 0, true, true);
         self.frame.set_image(Some(bmp_image.clone()));
         self.frame.redraw();
 
         self.draw_data = Some(bmp_image);
+
+        self.image = Some(result_img);
 
         Ok(())
     }

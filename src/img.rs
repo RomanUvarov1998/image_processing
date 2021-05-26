@@ -75,7 +75,7 @@ impl Img {
     }
 
     pub fn apply_filter<T: filter::Filter>(&self, filter: &mut T) -> Self {
-        let mut result = self.clone();
+        let mut result_img = self.clone();
 
         let pixel_buf_actual_size = filter.window_size() * filter.window_size();
         assert!(pixel_buf_actual_size < MAX_WINDOW_BUFFER_SIZE, 
@@ -109,12 +109,12 @@ impl Img {
             let filter_result = filter.filter(&mut pixel_buf[0..pixel_buf_actual_size]);
             let res = filter_result as u8;
 
-            let alpha = result.image.get_pixel(pos_im.col as u32, pos_im.row as u32).channels()[3];
-            result.image.put_pixel(pos_im.col as u32, pos_im.row as u32, 
+            let alpha = result_img.image.get_pixel(pos_im.col as u32, pos_im.row as u32).channels()[3];
+            result_img.image.put_pixel(pos_im.col as u32, pos_im.row as u32, 
                 ImgLib::Rgba::<u8>::from_channels(res, res, res, alpha));
         }
 
-        result
+        result_img
     }
 }
 
