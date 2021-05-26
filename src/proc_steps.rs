@@ -1,10 +1,9 @@
 use std::result;
 use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{filter::{LinearFilter}, img, my_err::MyError};
+use crate::{filter::{LinearFilter, MedianFilter}, img, my_err::MyError};
 use ::image as ImgLib;
 
-pub enum StepTypes {
-    LoadImage,
+pub enum StepType {
     LinearFilter (usize),
     MedianFilter (usize)
 }
@@ -14,61 +13,100 @@ pub const WIN_WIDTH: i32 = 640;
 pub const WIN_HEIGHT: i32 = 480;
 pub const BTN_WIDTH: i32 = 100;
 pub const BTN_HEIGHT: i32 = 30;
+pub const BTN_TEXT_PADDING: i32 = 10;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
-    LoadInitialImage,
-    ProcessLoadedImage { step_num: usize },
+    LoadImage,
+    DoStep { step_num: usize }
 }
 
 pub struct ProcessingLine {
+    initial_img: Option<img::Img>,
+    frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
     max_height: i32
 }
 
+enum StepAction {
+    Linear(LinearFilter),
+    Median(MedianFilter),
+}
+
 impl ProcessingLine {
-    pub fn new() -> Self {
+    pub fn new(sender: Sender<Message>) -> Self {
+        let mut max_height = 0_i32;
+
+        let label = frame::Frame::default()
+            .with_pos(PADDING, max_height)
+            .with_size(WIN_WIDTH, BTN_HEIGHT)
+            .with_label("Загрузка изображения");
+        max_height += label.height() + PADDING;
+
+        let mut btn = button::Button::default()
+            .with_size(BTN_WIDTH, BTN_HEIGHT)
+            .with_pos(PADDING,  max_height)
+            .with_label("Загрузить");
+        btn.emit(sender, Message::LoadImage );
+
+        let (w, h) = btn.measure_label();
+        btn.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        max_height += btn.height() + PADDING;
+            
+        let mut frame_img = frame::Frame::default()
+            .with_pos(PADDING,  max_height)
+            .with_size(WIN_WIDTH - PADDING * 2, WIN_HEIGHT - BTN_HEIGHT * 2);
+        frame_img.set_frame(FrameType::EmbossedFrame);
+        frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
+        frame_img.draw(|f: &mut frame::Frame| { 
+            match f.image() {
+                Some(mut img) => {
+                    img.scale(f.width(), f.height(), true, true);
+                    img.draw(
+                        f.x() + f.width() / 2 - img.width() / 2, 
+                        f.y() + f.height() / 2 - img.height() / 2, 
+                        f.width(), f.height());
+                    f.redraw();
+                },
+                None => { 
+                    f.set_label("");
+                }
+            }
+        });
+        max_height += frame_img.height() + PADDING;
+
         ProcessingLine {
+            initial_img: None,
+            frame_img,
             steps: Vec::<ProcessingStep>::new(),
-            max_height: 0_i32
+            max_height: max_height
         }
     }
 
-    pub fn add(&mut self, step_type: StepTypes, sender: Sender<Message>) -> () {
-        if self.steps.len() == 0 {
-            match step_type {
-                StepTypes::LoadImage => { }
-                _ => panic!("The first step must be StepTypes::LoadImage")
-            }
-        }
-
+    pub fn add(&mut self, step_type: StepType, sender: Sender<Message>) -> () {
         let mut label = frame::Frame::default()
             .with_pos(PADDING, self.max_height)
             .with_size(WIN_WIDTH, BTN_HEIGHT);   
         self.max_height += label.height() + PADDING;
     
         match step_type {
-            StepTypes::LoadImage => label.set_label("Загрузка изображения"),
-            StepTypes::LinearFilter(_) => label.set_label("Линейный фильтр"),
-            StepTypes::MedianFilter(_) => label.set_label("Медианный фильтр"),
+            StepType::LinearFilter(_) => label.set_label("Линейный фильтр"),
+            StepType::MedianFilter(_) => label.set_label("Медианный фильтр"),
         };
 
-        const BTN_TEXT_PADDING: i32 = 10;
         let mut btn = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
             .with_pos(PADDING,  self.max_height);
 
         match step_type {
-            StepTypes::LoadImage => {
-                btn.set_label("Загрузка изображения");
-                btn.emit(sender, Message::LoadInitialImage);
-            },
-            StepTypes::LinearFilter(_) => {
+            StepType::LinearFilter(_) => {
                 btn.set_label("Отфильтровать");
-                btn.emit(sender, Message::ProcessLoadedImage { step_num: self.steps.len() } );
+                btn.emit(sender, Message::DoStep { step_num: self.steps.len() } );
             },
-            StepTypes::MedianFilter(_) => {
+            StepType::MedianFilter(_) => {
                 btn.set_label("Отфильтровать");
+                btn.emit(sender, Message::DoStep { step_num: self.steps.len() } );
             }
         };
 
@@ -100,37 +138,38 @@ impl ProcessingLine {
         self.max_height += frame_img.height() + PADDING;
 
         match step_type {
-            StepTypes::LoadImage => {
-                self.steps.push(ProcessingStep::new(frame_img, label, None))
+            StepType::LinearFilter(size) => {
+                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::mean_filter_of_size(size))))
             },
-            StepTypes::LinearFilter(size) => {
-                self.steps.push(ProcessingStep::new(frame_img, label, Some(LinearFilter::mean_filter_of_size(size))))
-            },
-            StepTypes::MedianFilter(size) => {
-                self.steps.push(ProcessingStep::new(frame_img, label, Some(LinearFilter::mean_filter_of_size(size))))
+            StepType::MedianFilter(size) => {
+                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Median(MedianFilter::new(size))))
             }
         };
     }
 
-    pub fn process_from_step(&mut self, step: Message) -> result::Result<(), MyError> {
-        match step {
-            Message::LoadInitialImage => {
-                let loaded_img = Self::load_img()?;
-                assert!(self.steps.len() > 0);
-                self.steps[0].set_image(loaded_img)?;
+    pub fn process_from_step(&mut self, msg: Message) -> result::Result<(), MyError> {
+        match msg {
+            Message::LoadImage => {
+                let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
+                dlg.show();
+                let path_buf = dlg.filename();
 
-                assert!(self.steps[0].has_data());
+                let path_str = path_buf.to_str().unwrap();
+                let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;
 
-                let mut result = self.steps[0].get_data();
-                for ind in 1..self.steps.len() {
-                    result = self.steps[ind].process(result)?;
-                    self.steps[ind].set_image(result.clone())?;
-                }
+                let init_image = img::Img::new(img_dyn);
+
+                let mut img_data = init_image.give_image()?;
+                img_data.scale(0, 0, true, true);
+                self.frame_img.set_image(Some(img_data));
+                self.frame_img.redraw();
+
+                self.initial_img = Some(init_image);
             }
-            Message::ProcessLoadedImage { step_num } => {
+            Message::DoStep { step_num } => {
                 assert!(self.steps.len() > step_num);
                 if !self.steps[step_num].has_data() {
-                    return Err(MyError::new("This step has no image data".to_string()));
+                    return Err(MyError::new("Для данного блока еще нет исходного изображения от предыдущего".to_string()));
                 }
 
                 let mut result = self.steps[step_num].get_data();
@@ -143,33 +182,22 @@ impl ProcessingLine {
 
         Ok(())
     }
-
-    fn load_img() -> result::Result<img::Img, MyError> {
-        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
-        dlg.show();
-        let path_buf = dlg.filename();
-    
-        let path_str = path_buf.to_str().unwrap();
-        let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;    
-    
-        Ok(img::Img::new(img_dyn))
-    }
 }
 
 struct ProcessingStep {
     frame: Frame,
     label: Frame,
-    filter: Option<LinearFilter>,
+    action: StepAction,
     image: Option<img::Img>,
     draw_data: Option<fltk::image::BmpImage>
 }
 
 impl ProcessingStep {
-    fn new(frame: Frame, label: Frame, filter: Option<LinearFilter>) -> Self {
+    fn new(frame: Frame, label: Frame, filter: StepAction) -> Self {
         ProcessingStep { 
             frame, 
             label,
-            filter,
+            action: filter,
             image: None, 
             draw_data: None 
         }
@@ -200,9 +228,9 @@ impl ProcessingStep {
     }
 
     pub fn process(&mut self, mut image: img::Img) -> result::Result<img::Img, MyError> {
-        match self.filter {
-            Some(ref mut filter) => Ok(image.apply_filter(filter)),
-            None => Err(MyError::new("There is no filter in this step".to_string()))
+        match self.action {
+            StepAction::Linear(ref mut filter) => Ok(image.apply_filter(filter)),
+            StepAction::Median(ref mut filter) => Ok(image.apply_filter(filter)),
         }
     }
 }

@@ -1,5 +1,5 @@
 use std::result;
-use crate::{my_err::MyError, proc_steps};
+use crate::{my_err::MyError, proc_steps::{self, StepType}};
 use fltk::{app, group, prelude::*, window};
 
 pub fn create_app() -> result::Result<(), MyError> {
@@ -9,7 +9,7 @@ pub fn create_app() -> result::Result<(), MyError> {
         .center_screen()
         .with_label("Main window");
 
-    let (s, r) = app::channel::<proc_steps::Message>();
+    let (sender, r) = app::channel::<proc_steps::Message>();
 
 /*
     let frame_resize_cbk = |f: &mut frame::Frame| { 
@@ -99,10 +99,9 @@ pub fn create_app() -> result::Result<(), MyError> {
         .with_pos(0, 0)
         .with_size(proc_steps::WIN_WIDTH, proc_steps::WIN_HEIGHT);
 
-    let mut steps_line = proc_steps::ProcessingLine::new();
-    steps_line.add(proc_steps::StepTypes::LoadImage, s);
-    steps_line.add(proc_steps::StepTypes::LinearFilter(3), s);
-    steps_line.add(proc_steps::StepTypes::MedianFilter(3), s);
+    let mut steps_line = proc_steps::ProcessingLine::new(sender);
+    steps_line.add(StepType::LinearFilter(5), sender);
+    steps_line.add(StepType::MedianFilter(5), sender);
 
     scroll_area.end();
 
@@ -112,7 +111,15 @@ pub fn create_app() -> result::Result<(), MyError> {
 
     while app.wait() {
         if let Some(msg) = r.recv() {
-            steps_line.process_from_step(msg)?;
+            match steps_line.process_from_step(msg) {
+                Err(err) => {
+                    fltk::dialog::alert(
+                        proc_steps::WIN_WIDTH / 2, 
+                        proc_steps::WIN_HEIGHT / 2, 
+                        &err.extract_msg());
+                },
+                Ok(_) => { }
+            }
         }
     }
 

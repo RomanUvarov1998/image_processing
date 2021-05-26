@@ -24,6 +24,9 @@ impl MyError {
 			msg
 		}
 	}
+	pub fn extract_msg(self) -> String {
+		self.msg
+	}
 }
 
 impl From<string::FromUtf8Error> for MyError { 
