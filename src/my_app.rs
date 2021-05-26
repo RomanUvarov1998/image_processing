@@ -1,30 +1,17 @@
 use std::result;
-use crate::{filter, my_err::MyError};
-use fltk::{app, button, dialog, enums::{Align, FrameType}, frame, image::BmpImage, prelude::*, text, window};
-use crate::img;
-use ::image as ImgLib;
-
-#[derive(Debug, Copy, Clone)]
-enum Message {
-    LoadInitialImage,
-    ProcessLoadedImage,
-}
-
-const PADDING: i32 = 3;
-const WIN_WIDTH: i32 = 640;
-const WIN_HEIGHT: i32 = 480;
-const BTN_WIDTH: i32 = 100;
-const BTN_HEIGHT: i32 = 30;
+use crate::{my_err::MyError, proc_steps};
+use fltk::{app, group, prelude::*, window};
 
 pub fn create_app() -> result::Result<(), MyError> {
     let app = app::App::default();
     let mut wind = window::Window::default()
-        .with_size(WIN_WIDTH, WIN_HEIGHT)
+        .with_size(proc_steps::WIN_WIDTH, proc_steps::WIN_HEIGHT)
         .center_screen()
         .with_label("Main window");
 
-    let (s, r) = app::channel::<Message>();
+    let (s, r) = app::channel::<proc_steps::Message>();
 
+/*
     let frame_resize_cbk = |f: &mut frame::Frame| { 
         match f.image() {
             Some(mut img) => {
@@ -40,6 +27,16 @@ pub fn create_app() -> result::Result<(), MyError> {
             }
         }
     };
+
+    
+
+    let mut tab_control = group::Tabs::default()
+        .with_pos(0, 0)
+        .with_size(WIN_WIDTH, WIN_HEIGHT);
+    let tab1 = group::Group::default()
+        .with_pos(PADDING,  PADDING + BTN_HEIGHT)
+        .with_size(WIN_WIDTH - PADDING, WIN_HEIGHT - PADDING)
+        .with_label("Tab 1");
 
     //------------------------- frame_img_init -------------------------------------
 
@@ -92,7 +89,22 @@ pub fn create_app() -> result::Result<(), MyError> {
     let mut img_initial: Option<(img::Img, BmpImage)> = None;
     let mut img_copy: Option<(img::Img, BmpImage)> = None;
     //let mut blur_filter = filter::LinearFilter::mean_filter_of_size(5);
-    let mut blur_filter = filter::MedianFilter::new(3);
+    let mut blur_filter = filter::MedianFilter::new(5);
+
+    tab1.end();
+    tab_control.end();
+    */
+    
+    let scroll_area = group::Scroll::default()
+        .with_pos(0, 0)
+        .with_size(proc_steps::WIN_WIDTH, proc_steps::WIN_HEIGHT);
+
+    let mut steps_line = proc_steps::ProcessingLine::new();
+    steps_line.add(proc_steps::StepTypes::LoadImage, s);
+    steps_line.add(proc_steps::StepTypes::LinearFilter(3), s);
+    steps_line.add(proc_steps::StepTypes::MedianFilter(3), s);
+
+    scroll_area.end();
 
     wind.end();
     wind.make_resizable(true);
@@ -100,52 +112,9 @@ pub fn create_app() -> result::Result<(), MyError> {
 
     while app.wait() {
         if let Some(msg) = r.recv() {
-            match msg {
-                Message::LoadInitialImage => {
-                    let loaded_img = load_img()?;
-
-                    lbl_init.set_label(&format!("Размер {}x{}", loaded_img.w(), loaded_img.h()));
-
-                    let draw_data = loaded_img.clone().give_image()?;
-
-                    let mut to_draw = draw_data.clone();
-                    to_draw.scale(0, 0, true, true);
-                    frame_img_init.set_image(Some(to_draw));
-
-                    img_initial = Some((loaded_img, draw_data));
-                    img_copy = img_initial.clone();
-                    frame_img_init.redraw();
-                },
-                Message::ProcessLoadedImage => {
-                    match img_copy {
-                        Some(ref mut img_ref) => {
-                            let mut img = img_ref.0.apply_filter(&mut blur_filter).give_image()?;
-
-                            lbl_proc.set_label(&format!("Размер {}x{}", img.w(), img.h()));
-
-                            img.scale(0, 0, true, true);
-                            frame_img_proc.set_image(Some(img));
-                            frame_img_proc.redraw();
-                        }
-                        None => {
-                            frame_img_proc.set_label("You should choose image to process first");
-                        }
-                    }
-                }
-            }
+            steps_line.process_from_step(msg)?;
         }
     }
 
     Ok(())
-}
-
-fn load_img() -> result::Result<img::Img, MyError> {
-    let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
-    dlg.show();
-    let path_buf = dlg.filename();
-
-    let path_str = path_buf.to_str().unwrap();
-    let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;    
-
-    Ok(img::Img::new(img_dyn))
 }

@@ -62,7 +62,7 @@ impl Img {
         self.pixels[total_offset]
     }
 
-    pub fn give_image(self) -> Result<image::BmpImage, MyError> { 
+    pub fn give_image(&self) -> Result<image::BmpImage, MyError> { 
         let mut bytes = Vec::<u8>::new();
         self.image.write_to(&mut bytes, ImgLib::ImageOutputFormat::Bmp)?;        
         let img_bmp = image::BmpImage::from_data(bytes.as_slice())?;

@@ -4,6 +4,7 @@ use std::{
 
 mod my_err;
 mod filter;
+mod proc_steps;
 use my_err::MyError;
 
 mod my_app;

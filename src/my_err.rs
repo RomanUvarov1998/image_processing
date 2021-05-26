@@ -18,6 +18,14 @@ impl fmt::Display for MyError {
 
 impl error::Error for MyError { }
 
+impl MyError {
+	pub fn new(msg: String) -> Self {
+		MyError {
+			msg
+		}
+	}
+}
+
 impl From<string::FromUtf8Error> for MyError { 
 	fn from(err: string::FromUtf8Error) -> Self {
 		MyError {
