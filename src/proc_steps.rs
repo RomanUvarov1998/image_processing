@@ -164,14 +164,23 @@ impl ProcessingLine {
             }
             Message::DoStep { step_num } => {
                 assert!(self.steps.len() > step_num);
-                if !self.steps[step_num].has_data() {
-                    return Err(MyError::new("Для данного блока еще нет исходного изображения от предыдущего".to_string()));
-                }
 
-                let mut result = self.steps[step_num].get_data();
-                for ind in step_num..self.steps.len() {
-                    result = self.steps[ind].process(result)?;
-                    self.steps[ind].set_image(result.clone())?;
+                if step_num == 0 {
+                    match self.initial_img {
+                        Some(ref img) => {
+                            let img_copy = img.clone();
+                            self.steps[step_num].process_image(img_copy)?;
+                        },
+                        None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
+                    }
+                } else {
+                    let prev_step = &self.steps[step_num - 1];
+                    match prev_step.get_data_copy() {
+                        Some(img) => {
+                            self.steps[step_num].process_image(img)?;
+                        },
+                        None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
+                    }
                 }
             }
         }
@@ -199,21 +208,19 @@ impl ProcessingStep {
         }
     }
 
-    pub fn has_data(&self) -> bool { 
-        self.image.is_some() && self.draw_data.is_some() 
+    pub fn get_data_copy(&self) -> Option<img::Img> {
+       self.image.clone()
     }
 
-    pub fn get_data(&mut self) -> img::Img {
-       self.image.take().unwrap()
-    }
+    pub fn process_image(&mut self, image: img::Img) -> result::Result<(), MyError> {
+        self.image = match self.action {
+            StepAction::Linear(ref mut filter) => Some(image.apply_filter(filter)),
+            StepAction::Median(ref mut filter) => Some(image.apply_filter(filter)),
+        };
 
-    pub fn set_image(&mut self, image: img::Img) -> result::Result<(), MyError> {
-        self.image = Some(image.clone());
-
-        let mut bmp_image = image.get_bmp_copy()?;
-
-        self.label.set_label(&format!("Размер {}x{}", bmp_image.w(), bmp_image.h()));
+        self.label.set_label(&format!("Размер {}x{}", image.w(), image.h()));
                         
+        let mut bmp_image = image.get_bmp_copy()?;
         bmp_image.scale(0, 0, true, true);
         self.frame.set_image(Some(bmp_image.clone()));
         self.frame.redraw();
@@ -221,13 +228,6 @@ impl ProcessingStep {
         self.draw_data = Some(bmp_image);
 
         Ok(())
-    }
-
-    pub fn process(&mut self, mut image: img::Img) -> result::Result<img::Img, MyError> {
-        match self.action {
-            StepAction::Linear(ref mut filter) => Ok(image.apply_filter(filter)),
-            StepAction::Median(ref mut filter) => Ok(image.apply_filter(filter)),
-        }
     }
 }
 

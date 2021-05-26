@@ -74,7 +74,7 @@ impl Img {
         Ok(img_bmp)
     }
 
-    pub fn apply_filter<T: filter::Filter>(&mut self, filter: &mut T) -> Self {
+    pub fn apply_filter<T: filter::Filter>(&self, filter: &mut T) -> Self {
         let mut result = self.clone();
 
         let pixel_buf_actual_size = filter.window_size() * filter.window_size();
