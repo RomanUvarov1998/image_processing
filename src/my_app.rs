@@ -1,9 +1,18 @@
 use std::result;
-use crate::{my_err::MyError, proc_steps::{self, BTN_HEIGHT, BTN_WIDTH, StepType}};
-use fltk::{app, button, group, prelude::*, window};
+use crate::{my_err::MyError, proc_steps::{ProcessingLine, StepType}};
+use fltk::{app, prelude::*, window};
 
 pub const WIN_WIDTH: i32 = 640;
 pub const WIN_HEIGHT: i32 = 480;
+
+#[derive(Debug, Copy, Clone)]
+pub enum Message {
+    LoadImage,
+    DoStep { step_num: usize },
+    AddStep, 
+    EditStep { step_num: usize }, 
+    DeleteStep { step_num: usize }
+}
 
 pub fn create_app() -> result::Result<(), MyError> {
     let app = app::App::default();
@@ -11,8 +20,9 @@ pub fn create_app() -> result::Result<(), MyError> {
         .with_size(WIN_WIDTH, WIN_HEIGHT)
         .center_screen()
         .with_label("Main window");
-
-    let (sender, r) = app::channel::<proc_steps::Message>();
+    wind.end();
+    wind.make_resizable(true);
+    wind.show();
 
 /*
     let frame_resize_cbk = |f: &mut frame::Frame| { 
@@ -98,44 +108,12 @@ pub fn create_app() -> result::Result<(), MyError> {
     tab_control.end();
     */
     
-    const LEFT_MENU_WIDTH: i32 = 100;
-
-    let mut steps_line = proc_steps::ProcessingLine::new(sender,
-        LEFT_MENU_WIDTH, 0, WIN_WIDTH - LEFT_MENU_WIDTH, WIN_HEIGHT);
-    steps_line.add(StepType::LinearFilter(5), sender);
-    steps_line.add(StepType::MedianFilter(5), sender);
+    let mut steps_line = ProcessingLine::new(wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
+    steps_line.add(StepType::LinearMeanFilter(5));
+    steps_line.add(StepType::MedianFilter(5));
     steps_line.end();
 
-    let menu = group::Pack::default()
-        .with_pos(0, 0)
-        .with_size(LEFT_MENU_WIDTH, WIN_HEIGHT);
-    let mut btn_add_step = button::Button::default()
-        .with_label("Добавить шаг");
-    {
-        let btn_sz = btn_add_step.measure_label();
-        btn_add_step.set_size(btn_sz.0, btn_sz.0);
-    }
-    btn_add_step.emit(sender, proc_steps::Message::AddStep);
-
-    menu.end();
-
-    wind.end();
-    wind.make_resizable(true);
-    wind.show();
-
-    while app.wait() {
-        if let Some(msg) = r.recv() {
-            match steps_line.process_message(msg) {
-                Err(err) => {
-                    fltk::dialog::alert(
-                        WIN_WIDTH / 2, 
-                        WIN_HEIGHT / 2, 
-                        &err.extract_msg());
-                },
-                Ok(_) => { }
-            }
-        }
-    }
+    steps_line.run(app)?;
 
     Ok(())
 }

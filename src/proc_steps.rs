@@ -1,9 +1,10 @@
 use std::result;
-use fltk::{app::Sender, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}};
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_err::MyError};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self, PackType}, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}, window};
+use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
 
 pub enum StepType {
-    LinearFilter (usize),
+    LinearMeanFilter (usize),
+    LinearFilter { coeffs: Vec<f64>, width: usize, height: usize },
     MedianFilter (usize)
 }
 
@@ -11,13 +12,7 @@ pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
 pub const BTN_HEIGHT: i32 = 30;
 pub const BTN_TEXT_PADDING: i32 = 10;
-
-#[derive(Debug, Copy, Clone)]
-pub enum Message {
-    LoadImage,
-    DoStep { step_num: usize },
-    AddStep
-}
+const LEFT_MENU_WIDTH: i32 = 200;
 
 enum StepAction {
     Linear(LinearFilter),
@@ -28,29 +23,54 @@ pub struct ProcessingLine {
     initial_img: Option<img::Img>,
     frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
-    max_height: i32,
-    x: i32, y: i32, w: i32, h: i32,
-    scroll_area: group::Scroll,
-    sender: Sender<Message>
+    w: i32, h: i32,
+    scroll_pack: group::Pack,
+    receiver: Receiver<Message>,
+    step_editor: StepEditor
 }
 
 impl ProcessingLine {
-    pub fn new(sender: Sender<Message>, x: i32, y: i32, w: i32, h: i32) -> Self {
-        let scroll_area = group::Scroll::default()
+    pub fn new(wind: window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
+        wind.begin();
+
+        let mut left_menu = group::Pack::default()
             .with_pos(x, y)
-            .with_size(w, h);
+            .with_size(LEFT_MENU_WIDTH, h);
+        left_menu.set_type(PackType::Vertical);
 
-        let mut max_height = 0_i32;
+        let (sender, _) = app::channel::<Message>();
 
-        let label = frame::Frame::default()
-            .with_pos(x, y + max_height)
-            .with_size(w, BTN_HEIGHT)
+        let mut label = frame::Frame::default()
+            .with_label("Редактирование шагов");
+        let (lw, lh) = label.measure_label();
+        label.set_size(std::cmp::min(lw, LEFT_MENU_WIDTH), lh);
+
+        let mut btn_add_step = button::Button::default()
+            .with_label("Добавить");
+        {
+            let (w, h) = btn_add_step.measure_label();
+            btn_add_step.set_size(w + PADDING, h + PADDING);
+        }
+        btn_add_step = btn_add_step.below_of(&label, PADDING);
+        btn_add_step.emit(sender, Message::AddStep);
+    
+        left_menu.end();
+
+        let scroll_area = group::Scroll::default()
+            .with_pos(x + LEFT_MENU_WIDTH, y)
+            .with_size(w - LEFT_MENU_WIDTH, h);
+        let scroll_pack = group::Pack::default()
+            .with_pos(x + LEFT_MENU_WIDTH, y)
+            .with_size(w - LEFT_MENU_WIDTH, h);
+
+        frame::Frame::default()
+            .with_size(w - LEFT_MENU_WIDTH, BTN_HEIGHT)
             .with_label("Загрузка изображения");
-        max_height += label.height() + PADDING;
+
+        let (sender, receiver) = app::channel::<Message>();
 
         let mut btn = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
-            .with_pos(x,  y + max_height)
             .with_label("Загрузить");
         btn.emit(sender, Message::LoadImage );
         
@@ -58,11 +78,9 @@ impl ProcessingLine {
             let (bw, bh) = btn.measure_label();
             btn.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
         }
-        max_height += btn.height() + PADDING;
             
         let mut frame_img = frame::Frame::default()
-            .with_pos(x,  y + max_height)
-            .with_size(w, h - BTN_HEIGHT * 2);
+            .with_size(w - LEFT_MENU_WIDTH, h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
         frame_img.draw(move |f: &mut frame::Frame| { 
@@ -80,47 +98,58 @@ impl ProcessingLine {
                 }
             }
         });
-        max_height += frame_img.height() + PADDING;
+
+        scroll_pack.end();
+        scroll_area.end();
+
+        wind.end();
 
         ProcessingLine {
             initial_img: None,
             frame_img,
             steps: Vec::<ProcessingStep>::new(),
-            max_height: max_height,
-            x, y, w, h,
-            scroll_area,
-            sender
+            w, h,
+            scroll_pack,
+            receiver,
+            step_editor: StepEditor::new()
         }
     }
 
-    pub fn add(&mut self, step_type: StepType, sender: Sender<Message>) -> () {
+    pub fn add(&mut self, step_type: StepType) -> () {
+        self.scroll_pack.begin();
+
         let label = frame::Frame::default()
-            .with_pos(self.x, self.y + self.max_height)
-            .with_size(self.w, BTN_HEIGHT);   
-        self.max_height += label.height() + PADDING;
+            .with_size(self.w - LEFT_MENU_WIDTH, BTN_HEIGHT);   
 
-        let mut btn = button::Button::default()
-            .with_pos(self.x,  self.y + self.max_height);
+        let (sender, _) = app::channel::<Message>();
 
-        match step_type {
-            StepType::LinearFilter(_) => {
-                btn.set_label("Отфильтровать");
-                btn.emit(sender, Message::DoStep { step_num: self.steps.len() } );
-            },
-            StepType::MedianFilter(_) => {
-                btn.set_label("Отфильтровать");
-                btn.emit(sender, Message::DoStep { step_num: self.steps.len() } );
-            }
-        };
+        let mut hpack = group::Pack::default()
+            .with_size(self.w - LEFT_MENU_WIDTH, BTN_HEIGHT); 
+        hpack.set_type(PackType::Horizontal);
+        hpack.set_spacing(PADDING);
 
-        let (w, h) = btn.measure_label();
-        btn.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        let mut btn_process = button::Button::default();
+        btn_process.set_label("Отфильтровать");
+        btn_process.emit(sender, Message::DoStep { step_num: self.steps.len() } );
+        let (w, h) = btn_process.measure_label();
+        btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
-        self.max_height += btn.height() + PADDING;
+        let mut btn_edit_step = button::Button::default();
+        btn_edit_step.set_label("Изменить");
+        btn_edit_step.emit(sender, Message::EditStep { step_num: self.steps.len() } );
+        let (w, h) = btn_edit_step.measure_label();
+        btn_edit_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        let mut btn_del_step = button::Button::default();
+        btn_del_step.set_label("Удалить");
+        btn_del_step.emit(sender, Message::DeleteStep { step_num: self.steps.len() } );
+        let (w, h) = btn_del_step.measure_label();
+        btn_del_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        hpack.end();
             
         let mut frame_img = frame::Frame::default()
-            .with_pos(self.x,  self.y + self.max_height)
-            .with_size(self.w, self.h - BTN_HEIGHT * 2);
+            .with_size(self.w - LEFT_MENU_WIDTH, self.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
         frame_img.draw(|f: &mut frame::Frame| { 
@@ -138,71 +167,102 @@ impl ProcessingLine {
                 }
             }
         });
-        self.max_height += frame_img.height() + PADDING;
 
         match step_type {
-            StepType::LinearFilter(size) => {
-                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::mean_filter_of_size(size))))
+            StepType::LinearFilter { coeffs, width, height } => {
+                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::with_coeffs(coeffs, width, height))))
             },
             StepType::MedianFilter(size) => {
                 self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Median(MedianFilter::new(size))))
             }
+            StepType::LinearMeanFilter(size) => {
+                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::mean_filter_of_size(size))))
+            }
         };
+
+        self.scroll_pack.end();
     }
 
-    pub fn process_message(&mut self, msg: Message) -> result::Result<(), MyError> {
-        match msg {
-            Message::LoadImage => {
-                let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
-                dlg.show();
-                let path_buf = dlg.filename();
+    pub fn end(&self) {
+        self.scroll_pack.end();
+    }
 
-                let init_image = img::Img::load(path_buf)?;
-
-                let mut bmp_copy = init_image.get_bmp_copy()?;
-                bmp_copy.scale(0, 0, true, true);
-                self.frame_img.set_image(Some(bmp_copy));
-                self.frame_img.redraw();
-
-                self.initial_img = Some(init_image);
-            }
-            Message::DoStep { step_num } => {
-                assert!(self.steps.len() > step_num);
-
-                if step_num == 0 {
-                    match self.initial_img {
-                        Some(ref img) => {
-                            let img_copy = img.clone();
-                            self.steps[step_num].process_image(img_copy)?;
-                        },
-                        None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
+    pub fn run(&mut self, app: app::App) -> result::Result<(), MyError> {
+        while app.wait() {
+            if let Some(msg) = self.receiver.recv() {
+                match msg {
+                    Message::LoadImage => match self.try_load() {
+                        Ok(_) => {}
+                        Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
-                } else {
-                    let prev_step = &self.steps[step_num - 1];
-                    match prev_step.get_data_copy() {
-                        Some(img) => {
-                            self.steps[step_num].process_image(img)?;
-                        },
-                        None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
+                    Message::DoStep { step_num } => match self.try_do_step(step_num) {
+                        Ok(_) => {}
+                        Err(err) => err_msg(&self.scroll_pack, &err.to_string())
+                    }
+                    Message::AddStep => self.add_step(app),
+                    Message::EditStep { step_num } => {
+                        println!("Edit {}", step_num);
+                    },
+                    Message::DeleteStep { step_num } => {
+                        println!("Delete {}", step_num);
                     }
                 }
             }
-            Message::AddStep => {
-                self.scroll_area.begin();
-                self.add(StepType::LinearFilter(3), self.sender);
-                self.scroll_area.end();
+        }
+    
+        Ok(())
+    }
+
+    fn try_load(&mut self) -> result::Result<(), MyError> {
+        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
+        dlg.show();
+        let path_buf = dlg.filename();
+
+        let init_image = img::Img::load(path_buf)?;
+
+        let mut bmp_copy = init_image.get_bmp_copy()?;
+        bmp_copy.scale(0, 0, true, true);
+        self.frame_img.set_image(Some(bmp_copy));
+        self.frame_img.redraw();
+
+        self.initial_img = Some(init_image);
+
+        Ok(())
+    }
+
+    fn try_do_step(&mut self, step_num: usize) -> result::Result<(), MyError> {
+        assert!(self.steps.len() > step_num);
+
+        if step_num == 0 {
+            match self.initial_img {
+                Some(ref img) => {
+                    let img_copy = img.clone();
+                    self.steps[step_num].process_image(img_copy)?;
+                },
+                None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
+            }
+        } else {
+            let prev_step = &self.steps[step_num - 1];
+            match prev_step.get_data_copy() {
+                Some(img) => {
+                    self.steps[step_num].process_image(img)?;
+                },
+                None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             }
         }
 
         Ok(())
     }
 
-    pub fn end(&self) {
-        self.scroll_area.end();
+    fn add_step(&mut self, app: app::App) -> () {
+        match self.step_editor.add_linear_filter_with_dlg(app) {
+            Some(step_type) => self.add(step_type),
+            None => {}
+        }
     }
 }
 
-struct ProcessingStep {
+pub struct ProcessingStep {
     name: String,
     frame: Frame,
     label: Frame,

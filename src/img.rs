@@ -5,7 +5,7 @@ use fltk::{
     image
 };
 use ::image as ImgLib;
-use crate::{filter, my_err::MyError, pixel_pos::PixelPos};
+use crate::{filter::{self, MAX_WINDOW_BUFFER_SIZE, MAX_WINDOW_SIZE}, my_err::MyError, pixel_pos::PixelPos};
 
 #[derive(Clone)]
 pub struct Img {
@@ -16,8 +16,6 @@ pub struct Img {
 }
 
 pub const CHANNELS_COUNT: usize = 4;
-pub const MAX_WINDOW_SIZE: usize = 11;
-pub const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
 
 impl Img {
     pub fn load(path: PathBuf) -> result::Result<Self, MyError> {

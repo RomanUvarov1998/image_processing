@@ -1,5 +1,8 @@
 use crate::pixel_pos::PixelPos;
 
+pub const MAX_WINDOW_SIZE: usize = 11;
+pub const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
+
 pub trait Filter {
     fn filter(&mut self, fragment: &mut [f64]) -> f64;
     fn window_size(&self) -> usize;
@@ -48,6 +51,10 @@ pub struct LinearFilter {
 }
 
 impl LinearFilter {
+    pub fn with_coeffs(coeffs: Vec<f64>, width: usize, height: usize) -> Self {
+        LinearFilter { width, height, arr: coeffs }
+    }
+
     pub fn mean_filter_of_size(size: usize) -> Self {
         assert_eq!(size % 2, 1);
 
