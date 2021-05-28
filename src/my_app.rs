@@ -1,6 +1,6 @@
 use std::result;
-use crate::{my_err::MyError, proc_steps::{ProcessingLine, StepType}};
-use fltk::{app, prelude::*, window};
+use crate::{filter::{LinearFilter, MedianFilter}, my_err::MyError, proc_steps::{ProcessingLine, StepAction}};
+use fltk::{app, enums::Damage, prelude::*, window};
 
 pub const WIN_WIDTH: i32 = 640;
 pub const WIN_HEIGHT: i32 = 480;
@@ -20,6 +20,7 @@ pub fn create_app() -> result::Result<(), MyError> {
         .with_size(WIN_WIDTH, WIN_HEIGHT)
         .center_screen()
         .with_label("Main window");
+    wind.set_damage_type(Damage::All | Damage::Child | Damage::Scroll);
     wind.end();
     wind.make_resizable(true);
     wind.show();
@@ -109,8 +110,8 @@ pub fn create_app() -> result::Result<(), MyError> {
     */
     
     let mut steps_line = ProcessingLine::new(wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
-    steps_line.add(StepType::LinearMeanFilter(5));
-    steps_line.add(StepType::MedianFilter(5));
+    steps_line.add(StepAction::Linear(LinearFilter::mean_filter_of_size(5)));
+    steps_line.add(StepAction::Median(MedianFilter::new(5)));
     steps_line.end();
 
     steps_line.run(app)?;

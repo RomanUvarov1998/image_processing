@@ -1,12 +1,6 @@
 use std::result;
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self, PackType}, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, Damage, FrameType}, frame::{self, Frame}, group::{self, PackType}, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}, window};
 use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
-
-pub enum StepType {
-    LinearMeanFilter (usize),
-    LinearFilter { coeffs: Vec<f64>, width: usize, height: usize },
-    MedianFilter (usize)
-}
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -14,7 +8,8 @@ pub const BTN_HEIGHT: i32 = 30;
 pub const BTN_TEXT_PADDING: i32 = 10;
 const LEFT_MENU_WIDTH: i32 = 200;
 
-enum StepAction {
+#[derive(Clone)]
+pub enum StepAction {
     Linear(LinearFilter),
     Median(MedianFilter),
 }
@@ -115,7 +110,7 @@ impl ProcessingLine {
         }
     }
 
-    pub fn add(&mut self, step_type: StepType) -> () {
+    pub fn add(&mut self, step_action: StepAction) -> () {
         self.scroll_pack.begin();
 
         let label = frame::Frame::default()
@@ -168,17 +163,8 @@ impl ProcessingLine {
             }
         });
 
-        match step_type {
-            StepType::LinearFilter { coeffs, width, height } => {
-                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::with_coeffs(coeffs, width, height))))
-            },
-            StepType::MedianFilter(size) => {
-                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Median(MedianFilter::new(size))))
-            }
-            StepType::LinearMeanFilter(size) => {
-                self.steps.push(ProcessingStep::new(frame_img, label, StepAction::Linear(LinearFilter::mean_filter_of_size(size))))
-            }
-        };
+        self.steps.push(ProcessingStep::new(hpack, btn_process, btn_edit_step,
+            btn_del_step, frame_img, label, step_action));
 
         self.scroll_pack.end();
     }
@@ -199,12 +185,52 @@ impl ProcessingLine {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
-                    Message::AddStep => self.add_step(app),
+                    Message::AddStep => {
+                        match self.step_editor.add_step_action_with_dlg(
+                            app, 
+                            StepAction::Linear(LinearFilter::default())) 
+                        {
+                            Some(step_action) => self.add(step_action),
+                            None => {}
+                        }
+                    },
                     Message::EditStep { step_num } => {
-                        println!("Edit {}", step_num);
+                        match self.steps[step_num].action {
+                            Some(ref action) => {
+                                match self.step_editor.add_step_action_with_dlg(app, action.clone()) 
+                                {
+                                    Some(edited_action) => {
+                                        self.steps[step_num].action = Some(edited_action);
+                                    },
+                                    None => {}
+                                }
+                            },
+                            None => {
+                                return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
+                            }
+                        }
                     },
                     Message::DeleteStep { step_num } => {
-                        println!("Delete {}", step_num);
+                        self.scroll_pack.begin();
+                        self.scroll_pack.remove(&self.steps[step_num].hpack);
+                        self.scroll_pack.remove(&self.steps[step_num].btn_process);
+                        self.scroll_pack.remove(&self.steps[step_num].btn_edit_step);
+                        self.scroll_pack.remove(&self.steps[step_num].btn_del_step);
+                        self.scroll_pack.remove(&self.steps[step_num].frame);
+                        self.scroll_pack.remove(&self.steps[step_num].label);
+                        self.scroll_pack.end();
+                        self.steps.remove(step_num);
+                        
+                        let (sender, _) = app::channel::<Message>();
+
+                        for i in step_num..self.steps.len() {
+                            self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
+                            self.steps[i].btn_edit_step.emit(sender, Message::EditStep { step_num: i } );
+                            self.steps[i].btn_del_step.emit(sender, Message::DeleteStep { step_num: i } );
+                            self.steps[i].label.redraw_label();
+                            self.steps[i].frame.set_damage(true);
+                        }
+                        self.scroll_pack.top_window().unwrap().set_damage(true);
                     }
                 }
             }
@@ -253,26 +279,23 @@ impl ProcessingLine {
 
         Ok(())
     }
-
-    fn add_step(&mut self, app: app::App) -> () {
-        match self.step_editor.add_linear_filter_with_dlg(app) {
-            Some(step_type) => self.add(step_type),
-            None => {}
-        }
-    }
 }
 
 pub struct ProcessingStep {
     name: String,
-    frame: Frame,
+    hpack: group::Pack,
+    btn_process: button::Button,
+    btn_edit_step: button::Button,
+    btn_del_step: button::Button,
     label: Frame,
-    action: StepAction,
+    frame: Frame,
+    pub action: Option<StepAction>,
     image: Option<img::Img>,
     draw_data: Option<fltk::image::BmpImage>
 }
 
 impl ProcessingStep {
-    fn new(frame: Frame, mut label: Frame, filter: StepAction) -> Self {
+    fn new(hpack: group::Pack, btn_process: button::Button, btn_edit_step: button::Button, btn_del_step: button::Button, frame: Frame, mut label: Frame, filter: StepAction) -> Self {
         let name = match filter {
             StepAction::Linear(_) => "Линейный фильтр".to_string(),
             StepAction::Median(_) => "Медианный фильтр".to_string()
@@ -281,10 +304,14 @@ impl ProcessingStep {
         label.set_label(&name);
         
         ProcessingStep { 
-            name,
+            name,            
+            hpack,
+            btn_process,
+            btn_edit_step,
+            btn_del_step,
             frame, 
             label,
-            action: filter,
+            action: Some(filter),
             image: None, 
             draw_data: None 
         }
@@ -295,15 +322,26 @@ impl ProcessingStep {
     }
 
     pub fn process_image(&mut self, ititial_img: img::Img) -> result::Result<(), MyError> {
-        let result_img = match self.action {
-            StepAction::Linear(ref mut filter) => ititial_img.apply_filter(filter),
-            StepAction::Median(ref mut filter) => ititial_img.apply_filter(filter),
-        };
+        let fil_size: (usize, usize);
 
-        let fil_size = match self.action {
-            StepAction::Linear(ref f) => (f.w(), f.h()),
-            StepAction::Median(ref f) => (f.window_size(), f.window_size())
+        let result_img = match self.action {
+            Some(ref mut action) => {
+                match action {
+                    StepAction::Linear(ref mut filter) => {
+                        fil_size = (filter.w(), filter.h());
+                        ititial_img.apply_filter(filter)
+                    },
+                    StepAction::Median(ref mut filter) => {
+                        fil_size = (filter.window_size(), filter.window_size());
+                        ititial_img.apply_filter(filter)
+                    }
+                }
+            },
+            None => {
+                return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
+            }
         };
+        
         self.label.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
                         

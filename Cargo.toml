@@ -11,4 +11,4 @@ fltk = "1.0.14"
 image = "0.23.14"
 
 [profile.dev]
-opt-level = 0
+opt-level = 1
