@@ -1,6 +1,6 @@
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetBase, WidgetExt}, window};
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
+use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self, Img}, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -61,7 +61,7 @@ impl ProcessingLine {
         let scroll_pack = group::Pack::default()
             .with_pos(x + LEFT_MENU_WIDTH, y)
             .with_size(w - LEFT_MENU_WIDTH, h);
-
+            
         frame::Frame::default()
             .with_size(w - LEFT_MENU_WIDTH, BTN_HEIGHT)
             .with_label("Загрузка изображения");
@@ -117,58 +117,7 @@ impl ProcessingLine {
     pub fn add(&mut self, step_action: StepAction) -> () {
         self.scroll_pack.begin();
 
-        let label = frame::Frame::default()
-            .with_size(self.w - LEFT_MENU_WIDTH, BTN_HEIGHT);   
-
-        let (sender, _) = app::channel::<Message>();
-
-        let mut hpack = group::Pack::default()
-            .with_size(self.w - LEFT_MENU_WIDTH, BTN_HEIGHT); 
-        hpack.set_type(PackType::Horizontal);
-        hpack.set_spacing(PADDING);
-
-        let mut btn_process = button::Button::default();
-        btn_process.set_label("Отфильтровать");
-        btn_process.emit(sender, Message::DoStep { step_num: self.steps.len() } );
-        let (w, h) = btn_process.measure_label();
-        btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
-        let mut btn_edit_step = button::Button::default();
-        btn_edit_step.set_label("Изменить");
-        btn_edit_step.emit(sender, Message::EditStep { step_num: self.steps.len() } );
-        let (w, h) = btn_edit_step.measure_label();
-        btn_edit_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
-        let mut btn_del_step = button::Button::default();
-        btn_del_step.set_label("Удалить");
-        btn_del_step.emit(sender, Message::DeleteStep { step_num: self.steps.len() } );
-        let (w, h) = btn_del_step.measure_label();
-        btn_del_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
-        hpack.end();
-            
-        let mut frame_img = frame::Frame::default()
-            .with_size(self.w - LEFT_MENU_WIDTH, self.h - BTN_HEIGHT * 2);
-        frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
-        frame_img.draw(|f: &mut frame::Frame| { 
-            match f.image() {
-                Some(mut img) => {
-                    img.scale(f.width(), f.height(), true, true);
-                    img.draw(
-                        f.x() + f.width() / 2 - img.width() / 2, 
-                        f.y() + f.height() / 2 - img.height() / 2, 
-                        f.width(), f.height());
-                    f.redraw();
-                },
-                None => { 
-                    f.set_label("");
-                }
-            }
-        });
-
-        self.steps.push(ProcessingStep::new(hpack, btn_process, btn_edit_step,
-            btn_del_step, frame_img, label, step_action));
+        self.steps.push(ProcessingStep::new(&self, step_action));
 
         self.scroll_pack.end();
     }
@@ -192,12 +141,11 @@ impl ProcessingLine {
                     Message::AddStepLin => {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
-                            StepAction::Linear(LinearFilter::default())) 
+                            StepAction::Linear(LinearFilter::default()))
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}
                         }
-
                     },
                     Message::AddStepMed => {
                         match self.step_editor.add_step_action_with_dlg(
@@ -230,7 +178,7 @@ impl ProcessingLine {
                         self.scroll_pack.remove(&self.steps[step_num].btn_process);
                         self.scroll_pack.remove(&self.steps[step_num].btn_edit_step);
                         self.scroll_pack.remove(&self.steps[step_num].btn_del_step);
-                        self.scroll_pack.remove(&self.steps[step_num].frame);
+                        self.scroll_pack.remove(&self.steps[step_num].frame_img);
                         self.scroll_pack.remove(&self.steps[step_num].label);
                         self.scroll_pack.end();
                         self.steps.remove(step_num);
@@ -242,7 +190,7 @@ impl ProcessingLine {
                             self.steps[i].btn_edit_step.emit(sender, Message::EditStep { step_num: i } );
                             self.steps[i].btn_del_step.emit(sender, Message::DeleteStep { step_num: i } );
                             self.steps[i].label.redraw_label();
-                            self.steps[i].frame.set_damage(true);
+                            self.steps[i].frame_img.set_damage(true);
                         }
                         self.scroll_pack.top_window().unwrap().set_damage(true);
                     }
@@ -302,18 +250,68 @@ pub struct ProcessingStep {
     btn_edit_step: button::Button,
     btn_del_step: button::Button,
     label: Frame,
-    frame: Frame,
+    frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Img>,
     draw_data: Option<fltk::image::BmpImage>
 }
 
 impl ProcessingStep {
-    fn new(hpack: group::Pack, btn_process: button::Button, btn_edit_step: button::Button, btn_del_step: button::Button, frame: Frame, mut label: Frame, filter: StepAction) -> Self {
+    fn new(proc_line: &ProcessingLine, filter: StepAction) -> Self {
         let name = match filter {
             StepAction::Linear(_) => "Линейный фильтр".to_string(),
             StepAction::Median(_) => "Медианный фильтр".to_string()
         };
+
+        let mut label = frame::Frame::default()
+            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT);   
+
+        let (sender, _) = app::channel::<Message>();
+
+        let mut hpack = group::Pack::default()
+            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT); 
+        hpack.set_type(PackType::Horizontal);
+        hpack.set_spacing(PADDING);
+
+        let mut btn_process = button::Button::default();
+        btn_process.set_label("Отфильтровать");
+        btn_process.emit(sender, Message::DoStep { step_num: proc_line.steps.len() } );
+        let (w, h) = btn_process.measure_label();
+        btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        let mut btn_edit_step = button::Button::default();
+        btn_edit_step.set_label("Изменить");
+        btn_edit_step.emit(sender, Message::EditStep { step_num: proc_line.steps.len() } );
+        let (w, h) = btn_edit_step.measure_label();
+        btn_edit_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        let mut btn_del_step = button::Button::default();
+        btn_del_step.set_label("Удалить");
+        btn_del_step.emit(sender, Message::DeleteStep { step_num: proc_line.steps.len() } );
+        let (w, h) = btn_del_step.measure_label();
+        btn_del_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+
+        hpack.end();
+            
+        let mut frame_img = frame::Frame::default()
+            .with_size(proc_line.w - LEFT_MENU_WIDTH, proc_line.h - BTN_HEIGHT * 2);
+        frame_img.set_frame(FrameType::EmbossedFrame);
+        frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
+        frame_img.draw(|f: &mut frame::Frame| { 
+            match f.image() {
+                Some(mut img) => {
+                    img.scale(f.width(), f.height(), true, true);
+                    img.draw(
+                        f.x() + f.width() / 2 - img.width() / 2, 
+                        f.y() + f.height() / 2 - img.height() / 2, 
+                        f.width(), f.height());
+                    f.redraw();
+                },
+                None => { 
+                    f.set_label("");
+                }
+            }
+        });
 
         label.set_label(&name);
         
@@ -323,7 +321,7 @@ impl ProcessingStep {
             btn_process,
             btn_edit_step,
             btn_del_step,
-            frame, 
+            frame_img, 
             label,
             action: Some(filter),
             image: None, 
@@ -338,16 +336,17 @@ impl ProcessingStep {
     pub fn process_image(&mut self, ititial_img: img::Img) -> result::Result<(), MyError> {
         let fil_size: (usize, usize);
 
-        let result_img = match self.action {
+        let result_img: Img;
+        match self.action {
             Some(ref mut action) => {
                 match action {
                     StepAction::Linear(ref mut filter) => {
                         fil_size = (filter.w(), filter.h());
-                        ititial_img.apply_filter(filter)
+                        result_img = ititial_img.apply_filter(filter);
                     },
                     StepAction::Median(ref mut filter) => {
                         fil_size = (filter.window_size(), filter.window_size());
-                        ititial_img.apply_filter(filter)
+                        result_img = ititial_img.apply_filter(filter);
                     }
                 }
             },
@@ -359,10 +358,10 @@ impl ProcessingStep {
         self.label.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
                         
-        let mut bmp_image = result_img.get_bmp_copy()?;
+        let mut bmp_image: fltk::image::BmpImage = result_img.get_bmp_copy()?;
         bmp_image.scale(0, 0, true, true);
-        self.frame.set_image(Some(bmp_image.clone()));
-        self.frame.redraw();
+        self.frame_img.set_image(Some(bmp_image.clone()));
+        self.frame_img.redraw();
 
         self.draw_data = Some(bmp_image);
 

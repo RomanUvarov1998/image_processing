@@ -1,4 +1,4 @@
-use fltk::{app::{self}, button, enums::Damage, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
+use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
 use crate::{filter::{Filter, LinearFilter, MedianFilter}, proc_steps::{StepAction}};
 
@@ -27,7 +27,6 @@ impl StepEditor {
         let mut wind = window::Window::default()
             .with_size(WIN_WIDTH, WIN_HEIGHT)
             .with_label("Добавление");
-        wind.set_damage_type(Damage::All | Damage::Child | Damage::Scroll);
 
         let mut hpack = group::Pack::default()
             .with_pos(PADDING, PADDING)
@@ -64,15 +63,10 @@ impl StepEditor {
 
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
-        self.wind.begin();
-
         match step_action {
             StepAction::Linear(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.to_string()),
             StepAction::Median(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.to_string()),
         }
-        
-        self.wind.end();
-        self.wind.set_damage(true);
 
         // if window is closed by user, "Close" message helps exit the message loop
         self.wind.handle(move |_, event| {
