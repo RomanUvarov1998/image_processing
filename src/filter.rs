@@ -99,6 +99,7 @@ impl Filter for LinearFilter {
         let mut rows = Vec::<Vec<f64>>::new();
 
         for line in string.split('\n') {
+            if line.trim().is_empty() { continue; }
             let mut row = Vec::<f64>::new();
             for word in line.trim().split(',').map(|w| w.trim()) {
                 if word.is_empty() { continue; }
