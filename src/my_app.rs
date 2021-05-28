@@ -112,7 +112,7 @@ pub fn create_app() -> result::Result<(), MyError> {
     
     let mut steps_line = ProcessingLine::new(wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
     steps_line.add(StepAction::Linear(LinearFilter::mean_filter_of_size(5)));
-    steps_line.add(StepAction::Median(MedianFilter::new(5)));
+    steps_line.add(StepAction::Median(MedianFilter::new(5, 5)));
     steps_line.end();
 
     steps_line.run(app)?;

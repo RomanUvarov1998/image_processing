@@ -24,6 +24,10 @@ impl MyError {
 			msg
 		}
 	}
+
+	pub fn get_message(&self) -> String {
+		self.msg.clone()
+	}
 }
 
 impl From<string::FromUtf8Error> for MyError { 
