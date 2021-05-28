@@ -1,6 +1,4 @@
-use std::ops::Range;
-
-use crate::{my_err::MyError, pixel_pos::PixelPos};
+use crate::{pixel_pos::PixelPos};
 
 pub const MAX_WINDOW_SIZE: usize = 11;
 pub const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
@@ -53,13 +51,6 @@ pub struct LinearFilter {
 }
 
 impl LinearFilter {
-    pub fn with_coeffs(coeffs: Vec<f64>, width: usize, height: usize) -> Self {
-        assert!(width > 0);
-        assert!(height > 0);
-        assert!(coeffs.len() > 0);
-        LinearFilter { width, height, arr: coeffs }
-    }
-
     pub fn mean_filter_of_size(size: usize) -> Self {
         assert_eq!(size % 2, 1);
 
@@ -71,61 +62,6 @@ impl LinearFilter {
 
     pub fn w(&self) -> usize { self.width }
     pub fn h(&self) -> usize { self.height }
-    
-    pub fn to_string(&self) -> String {
-        let mut fil_string = String::new();
-
-        for row in 0..self.height {
-            for col in 0..self.width {
-                fil_string.push_str(&self.arr[row * self.width + col].to_string());
-                if col < self.width - 1 {
-                    fil_string.push_str(", ");
-                }
-            }
-            if row < self.height - 1 {
-                fil_string.push_str("\n");
-            }
-        }
-
-        fil_string
-    }
-
-    pub fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let mut rows = Vec::<Vec<f64>>::new();
-
-        for line in string.split('\n') {
-            let mut row = Vec::<f64>::new();
-            for word in line.trim().split(',').map(|w| w.trim()) {
-                if word.is_empty() { continue; }
-                match word.trim().parse::<f64>() {
-                    Ok(value) => { row.push(value) }
-                    Err(_) => { 
-                        return Err(MyError::new("Некорректный формат чисел".to_string()));
-                    }
-                }
-            }
-            if rows.len() > 0 && row.len() != rows.last().unwrap().len() {
-                return Err(MyError::new("Некорректная разменость матрицы".to_string()));
-            }
-            if row.len() == 0 {
-                return Err(MyError::new("Некорректная разменость матрицы".to_string()));
-            }
-            rows.push(row);
-        }
-        
-        if rows.len() == 0 { 
-            return Err(MyError::new("Матрица должна иметь ненулевой размер".to_string()));
-        }
-        
-        let mut coeffs = Vec::<f64>::new();
-        for mut row in rows.clone() { 
-            coeffs.append(&mut row); 
-        }
-        let width = rows.last().unwrap().len();
-        let height = rows.len();
-
-        Ok(LinearFilter::with_coeffs(coeffs, width, height))
-    }
 
     pub fn get_coeff(&self, row: usize, col: usize) -> f64 { self.arr[row * self.width + col] }
 

@@ -1,5 +1,5 @@
 use std::result;
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, Damage, FrameType}, frame::{self, Frame}, group::{self, PackType}, prelude::{GroupExt, ImageExt, WidgetBase, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetBase, WidgetExt}, window};
 use crate::{filter::{Filter, LinearFilter, MedianFilter}, img, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
@@ -40,20 +40,24 @@ impl ProcessingLine {
         let (lw, lh) = label.measure_label();
         label.set_size(std::cmp::min(lw, LEFT_MENU_WIDTH), lh);
 
-        let mut btn_add_step = button::Button::default()
+        let mut btn_add_step = menu::MenuButton::default()
             .with_label("Добавить");
         {
             let (w, h) = btn_add_step.measure_label();
             btn_add_step.set_size(w + PADDING, h + PADDING);
         }
         btn_add_step = btn_add_step.below_of(&label, PADDING);
-        btn_add_step.emit(sender, Message::AddStep);
+        btn_add_step.add_emit("Линейный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLin);
+        btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
+
+        btn_add_step.end();
     
         left_menu.end();
 
         let scroll_area = group::Scroll::default()
             .with_pos(x + LEFT_MENU_WIDTH, y)
             .with_size(w - LEFT_MENU_WIDTH, h);
+
         let scroll_pack = group::Pack::default()
             .with_pos(x + LEFT_MENU_WIDTH, y)
             .with_size(w - LEFT_MENU_WIDTH, h);
@@ -185,10 +189,20 @@ impl ProcessingLine {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
-                    Message::AddStep => {
+                    Message::AddStepLin => {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
                             StepAction::Linear(LinearFilter::default())) 
+                        {
+                            Some(step_action) => self.add(step_action),
+                            None => {}
+                        }
+
+                    },
+                    Message::AddStepMed => {
+                        match self.step_editor.add_step_action_with_dlg(
+                            app, 
+                            StepAction::Median(MedianFilter::default())) 
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}

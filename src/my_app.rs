@@ -9,7 +9,8 @@ pub const WIN_HEIGHT: i32 = 480;
 pub enum Message {
     LoadImage,
     DoStep { step_num: usize },
-    AddStep, 
+    AddStepLin, 
+    AddStepMed, 
     EditStep { step_num: usize }, 
     DeleteStep { step_num: usize }
 }

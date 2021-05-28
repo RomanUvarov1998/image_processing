@@ -1,4 +1,4 @@
-use fltk::{app::{self}, button, enums::Damage, frame, group::{self, PackType}, input, prelude::{GroupExt, InputExt, WidgetBase, WidgetExt, WindowExt}, window};
+use fltk::{app::{self}, button, enums::Damage, group::{self, PackType}, input, prelude::{GroupExt, InputExt, WidgetBase, WidgetExt, WindowExt}, window};
 
 use crate::{filter::{Filter}, proc_steps::{StepAction}};
 
@@ -7,6 +7,7 @@ const WIN_HEIGHT: i32 = 500;
 const BTN_TEXT_PADDING: i32 = 10;
 const INP_HEIGHT: i32 = 30;
 const PADDING: i32 = 20;
+const INPUT_FIELD_SIZE: (i32, i32) = (150, 30);
 
 #[derive(Debug, Clone, Copy)]
 enum StepEditMessage { 
@@ -18,12 +19,9 @@ enum StepEditMessage {
 
 pub struct StepEditor {
     wind: window::Window,
-    lbl_msg: frame::Frame,
     scroll_editor: group::Scroll,
     btn_save: button::Button,
 }
-
-const INPUT_FIELD_SIZE: (i32, i32) = (100, 30);
 
 impl StepEditor {
     pub fn new() -> Self {
@@ -42,16 +40,13 @@ impl StepEditor {
             .with_label("Сохранить");
         let (w,h) = btn_save.measure_label();
         btn_save.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-        
-        let lbl_msg = frame::Frame::default()
-            .with_size(WIN_WIDTH, INP_HEIGHT)
-            .with_label("sdfsdfsd");
 
         hpack.end();
 
         let scroll_editor = group::Scroll::default()
             .with_size(WIN_WIDTH - PADDING, WIN_HEIGHT - (hpack.y() + hpack.h() + PADDING))
             .with_pos(0, hpack.y() + hpack.h() + PADDING);
+        scroll_editor.scrollbar().set_damage_type(Damage::All);
         scroll_editor.begin();
         
         scroll_editor.end();
@@ -61,7 +56,7 @@ impl StepEditor {
         wind.make_modal(true);
 
         StepEditor {
-            wind, btn_save, lbl_msg, scroll_editor
+            wind, btn_save, scroll_editor
         }
     }
 
@@ -79,6 +74,7 @@ impl StepEditor {
 
         self.scroll_editor.resize(self.scroll_editor.x(), self.scroll_editor.y(), 
             WIN_WIDTH, WIN_HEIGHT - self.scroll_editor.y());
+        self.scroll_editor.scrollbar().set_damage(true);
 
         match step_action {
             StepAction::Linear(ref filter) => {
@@ -129,11 +125,10 @@ impl StepEditor {
                 rows_pack.end();
             }
         }
-
-        self.wind.set_damage(true);
-        self.scroll_editor.end();   
-        self.scroll_editor.redraw(); 
+  
+        self.scroll_editor.end(); 
         self.wind.end();
+        self.wind.set_damage(true);
 
         self.wind.handle(move |_, event| {
             match event {
