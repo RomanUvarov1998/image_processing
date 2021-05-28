@@ -53,11 +53,3 @@ impl From<FltkError> for MyError {
 		}
 	}
 }
-
-impl From<image::ImageError> for MyError { 
-	fn from(err: image::ImageError) -> Self {
-		MyError {
-			msg: err.to_string()
-		}
-	}
-}

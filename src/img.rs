@@ -1,34 +1,65 @@
 use std::{path::PathBuf, result};
 
-use ImgLib::{GenericImage, GenericImageView, Pixel};
-use fltk::{
-    image
-};
-use ::image as ImgLib;
+use fltk::{image, prelude::ImageExt};
 use crate::{filter::{self, MAX_WINDOW_BUFFER_SIZE, MAX_WINDOW_SIZE}, my_err::MyError, pixel_pos::PixelPos};
 
 #[derive(Clone)]
 pub struct Img {
-    image: ImgLib::DynamicImage,
     width: usize,
     height: usize,
     pixels: Vec<u8>
 }
 
-pub const CHANNELS_COUNT: usize = 4;
-
 impl Img {
     pub fn load(path: PathBuf) -> result::Result<Self, MyError> {
-        let path_str = path.to_str().unwrap();
-        let img_dyn = ImgLib::io::Reader::open(path_str.to_string())?.decode()?;
+        let im = fltk::image::SharedImage::load(path)?;
+        let values = im.to_rgb_data();
+        let mut values_grey: Vec<u8>;
+        match im.depth() {
+            fltk::enums::ColorDepth::L8 => values_grey = im.to_rgb_data(),
+            fltk::enums::ColorDepth::La8 => {
+                assert_eq!(values.len() % 2, 0);
+                values_grey = Vec::<u8>::with_capacity(values.len() / 2);
+                for i in 0..values.len() {
+                    if i % 2 == 0 { values_grey.push(values[i]); }
+                }
+            },
+            fltk::enums::ColorDepth::Rgb8 => {
+                assert_eq!(values.len() % 3, 0);
+                values_grey = Vec::<u8>::with_capacity(values.len() / 3);
+                for i in 0..values.len() {
+                    if i % 3 == 0 { 
+                        let grey: u32 = 
+                            values[i] as u32 * 299 / 1000 + 
+                            values[i + 1] as u32 * 587 / 1000 + 
+                            values[i + 2] as u32 * 114 / 1000;
+                        values_grey.push(grey as u8); 
+                    }
+                }
+            },
+            fltk::enums::ColorDepth::Rgba8 => {
+                assert_eq!(values.len() % 4, 0);
+                values_grey = Vec::<u8>::with_capacity(values.len() / 3);
+                for i in 0..values.len() {
+                    if i % 4 == 0 { 
+                        let grey: u32 = 
+                            values[i] as u32 * 299 / 1000 + 
+                            values[i + 1] as u32 * 587 / 1000 + 
+                            values[i + 2] as u32 * 114 / 1000;
+                        values_grey.push(grey as u8); 
+                    }
+                }
+            }
+        }
 
-        let im = img_dyn.to_rgba8();
+        let im_grey = fltk::image::RgbImage::new(&values_grey, 
+            im.w(), im.h(), fltk::enums::ColorDepth::L8)?;
+            
         let width = im.width() as usize;
         let height = im.height() as usize;
-        let pixels = im.to_vec();
+        let pixels = im_grey.to_rgb_data();
 
         Ok(Img {
-            image: img_dyn,
             pixels,
             width,
             height
@@ -57,19 +88,20 @@ impl Img {
         if !self.fits(pos) {
             panic!("pos is {:?} which is doesn't fit into {}, {}", pos, self.max_col(), self.max_row());
         }
-
-        let col_offset: usize = pos.col * crate::img::CHANNELS_COUNT;
-        let row_offset: usize = pos.row * self.w() * crate::img::CHANNELS_COUNT;
-        let total_offset: usize = col_offset + row_offset;        
-        
-        self.pixels[total_offset]
+        self.pixels[pos.row * self.width + pos.col] 
     }
 
-    pub fn get_bmp_copy(&self) -> Result<image::BmpImage, MyError> { 
-        let mut bytes = Vec::<u8>::new();
-        self.image.write_to(&mut bytes, ImgLib::ImageOutputFormat::Bmp)?;        
-        let img_bmp = image::BmpImage::from_data(bytes.as_slice())?;
-        Ok(img_bmp)
+    pub fn set_pixel(&mut self, pos: PixelPos, value: u8) {
+        if !self.fits(pos) {
+            panic!("pos is {:?} which is doesn't fit into {}, {}", pos, self.max_col(), self.max_row());
+        }
+        self.pixels[pos.row * self.width + pos.col] = value;
+    }
+
+    pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
+        let im_rgb = image::RgbImage::new(self.pixels.as_slice(), 
+            self.width as i32, self.height as i32,  fltk::enums::ColorDepth::L8)?;
+        Ok(im_rgb)
     }
 
     pub fn apply_filter<T: filter::Filter>(&self, filter: &mut T) -> Self {
@@ -105,11 +137,7 @@ impl Img {
             }
 
             let filter_result = filter.filter(&mut pixel_buf[0..pixel_buf_actual_size]);
-            let res = filter_result as u8;
-
-            let alpha = result_img.image.get_pixel(pos_im.col as u32, pos_im.row as u32).channels()[3];
-            result_img.image.put_pixel(pos_im.col as u32, pos_im.row as u32, 
-                ImgLib::Rgba::<u8>::from_channels(res, res, res, alpha));
+            result_img.set_pixel(pos_im, filter_result as u8);
         }
 
         result_img

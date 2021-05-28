@@ -1,5 +1,5 @@
 use std::result;
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetBase, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self, Img}, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
@@ -81,22 +81,7 @@ impl ProcessingLine {
         let mut frame_img = frame::Frame::default()
             .with_size(w - LEFT_MENU_WIDTH, h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
-        frame_img.draw(move |f: &mut frame::Frame| { 
-            match f.image() {
-                Some(mut img) => {
-                    img.scale(f.width(), f.height(), true, true);
-                    img.draw(
-                        f.x() + f.width() / 2 - img.width() / 2, 
-                        f.y() + f.height() / 2 - img.height() / 2, 
-                        f.width(), f.height());
-                    f.redraw();
-                },
-                None => { 
-                    f.set_label("");
-                }
-            }
-        });
+        frame_img.set_align(Align::Center);   
 
         scroll_pack.end();
         scroll_area.end();
@@ -208,10 +193,10 @@ impl ProcessingLine {
 
         let init_image = img::Img::load(path_buf)?;
 
-        let mut bmp_copy = init_image.get_bmp_copy()?;
-        bmp_copy.scale(0, 0, true, true);
-        self.frame_img.set_image(Some(bmp_copy));
-        self.frame_img.redraw();
+        let mut img_copy = init_image.get_drawable_copy()?;
+        img_copy.scale(self.frame_img.w(), self.frame_img.h(), true, true);
+        self.frame_img.set_image(Some(img_copy.clone()));
+        self.frame_img.redraw(); 
 
         self.initial_img = Some(init_image);
 
@@ -253,7 +238,7 @@ pub struct ProcessingStep {
     frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Img>,
-    draw_data: Option<fltk::image::BmpImage>
+    draw_data: Option<fltk::image::RgbImage>
 }
 
 impl ProcessingStep {
@@ -296,22 +281,7 @@ impl ProcessingStep {
         let mut frame_img = frame::Frame::default()
             .with_size(proc_line.w - LEFT_MENU_WIDTH, proc_line.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::ImageMask | Align::TextNextToImage | Align::Bottom);    
-        frame_img.draw(|f: &mut frame::Frame| { 
-            match f.image() {
-                Some(mut img) => {
-                    img.scale(f.width(), f.height(), true, true);
-                    img.draw(
-                        f.x() + f.width() / 2 - img.width() / 2, 
-                        f.y() + f.height() / 2 - img.height() / 2, 
-                        f.width(), f.height());
-                    f.redraw();
-                },
-                None => { 
-                    f.set_label("");
-                }
-            }
-        });
+        frame_img.set_align(Align::Center);    
 
         label.set_label(&name);
         
@@ -358,12 +328,12 @@ impl ProcessingStep {
         self.label.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
                         
-        let mut bmp_image: fltk::image::BmpImage = result_img.get_bmp_copy()?;
-        bmp_image.scale(0, 0, true, true);
-        self.frame_img.set_image(Some(bmp_image.clone()));
+        let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
+        rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);
+        self.frame_img.set_image(Some(rgb_image.clone()));
         self.frame_img.redraw();
 
-        self.draw_data = Some(bmp_image);
+        self.draw_data = Some(rgb_image);
 
         self.image = Some(result_img);
 
