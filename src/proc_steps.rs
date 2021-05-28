@@ -191,6 +191,11 @@ impl ProcessingLine {
         dlg.show();
         let path_buf = dlg.filename();
 
+        match path_buf.to_str() {
+            Some(p) => if p.is_empty() { return Ok(()); }
+            _ => {}
+        }        
+
         let init_image = img::Img::load(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
