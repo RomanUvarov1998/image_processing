@@ -1,6 +1,6 @@
 use std::result;
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self, Img}, my_app::{Message}, my_err::MyError, small_dlg::err_msg, step_editor::StepEditor};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
+use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self, Img}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -187,6 +187,16 @@ impl ProcessingLine {
     }
 
     fn try_load(&mut self) -> result::Result<(), MyError> {
+        if self.initial_img.is_some() {
+            if small_dlg::confirm(&self.scroll_pack, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
+                for step_num in 0..self.steps.len() {
+                    self.steps[step_num].frame_img.set_image(Option::<RgbImage>::None);
+                }
+            } else {
+                return Ok(());
+            }
+        }
+
         let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
         dlg.show();
         let path_buf = dlg.filename();
