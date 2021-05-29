@@ -164,7 +164,7 @@ impl ProcessingLine {
                         self.scroll_pack.remove(&self.steps[step_num].btn_edit_step);
                         self.scroll_pack.remove(&self.steps[step_num].btn_del_step);
                         self.scroll_pack.remove(&self.steps[step_num].frame_img);
-                        self.scroll_pack.remove(&self.steps[step_num].label);
+                        self.scroll_pack.remove(&self.steps[step_num].label_step_name);
                         self.scroll_pack.end();
                         self.steps.remove(step_num);
                         
@@ -174,7 +174,7 @@ impl ProcessingLine {
                             self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
                             self.steps[i].btn_edit_step.emit(sender, Message::EditStep { step_num: i } );
                             self.steps[i].btn_del_step.emit(sender, Message::DeleteStep { step_num: i } );
-                            self.steps[i].label.redraw_label();
+                            self.steps[i].label_step_name.redraw_label();
                             self.steps[i].frame_img.set_damage(true);
                         }
                         self.scroll_pack.top_window().unwrap().set_damage(true);
@@ -249,7 +249,7 @@ pub struct ProcessingStep {
     btn_process: button::Button,
     btn_edit_step: button::Button,
     btn_del_step: button::Button,
-    label: Frame,
+    label_step_name: Frame,
     frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Img>,
@@ -263,8 +263,9 @@ impl ProcessingStep {
             StepAction::Median(_) => "Медианный фильтр".to_string()
         };
 
-        let mut label = frame::Frame::default()
-            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT);   
+        let label = frame::Frame::default()
+            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT)
+            .with_label(&name);  
 
         let (sender, _) = app::channel::<Message>();
 
@@ -297,8 +298,6 @@ impl ProcessingStep {
             .with_size(proc_line.w - LEFT_MENU_WIDTH, proc_line.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);    
-
-        label.set_label(&name);
         
         ProcessingStep { 
             name,            
@@ -307,7 +306,7 @@ impl ProcessingStep {
             btn_edit_step,
             btn_del_step,
             frame_img, 
-            label,
+            label_step_name: label,
             action: Some(filter),
             image: None, 
             draw_data: None 
@@ -340,7 +339,7 @@ impl ProcessingStep {
             }
         };
         
-        self.label.set_label(&format!("{} {}x{}, изображение {}x{}", 
+        self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;

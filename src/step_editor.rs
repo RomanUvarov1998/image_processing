@@ -64,8 +64,8 @@ impl StepEditor {
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
         match step_action {
-            StepAction::Linear(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.to_string()),
-            StepAction::Median(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.to_string()),
+            StepAction::Linear(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
+            StepAction::Median(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
         }
 
         // if window is closed by user, "Close" message helps exit the message loop

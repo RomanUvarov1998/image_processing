@@ -8,7 +8,7 @@ pub trait Filter : Default + Clone {
     fn window_size(&self) -> usize;
     fn get_iterator(&self) -> FilterIterator;
     fn try_from_string(string: &str) -> Result<Self, MyError>;
-    fn to_string(&self) -> String;
+    fn content_to_string(&self) -> String;
 }
 
 pub struct FilterIterator {
@@ -133,7 +133,7 @@ impl Filter for LinearFilter {
         Ok(LinearFilter::with_coeffs(coeffs, width, height))
     }
 
-    fn to_string(&self) -> String {
+    fn content_to_string(&self) -> String {
         let mut fil_string = String::new();
 
         for row in 0..self.height {
@@ -244,7 +244,7 @@ impl Filter for MedianFilter {
         return Ok(MedianFilter::new(width, height));
     }
 
-    fn to_string(&self) -> String {
+    fn content_to_string(&self) -> String {
         format!("{}, {}", self.height, self.width)
     }
 }
