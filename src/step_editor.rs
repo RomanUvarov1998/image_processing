@@ -1,6 +1,6 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, proc_steps::{StepAction}};
+use crate::{filter::{LinearFilter, MedianFilter, StringFromTo}, proc_steps::{StepAction}};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;

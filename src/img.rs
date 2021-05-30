@@ -1,12 +1,7 @@
 use std::{path::PathBuf, result};
 
 use fltk::{image, prelude::ImageExt};
-use crate::{filter::{self}, my_err::MyError, pixel_pos::PixelPos};
-
-pub enum ExtendValue {
-    Closest,
-    Given(f64)
-}
+use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};
 
 #[derive(Clone)]
 pub struct Img {
@@ -139,42 +134,81 @@ impl Img {
 
         let img_size = PixelPos::new(self.h(), self.w());
 
-        // ------------------------------------ top ------------------------------------
-        // top left
-        img.set_rect(origin, corner, self.pixel_at(origin));
-        // top middle
-        for pos in self.get_area_iter(corner_col, corner + horz_border_col) {
-            img.set_pixel(pos, self.pixel_at(pos - pos.row_vec() - corner_col));
+        match with {
+            ExtendValue::Closest => {
+                // ------------------------------------ top ------------------------------------
+                // top left
+                img.set_rect(origin, corner, self.pixel_at(origin));
+                // top middle
+                for pos in self.get_area_iter(corner_col, corner + horz_border_col) {
+                    img.set_pixel(pos, self.pixel_at(pos - pos.row_vec() - corner_col));
+                }        
+                // top right
+                img.set_rect(corner_row + horz_border_row, corner_row + horz_border_row + corner, 
+                    self.pixel_at(PixelPos::new(0, self.w() - 1)));
+                
+                // ------------------------------------ middle ------------------------------------   
+                // middle left  
+                for pos in self.get_area_iter(corner_row, corner_row + vert_border) {
+                    img.set_pixel(pos, self.pixel_at(pos - pos.col_vec() - corner_row));
+                }  
+                // middle middle    
+                for pos in self.get_area_iter(corner, corner + img_size) {
+                    img.set_pixel(pos, self.pixel_at(pos - corner));
+                }    
+                // middle right
+                for pos in self.get_area_iter(corner + horz_border_col, corner + horz_border_col + vert_border) {
+                    img.set_pixel(pos, self.pixel_at(PixelPos::new(pos.row - corner.row, self.w() - 1)));
+                } 
+                
+                // ------------------------------------ bottom ------------------------------------
+                // bottom left
+                img.set_rect(corner_row + vert_border_row, corner_row + vert_border_row + corner, 
+                    self.pixel_at(PixelPos::new(self.h() - 1, 0)));
+                // bottom middle
+                for pos in self.get_area_iter(corner + vert_border_row, corner + img_size + horz_border_row) {
+                    img.set_pixel(pos, self.pixel_at(PixelPos::new(self.h() - 1, pos.col - corner.col)));
+                }        
+                // bottom right
+                img.set_rect(corner + img_size, corner + img_size + corner, 
+                    self.pixel_at(PixelPos::new(self.h() - 1, self.w() - 1)));
+            },
+            ExtendValue::Given(ext_value) => {
+                // ------------------------------------ top ------------------------------------
+                // top left
+                img.set_rect(origin, corner, self.pixel_at(origin));
+                // top middle
+                for pos in self.get_area_iter(corner_col, corner + horz_border_col) {
+                    img.set_pixel(pos, ext_value);
+                }        
+                // top right
+                img.set_rect(corner_row + horz_border_row, corner_row + horz_border_row + corner, ext_value);
+                
+                // ------------------------------------ middle ------------------------------------   
+                // middle left  
+                for pos in self.get_area_iter(corner_row, corner_row + vert_border) {
+                    img.set_pixel(pos, ext_value);
+                }  
+                // middle middle      
+                for pos in self.get_area_iter(corner, corner + img_size) {
+                    img.set_pixel(pos, self.pixel_at(pos - corner));
+                } 
+                // middle right
+                for pos in self.get_area_iter(corner + horz_border_col, corner + horz_border_col + vert_border) {
+                    img.set_pixel(pos, ext_value);
+                } 
+                
+                // ------------------------------------ bottom ------------------------------------
+                // bottom left
+                img.set_rect(corner_row + vert_border_row, corner_row + vert_border_row + corner, ext_value);
+                // bottom middle
+                for pos in self.get_area_iter(corner + vert_border_row, corner + img_size + horz_border_row) {
+                    img.set_pixel(pos, ext_value);
+                }        
+                // bottom right
+                img.set_rect(corner + img_size, corner + img_size + corner, ext_value);
+            }
         }        
-        // top right
-        img.set_rect(corner_row + horz_border_row, corner_row + horz_border_row + corner, 
-            self.pixel_at(PixelPos::new(0, self.w() - 1)));
-        
-        // ------------------------------------ middle ------------------------------------   
-        // middle left  
-        for pos in self.get_area_iter(corner_row, corner_row + vert_border) {
-            img.set_pixel(pos, self.pixel_at(pos - pos.col_vec() - corner_row));
-        }  
-        // middle middle    
-        for pos in self.get_area_iter(corner, corner + img_size) {
-            img.set_pixel(pos, self.pixel_at(pos - corner));
-        }    
-        // middle right
-        for pos in self.get_area_iter(corner + horz_border_col, corner + horz_border_col + vert_border) {
-            img.set_pixel(pos, self.pixel_at(PixelPos::new(pos.row - corner.row, self.w() - 1)));
-        } 
-        
-        // ------------------------------------ bottom ------------------------------------
-        // bottom left
-        img.set_rect(corner_row + vert_border_row, corner_row + vert_border_row + corner, 
-            self.pixel_at(PixelPos::new(self.h() - 1, 0)));
-        // bottom middle
-        for pos in self.get_area_iter(corner + vert_border_row, corner + img_size + horz_border_row) {
-            img.set_pixel(pos, self.pixel_at(PixelPos::new(self.h() - 1, pos.col - corner.col)));
-        }        
-        // bottom right
-        img.set_rect(corner + img_size, corner + img_size + corner, 
-            self.pixel_at(PixelPos::new(self.h() - 1, self.w() - 1)));
 
         img
     }

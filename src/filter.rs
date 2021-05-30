@@ -1,4 +1,4 @@
-use crate::{img::{ExtendValue, Img}, my_err::MyError, pixel_pos::PixelPos};
+use crate::{img::{Img}, my_err::MyError, pixel_pos::PixelPos};
 
 pub const MAX_WINDOW_SIZE: usize = 11;
 const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
@@ -7,8 +7,7 @@ pub trait Filter : FilterBuffered + Default + Clone {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img;
     fn w(&self) -> usize;
     fn h(&self) -> usize;
-    fn try_from_string(string: &str) -> Result<Self, MyError>;
-    fn content_to_string(&self) -> String;
+    fn get_extend_value(&self) -> ExtendValue;
 }
 
 pub trait FilterIterable {
@@ -17,6 +16,47 @@ pub trait FilterIterable {
 
 pub trait FilterBuffered {
     fn filter_buffer(&self, fragment: &mut [f64]) -> f64;
+}
+
+pub trait StringFromTo {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
+    fn content_to_string(&self) -> String;
+}
+
+
+#[derive(Clone, Copy)]
+pub enum ExtendValue {
+    Closest,
+    Given(u8)
+}
+
+impl StringFromTo for ExtendValue {
+    fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let ext_words: Vec<&str> = string.split(" ").into_iter().collect();
+
+        if ext_words.len() != 2 {
+            return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string()));
+        }
+
+        if ext_words[0] != "Ext:" {
+            return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string()));
+        }
+
+        let ext_value = match ext_words[1] {
+            "0" => ExtendValue::Given(0),
+            "near" => ExtendValue::Closest,
+            _ => { return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string())); }
+        };
+
+        Ok(ext_value)
+    }
+
+    fn content_to_string(&self) -> String {
+        match self {
+            ExtendValue::Closest => "Ext: near".to_string(),
+            ExtendValue::Given(val) => format!("Ext: {}", val)
+        }        
+    }
 }
 
 pub struct FilterIterator {
@@ -64,7 +104,7 @@ fn filter_border_0<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_fil
     let fil_half_size = PixelPos::new(filter.h() / 2, filter.w() / 2);
 
     let img_extended = img.copy_with_extended_borders(
-        ExtendValue::Closest, 
+        filter.get_extend_value(), 
         fil_half_size.row, 
         fil_half_size.col);
 
@@ -90,24 +130,25 @@ fn filter_border_0<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_fil
 pub struct LinearFilter {
     width: usize,
     height: usize,
+    extend_value: ExtendValue,
     arr: Vec<f64>,
 }
 
 impl LinearFilter {
-    pub fn with_coeffs(coeffs: Vec<f64>, width: usize, height: usize) -> Self {
+    pub fn with_coeffs(coeffs: Vec<f64>, width: usize, height: usize, extend_value: ExtendValue) -> Self {
         assert!(width > 0);
         assert!(height > 0);
         assert!(coeffs.len() > 0);
-        LinearFilter { width, height, arr: coeffs }
+        LinearFilter { width, height, arr: coeffs, extend_value }
     }
         
-    pub fn mean_filter_of_size(size: usize) -> Self {
+    pub fn mean_filter_of_size(size: usize, extend_value: ExtendValue) -> Self {
         assert_eq!(size % 2, 1);
 
         let mut arr = Vec::<f64>::new();
         let coeff = 1_f64 / ((size * size) as f64);
         arr.resize(size * size, coeff);
-        LinearFilter { width: size, height: size, arr }
+        LinearFilter { width: size, height: size, arr, extend_value }
     }
 }
 
@@ -143,11 +184,22 @@ impl Filter for LinearFilter {
 
     fn h(&self) -> usize { self.height }
 
+    fn get_extend_value(&self) -> ExtendValue {
+        self.extend_value
+    }
+}
+
+impl StringFromTo for LinearFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut rows = Vec::<Vec<f64>>::new();
 
-        for line in string.split('\n') {
-            if line.trim().is_empty() { continue; }
+        let lines: Vec<&str> = string.split('\n')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .into_iter()
+            .collect();
+
+        for line in &lines[0..lines.len() - 1] {
             let mut row = Vec::<f64>::new();
             for word in line.trim().split(',').map(|w| w.trim()) {
                 if word.is_empty() { continue; }
@@ -171,6 +223,8 @@ impl Filter for LinearFilter {
             return Err(MyError::new("Матрица должна иметь ненулевой размер".to_string()));
         }
 
+        let ext_value = ExtendValue::try_from_string(lines.last().unwrap())?;
+
         let mut coeffs = Vec::<f64>::new();
         for mut row in rows.clone() {
             coeffs.append(&mut row);
@@ -178,8 +232,9 @@ impl Filter for LinearFilter {
         let width = rows.last().unwrap().len();
         let height = rows.len();
 
-        Ok(LinearFilter::with_coeffs(coeffs, width, height))
+        Ok(LinearFilter::with_coeffs(coeffs, width, height, ext_value))
     }
+
     fn content_to_string(&self) -> String {
         let mut fil_string = String::new();
 
@@ -195,13 +250,15 @@ impl Filter for LinearFilter {
             }
         }
 
+        fil_string.push_str(&format!("\n{}", self.extend_value.content_to_string()));
+
         fil_string
     }
 }
 
 impl Default for LinearFilter {
     fn default() -> Self {
-        LinearFilter::mean_filter_of_size(3)
+        LinearFilter::mean_filter_of_size(3, ExtendValue::Closest)
     }
 }
 
@@ -210,11 +267,12 @@ impl Default for LinearFilter {
 pub struct MedianFilter {
     width: usize,
     height: usize,
+    extend_value: ExtendValue
 }
 
 impl MedianFilter {
-    pub fn new(width: usize, height: usize) -> Self {
-        MedianFilter { width, height }
+    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {
+        MedianFilter { width, height, extend_value }
     }
 }
 
@@ -274,38 +332,48 @@ impl Filter for MedianFilter {
     fn w(&self) -> usize { self.width }
 
     fn h(&self) -> usize { self.height }
+    fn get_extend_value(&self) -> ExtendValue {
+        todo!()
+    }
+}
+
+impl StringFromTo for MedianFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let lines: Vec<&str> = string.split('\n').into_iter().collect();
         if lines.len() != 1 {
             return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
         }
 
+        let format_err_msg = "Формат (кол-во строк (число), кол-во столбцов (число), граничные условия): 'X, X, Ext: near/0'.".to_string();
+
         let words: Vec<&str> = lines[0].split(',').map(|w| w.trim() ).filter(|w| !w.is_empty() ).into_iter().collect();
-        if words.len() != 2 {
-            return Err(MyError::new("Должно быть 2 числа. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
+        if words.len() != 3 {
+            return Err(MyError::new(format_err_msg));
         }
 
         let height = match words[0].parse::<usize>() {
-            Err(_) => return Err(MyError::new("Кол-во строк должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
 
         let width = match words[1].parse::<usize>() {
-            Err(_) => return Err(MyError::new("Кол-во столбцов должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
 
-        return Ok(MedianFilter::new(width, height));
+        let ext_value = ExtendValue::try_from_string(words[2])?;
+
+        return Ok(MedianFilter::new(width, height, ext_value));
     }
 
     fn content_to_string(&self) -> String {
-        format!("{}, {}", self.height, self.width)
+        format!("{}, {}, {}", self.height, self.width, self.extend_value.content_to_string())
     }
 }
 
 impl Default for MedianFilter {
     fn default() -> Self {
-        MedianFilter::new(3, 3)
+        MedianFilter::new(3, 3, ExtendValue::Closest)
     }
 }
 
