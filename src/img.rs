@@ -1,4 +1,4 @@
-use std::{path::PathBuf, result};
+use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 
 use fltk::{image, prelude::ImageExt};
 use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};
@@ -7,69 +7,69 @@ use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};
 pub struct Img {
     width: usize,
     height: usize,
-    pixels: Vec<u8>
+    pixels: Vec<f64>
 }
 
 impl Img {
     pub fn empty_with_size(width: usize, height: usize) -> Self {
-        let mut pixels = Vec::<u8>::new();
-        pixels.resize(width * height, 0);        
+        let mut pixels = Vec::<f64>::new();
+        pixels.resize(width * height, 0_f64);        
         Img { width, height, pixels }
     }
 
     pub fn load(path: PathBuf) -> result::Result<Self, MyError> {
         let im = fltk::image::SharedImage::load(path)?;
         let values = im.to_rgb_data();
-        let mut values_grey: Vec<u8>;
+        let mut values_grey: Vec<f64>;
 
-        const RGB_2_GRAY_RED_NUM: u32 = 299;
-        const RGB_2_GRAY_GREEN_NUM: u32 = 587;
-        const RGB_2_GRAY_BLUE_NUM: u32 = 114;
-        const RGB_2_GRAY_DEN: u32 = 1000;
+        const RGB_2_GRAY_RED: f64 = 0.299;
+        const RGB_2_GRAY_GREEN: f64 = 0.587;
+        const RGB_2_GRAY_BLUE: f64 = 0.114;
 
         match im.depth() {
-            fltk::enums::ColorDepth::L8 => values_grey = im.to_rgb_data(),
+            fltk::enums::ColorDepth::L8 => values_grey = im.to_rgb_data().into_iter().map(|v| v as f64).collect(),
             fltk::enums::ColorDepth::La8 => {
                 assert_eq!(values.len() % 2, 0);
-                values_grey = Vec::<u8>::with_capacity(values.len() / 2);
+                values_grey = Vec::<f64>::with_capacity(values.len() / 2);
                 for i in 0..values.len() {
-                    if i % 2 == 0 { values_grey.push(values[i]); }
+                    if i % 2 == 0 { values_grey.push(values[i] as f64); }
                 }
             },
             fltk::enums::ColorDepth::Rgb8 => {
                 assert_eq!(values.len() % 3, 0);
-                values_grey = Vec::<u8>::with_capacity(values.len() / 3);
+                values_grey = Vec::<f64>::with_capacity(values.len() / 3);
                 for i in 0..values.len() {
                     if i % 3 == 0 { 
-                        let grey: u32 = 
-                            values[i] as u32 * RGB_2_GRAY_RED_NUM / RGB_2_GRAY_DEN + 
-                            values[i + 1] as u32 * RGB_2_GRAY_GREEN_NUM / RGB_2_GRAY_DEN + 
-                            values[i + 2] as u32 * RGB_2_GRAY_BLUE_NUM / RGB_2_GRAY_DEN;
-                        values_grey.push(grey as u8); 
+                        let grey: f64 = 
+                            values[i] as f64 * RGB_2_GRAY_RED + 
+                            values[i + 1] as f64 * RGB_2_GRAY_GREEN + 
+                            values[i + 2] as f64 * RGB_2_GRAY_BLUE;
+                        values_grey.push(grey); 
                     }
                 }
             },
             fltk::enums::ColorDepth::Rgba8 => {
                 assert_eq!(values.len() % 4, 0);
-                values_grey = Vec::<u8>::with_capacity(values.len() / 3);
+                values_grey = Vec::<f64>::with_capacity(values.len() / 3);
                 for i in 0..values.len() {
                     if i % 4 == 0 { 
-                        let grey: u32 = 
-                            values[i] as u32 * RGB_2_GRAY_RED_NUM / RGB_2_GRAY_DEN + 
-                            values[i + 1] as u32 * RGB_2_GRAY_GREEN_NUM / RGB_2_GRAY_DEN + 
-                            values[i + 2] as u32 * RGB_2_GRAY_BLUE_NUM / RGB_2_GRAY_DEN;
-                        values_grey.push(grey as u8); 
+                        let grey: f64 = 
+                        values[i] as f64 * RGB_2_GRAY_RED + 
+                        values[i + 1] as f64 * RGB_2_GRAY_GREEN + 
+                        values[i + 2] as f64 * RGB_2_GRAY_BLUE;
+                        values_grey.push(grey); 
                     }
                 }
             }
         }
 
-        let im_grey = fltk::image::RgbImage::new(&values_grey, 
+        let im_grey = fltk::image::RgbImage::new(
+            &values_grey.into_iter().map(|v| v as u8).collect::<Vec<u8>>(), 
             im.w(), im.h(), fltk::enums::ColorDepth::L8)?;
             
         let width = im.width() as usize;
         let height = im.height() as usize;
-        let pixels = im_grey.to_rgb_data();
+        let pixels = im_grey.to_rgb_data().into_iter().map(|v| v as f64).collect();
 
         Ok(Img {
             pixels,
@@ -92,27 +92,13 @@ impl Img {
         ImgIterator::for_full_image(self)
     }
 
-    pub fn get_area_iter(&self, from: PixelPos, to_excluded: PixelPos) -> ImgIterator 
-    {
-        ImgIterator::for_rect_area(self, from, to_excluded)
-    }
-
-    pub fn pixel_at(&self, pos: PixelPos) -> u8 {
-        if !self.fits(pos) {
-            panic!("pos is {:?} which is doesn't fit into {}, {}", pos, self.max_col(), self.max_row());
-        }
-        self.pixels[pos.row * self.width + pos.col] 
-    }
-
-    pub fn set_pixel(&mut self, pos: PixelPos, value: u8) {
-        if !self.fits(pos) {
-            panic!("pos is {:?} which is doesn't fit into {}, {}", pos, self.max_col(), self.max_row());
-        }
-        self.pixels[pos.row * self.width + pos.col] = value;
+    pub fn get_area_iter(&self, from: PixelPos, to_excluded: PixelPos) -> ImgIterator {
+        ImgIterator::for_rect_area( from, to_excluded)
     }
 
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
-        let im_rgb = image::RgbImage::new(self.pixels.as_slice(), 
+        let im_rgb = image::RgbImage::new(
+            self.pixels.iter().map(|v| *v as u8).collect::<Vec<u8>>().as_slice(), 
             self.width as i32, self.height as i32,  fltk::enums::ColorDepth::L8)?;
         Ok(im_rgb)
     }
@@ -138,48 +124,48 @@ impl Img {
             ExtendValue::Closest => {
                 // ------------------------------------ top ------------------------------------
                 // top left
-                img.set_rect(origin, corner, self.pixel_at(origin));
+                img.set_rect(origin, corner, self[origin]);
                 // top middle
                 for pos in self.get_area_iter(corner_col, corner + horz_border_col) {
-                    img.set_pixel(pos, self.pixel_at(pos - pos.row_vec() - corner_col));
+                    img[pos] = self[pos - pos.row_vec() - corner_col];
                 }        
                 // top right
                 img.set_rect(corner_row + horz_border_row, corner_row + horz_border_row + corner, 
-                    self.pixel_at(PixelPos::new(0, self.w() - 1)));
+                    self[PixelPos::new(0, self.w() - 1)]);
                 
                 // ------------------------------------ middle ------------------------------------   
                 // middle left  
                 for pos in self.get_area_iter(corner_row, corner_row + vert_border) {
-                    img.set_pixel(pos, self.pixel_at(pos - pos.col_vec() - corner_row));
+                    img[pos] = self[pos - pos.col_vec() - corner_row];
                 }  
                 // middle middle    
                 for pos in self.get_area_iter(corner, corner + img_size) {
-                    img.set_pixel(pos, self.pixel_at(pos - corner));
+                    img[pos] = self[pos - corner];
                 }    
                 // middle right
                 for pos in self.get_area_iter(corner + horz_border_col, corner + horz_border_col + vert_border) {
-                    img.set_pixel(pos, self.pixel_at(PixelPos::new(pos.row - corner.row, self.w() - 1)));
+                    img[pos] = self[PixelPos::new(pos.row - corner.row, self.w() - 1)];
                 } 
                 
                 // ------------------------------------ bottom ------------------------------------
                 // bottom left
                 img.set_rect(corner_row + vert_border_row, corner_row + vert_border_row + corner, 
-                    self.pixel_at(PixelPos::new(self.h() - 1, 0)));
+                    self[PixelPos::new(self.h() - 1, 0)]);
                 // bottom middle
                 for pos in self.get_area_iter(corner + vert_border_row, corner + img_size + horz_border_row) {
-                    img.set_pixel(pos, self.pixel_at(PixelPos::new(self.h() - 1, pos.col - corner.col)));
+                    img[pos] = self[PixelPos::new(self.h() - 1, pos.col - corner.col)];
                 }        
                 // bottom right
                 img.set_rect(corner + img_size, corner + img_size + corner, 
-                    self.pixel_at(PixelPos::new(self.h() - 1, self.w() - 1)));
+                    self[PixelPos::new(self.h() - 1, self.w() - 1)]);
             },
             ExtendValue::Given(ext_value) => {
                 // ------------------------------------ top ------------------------------------
                 // top left
-                img.set_rect(origin, corner, self.pixel_at(origin));
+                img.set_rect(origin, corner, self[origin]);
                 // top middle
                 for pos in self.get_area_iter(corner_col, corner + horz_border_col) {
-                    img.set_pixel(pos, ext_value);
+                    img[pos] = ext_value;
                 }        
                 // top right
                 img.set_rect(corner_row + horz_border_row, corner_row + horz_border_row + corner, ext_value);
@@ -187,15 +173,15 @@ impl Img {
                 // ------------------------------------ middle ------------------------------------   
                 // middle left  
                 for pos in self.get_area_iter(corner_row, corner_row + vert_border) {
-                    img.set_pixel(pos, ext_value);
+                    img[pos] = ext_value;
                 }  
                 // middle middle      
                 for pos in self.get_area_iter(corner, corner + img_size) {
-                    img.set_pixel(pos, self.pixel_at(pos - corner));
+                    img[pos] = self[pos - corner];
                 } 
                 // middle right
                 for pos in self.get_area_iter(corner + horz_border_col, corner + horz_border_col + vert_border) {
-                    img.set_pixel(pos, ext_value);
+                    img[pos] = ext_value;
                 } 
                 
                 // ------------------------------------ bottom ------------------------------------
@@ -203,7 +189,7 @@ impl Img {
                 img.set_rect(corner_row + vert_border_row, corner_row + vert_border_row + corner, ext_value);
                 // bottom middle
                 for pos in self.get_area_iter(corner + vert_border_row, corner + img_size + horz_border_row) {
-                    img.set_pixel(pos, ext_value);
+                    img[pos] = ext_value;
                 }        
                 // bottom right
                 img.set_rect(corner + img_size, corner + img_size + corner, ext_value);
@@ -213,28 +199,35 @@ impl Img {
         img
     }
 
-    pub fn clip(&self, top_left: PixelPos, bottom_right_ex: PixelPos, mut to: Img) -> Self {
-        let new_width: usize = bottom_right_ex.col - top_left.col;
-        let new_height: usize = bottom_right_ex.col - top_left.col;
-
-        to.pixels.resize(new_width * new_height, 0);
-
-        for pos in self.get_area_iter(top_left, bottom_right_ex) {
-            to.set_pixel(pos - top_left, self.pixel_at(pos));
-        }
-        
-        to
-    }
-
-    pub fn processed_copy<T: filter::Filter>(&self, filter: &mut T) -> Self {
+    pub fn processed_copy<T: filter::Filter>(&self, filter: &T) -> Self {
         let result_img = self.clone();
         filter.filter(result_img)
     }
 
-    fn set_rect(&mut self, tl: PixelPos, br: PixelPos, value: u8) -> () {
+    fn set_rect(&mut self, tl: PixelPos, br: PixelPos, value: f64) -> () {
         for pos in self.get_area_iter(tl, br) {
-            self.set_pixel(pos, value);
+            self[pos] = value;
         }
+    }
+}
+
+impl Index<PixelPos> for Img {
+    type Output = f64;
+
+    fn index(&self, index: PixelPos) -> &Self::Output {
+        if !self.fits(index) {
+            panic!("pos is {:?} which is doesn't fit into {}, {}", index, self.max_col(), self.max_row());
+        }
+        &self.pixels[index.row * self.width + index.col]
+    }
+}
+
+impl IndexMut<PixelPos> for Img {
+    fn index_mut(&mut self, index: PixelPos) -> &mut Self::Output {
+        if !self.fits(index) {
+            panic!("pos is {:?} which is doesn't fit into {}, {}", index, self.max_col(), self.max_row());
+        }
+        &mut self.pixels[index.row * self.width + index.col]
     }
 }
 
@@ -253,7 +246,7 @@ impl ImgIterator {
         }
     }
 
-    pub fn for_rect_area(img: &Img, top_left: PixelPos, bottom_right_excluded: PixelPos) -> Self {
+    pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos) -> Self {
         assert!(top_left.row < bottom_right_excluded.row);
         assert!(top_left.col < bottom_right_excluded.col);
 

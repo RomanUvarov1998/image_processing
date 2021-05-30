@@ -12,6 +12,8 @@ mod img;
 mod pixel_pos;
 mod step_editor;
 mod small_dlg;
+mod matrix2d;
+mod utils;
 
 fn main() -> result::Result<(), MyError> {
     my_app::create_app()?;

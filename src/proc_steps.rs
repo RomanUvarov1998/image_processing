@@ -1,6 +1,6 @@
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, HistogramLocalContrast, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -12,6 +12,7 @@ const LEFT_MENU_WIDTH: i32 = 200;
 pub enum StepAction {
     Linear(LinearFilter),
     Median(MedianFilter),
+    HistogramLocalContrast(HistogramLocalContrast)
 }
 
 pub struct ProcessingLine {
@@ -49,6 +50,8 @@ impl ProcessingLine {
         btn_add_step = btn_add_step.below_of(&label, PADDING);
         btn_add_step.add_emit("Линейный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLin);
         btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
+            sender, Message::AddStepHistogramLocalContrast);
 
         btn_add_step.end();
     
@@ -136,6 +139,15 @@ impl ProcessingLine {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
                             StepAction::Median(MedianFilter::default())) 
+                        {
+                            Some(step_action) => self.add(step_action),
+                            None => {}
+                        }
+                    },
+                    Message::AddStepHistogramLocalContrast => {
+                        match self.step_editor.add_step_action_with_dlg(
+                            app, 
+                            StepAction::HistogramLocalContrast(HistogramLocalContrast::default())) 
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}
@@ -260,7 +272,8 @@ impl ProcessingStep {
     fn new(proc_line: &ProcessingLine, filter: StepAction) -> Self {
         let name = match filter {
             StepAction::Linear(_) => "Линейный фильтр".to_string(),
-            StepAction::Median(_) => "Медианный фильтр".to_string()
+            StepAction::Median(_) => "Медианный фильтр".to_string(),
+            StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string()
         };
 
         let label = frame::Frame::default()
@@ -324,6 +337,8 @@ impl ProcessingStep {
                     StepAction::Linear(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
                     StepAction::Median(ref mut filter) => 
+                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
+                    StepAction::HistogramLocalContrast(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
                 }
             },

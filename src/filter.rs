@@ -1,9 +1,10 @@
-use crate::{img::{Img}, my_err::MyError, pixel_pos::PixelPos};
+
+use crate::{img::{Img}, matrix2d::{Matrix2D}, my_err::MyError, pixel_pos::PixelPos, utils};
 
 pub const MAX_WINDOW_SIZE: usize = 11;
 const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
 
-pub trait Filter : FilterBuffered + Default + Clone {
+pub trait Filter : Default + Clone {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img;
     fn w(&self) -> usize;
     fn h(&self) -> usize;
@@ -27,25 +28,27 @@ pub trait StringFromTo {
 #[derive(Clone, Copy)]
 pub enum ExtendValue {
     Closest,
-    Given(u8)
+    Given(f64)
 }
 
 impl StringFromTo for ExtendValue {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let ext_words: Vec<&str> = string.split(" ").into_iter().collect();
+        let ext_words: Vec<&str> = utils::line_to_words(string, " ");
+
+        let foemat_err_msg = "После матрицы должны быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string();
 
         if ext_words.len() != 2 {
-            return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string()));
+            return Err(MyError::new(foemat_err_msg));
         }
 
         if ext_words[0] != "Ext:" {
-            return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string()));
+            return Err(MyError::new(foemat_err_msg));
         }
 
         let ext_value = match ext_words[1] {
-            "0" => ExtendValue::Given(0),
+            "0" => ExtendValue::Given(0_f64),
             "near" => ExtendValue::Closest,
-            _ => { return Err(MyError::new("После матрицы должен быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string())); }
+            _ => { return Err(MyError::new(foemat_err_msg)); }
         };
 
         Ok(ext_value)
@@ -68,9 +71,9 @@ pub enum NormalizeOption {
 
 impl StringFromTo for NormalizeOption {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let ext_words: Vec<&str> = string.split(" ").into_iter().collect();
+        let ext_words: Vec<&str> = utils::line_to_words(string, " ");
 
-        let format_err_msg = "После граничных условий должено быть указано условие нормализации коэффициентов: 'Normalize: true' или 'Normalize: false'".to_string();
+        let format_err_msg = "После граничных условий должно быть указано условие нормализации коэффициентов: 'Normalize: true' или 'Normalize: false'".to_string();
 
         if ext_words.len() != 2 {
             return Err(MyError::new(format_err_msg));
@@ -132,7 +135,8 @@ impl Iterator for FilterIterator {
     }
 }
 
-fn filter_border_0<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Img {
+
+fn filter_window<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Img {
     let pixel_buf_actual_size = filter.w() * filter.h();
 
     assert!(pixel_buf_actual_size < MAX_WINDOW_BUFFER_SIZE, 
@@ -154,16 +158,15 @@ fn filter_border_0<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_fil
         for pos_w in filter.get_iterator() {            
             let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
             let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
-            pixel_buf[buf_ind] = img_extended.pixel_at(pix_pos) as f64;
+            pixel_buf[buf_ind] = img_extended[pix_pos];
         }
 
         let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[0..pixel_buf_actual_size]);
-        img.set_pixel(pos_im - fil_half_size, filter_result as u8);
+        img[pos_im - fil_half_size] = filter_result;
     }
 
     img
 }
-
 
 #[derive(Clone)]
 pub struct LinearFilter {
@@ -231,7 +234,7 @@ impl FilterBuffered for LinearFilter {
 
 impl Filter for LinearFilter {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_border_0(img, self, LinearFilter::filter_buffer)
+        filter_window(img, self, LinearFilter::filter_buffer)
     }
 
     fn w(&self) -> usize { self.width }
@@ -247,15 +250,13 @@ impl StringFromTo for LinearFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut rows = Vec::<Vec<f64>>::new();
 
-        let lines: Vec<&str> = string.split('\n')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .into_iter()
-            .collect();
+        let lines: Vec<&str> = utils::text_to_lines(string);
+
+        if lines.len() < 3 { return Err(MyError::new("Нужно ввести матрицу и параметры на следующей строке".to_string())); }
 
         for line in &lines[0..lines.len() - 2] {
             let mut row = Vec::<f64>::new();
-            for word in line.trim().split(',').map(|w| w.trim()) {
+            for word in utils::line_to_words(line, ",") {
                 if word.is_empty() { continue; }
                 match word.trim().parse::<f64>() {
                     Ok(value) => { row.push(value) }
@@ -389,27 +390,28 @@ impl FilterBuffered for MedianFilter {
 
 impl Filter for MedianFilter {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_border_0(img, self, MedianFilter::filter_buffer)
+        filter_window(img, self, MedianFilter::filter_buffer)
     }
 
     fn w(&self) -> usize { self.width }
 
     fn h(&self) -> usize { self.height }
+
     fn get_extend_value(&self) -> ExtendValue {
-        todo!()
+        self.extend_value
     }
 }
 
 impl StringFromTo for MedianFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let lines: Vec<&str> = string.split('\n').into_iter().collect();
+        let lines: Vec<&str> = utils::text_to_lines(string);
         if lines.len() != 1 {
             return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
         }
 
         let format_err_msg = "Формат (кол-во строк (число), кол-во столбцов (число), граничные условия): 'X, X, Ext: near/0'.".to_string();
 
-        let words: Vec<&str> = lines[0].split(',').map(|w| w.trim() ).filter(|w| !w.is_empty() ).into_iter().collect();
+        let words: Vec<&str> = utils::line_to_words(lines[0], ",");
         if words.len() != 3 {
             return Err(MyError::new(format_err_msg));
         }
@@ -440,16 +442,67 @@ impl Default for MedianFilter {
     }
 }
 
-/*
+
 #[derive(Clone)]
 pub struct HistogramLocalContrast {
     width: usize,
-    height: usize
+    height: usize,
+    ext_value: ExtendValue,
+    mean_filter: LinearFilter,
+    a_values: AValues,
+}
+
+#[derive(Clone, Copy)]
+pub struct AValues { amin: f64, amax: f64 }
+impl AValues {
+    pub fn new(amin: f64, amax: f64) -> Self {
+        assert!(amin <= amax);
+        AValues { amin, amax }
+    }
+}
+impl StringFromTo for AValues {
+    fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let vals_strings: Vec<&str> = utils::line_to_words(string, ",");
+
+        let format_err_msg = "После нормализации коэффициентов должны быть указаны границы А: 'AMin: <дробное число>, AMax: <дробное число>'".to_string();
+
+        if vals_strings.len() != 2 { return Err(MyError::new(format_err_msg)); }
+
+        let amin_words: Vec<&str> = utils::line_to_words(vals_strings[0], " ");
+        if amin_words.len() != 2  { return Err(MyError::new(format_err_msg)); }
+        if amin_words[0] != "AMin:"  { return Err(MyError::new(format_err_msg)); }
+        let amin_val = match amin_words[1].parse::<f64>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        let amax_words: Vec<&str> = utils::line_to_words(vals_strings[1], " ");
+        if amax_words.len() != 2  { return Err(MyError::new(format_err_msg)); }
+        if amax_words[0] != "AMax:"  { return Err(MyError::new(format_err_msg)); }
+        let amax_val = match amax_words[1].parse::<f64>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        Ok(AValues { amin: amin_val, amax: amax_val } )
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("AMin: {}, AMax: {}", self.amin, self.amax)
+    }
 }
 
 impl HistogramLocalContrast {
-    pub fn new(width: usize, height: usize) -> Self {
-        HistogramLocalContrast { width, height }
+    pub fn new(width: usize, height: usize, ext_value: ExtendValue, mean_filter_size: usize, 
+        a_values: AValues) -> Self 
+    {
+        HistogramLocalContrast { 
+            width, 
+            height, 
+            ext_value, 
+            mean_filter: LinearFilter::mean_filter_of_size(mean_filter_size, ExtendValue::Given(0_f64)),
+            a_values
+        }
     }
 
     pub fn w(&self) -> usize { self.width }
@@ -466,63 +519,158 @@ impl FilterIterable for HistogramLocalContrast {
     }
 }
 
-impl FilterBuffered for HistogramLocalContrast {
-    fn filter_buffer(&self, fragment: &[f64]) -> f64 {
-        
-    }
-}
 
 impl Filter for HistogramLocalContrast {
-    fn filter(&self, fragment: &mut [f64]) -> f64 {
-        let n: usize = 15_usize;
-        let m: usize = 3_usize;
-        let amin: f64 = 0.2_f64;
-        let amax: f64 = 0.7_f64;
+    fn filter(&self, img: Img) -> Img {
+        let pixel_buf_actual_size = self.w() * self.h();
+        assert!(pixel_buf_actual_size < MAX_WINDOW_BUFFER_SIZE, 
+            "filter size must be <= {}", MAX_WINDOW_SIZE);
+        let mut pixel_buf = [0_u8; MAX_WINDOW_BUFFER_SIZE];
 
-        let n1: usize = n / 2;
-        let m1: usize = m / 2;
+        let fil_half_size = PixelPos::new(self.h() / 2, self.w() / 2);
 
-        // краевой эффект
-        //...
+        let ext_copy = img.copy_with_extended_borders(ExtendValue::Closest, 
+            fil_half_size.row, fil_half_size.col);
+        let mut hist_matrix = Matrix2D::empty(
+            img.w() + self.w(), img.h() + self.h());
 
-        0.0_f64
+        let mut hist_counts: [u32; 256_usize] = [0; 256_usize];
+
+        for pos_im in img.get_area_iter(fil_half_size, 
+            fil_half_size + PixelPos::new(img.h(), img.w())) 
+        {
+            for pos_w in self.get_iterator() {
+                let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
+                let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
+                pixel_buf[buf_ind] = ext_copy[pix_pos] as u8;
+            }
+
+            //count histogram bins            
+            for v in &pixel_buf[0..pixel_buf_actual_size] {
+                hist_counts[*v as usize] += 1;
+            }
+
+            //count min and max 
+            let mut max_value = hist_counts[0];
+            let mut min_value = hist_counts[0];
+            for v in &hist_counts[1..] {
+                if *v == 0 { continue; }
+                if max_value < *v { max_value = *v; }
+                if min_value < *v { min_value = *v; }
+            }
+
+            let val: f64;
+            if min_value == max_value {
+                val = 0_f64;
+            } else {
+                val = (max_value as f64 - min_value as f64) / max_value as f64;
+            }
+            
+            hist_matrix[pos_im] = val;
+        }
+
+        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter);
+
+        let mut c_mat = Matrix2D::empty(img_filtered_ext.w(), img_filtered_ext.h());
+        for pos in img_filtered_ext.get_iterator() {
+            let mut val = ext_copy[pos] - img_filtered_ext[pos];
+            val /= ext_copy[pos] + img_filtered_ext[pos] + f64::EPSILON;
+            c_mat[pos] = f64::abs(val)
+        }
+
+        for m_pos in hist_matrix.get_area_iter(fil_half_size, 
+            PixelPos::new(img.h(), img.w()) + fil_half_size) 
+        {
+            let mut max_value = hist_matrix[m_pos];
+            let mut min_value = hist_matrix[m_pos];
+
+            for w_pos in hist_matrix.get_area_iter(
+                m_pos - fil_half_size, 
+                m_pos + fil_half_size) 
+            {
+                let v = hist_matrix[w_pos];
+                if f64::abs(v) < f64::EPSILON { continue; }
+                if max_value < v { max_value = v; }
+                if min_value < v { min_value = v; }
+            }
+
+            let mut c_power = (hist_matrix[m_pos] - min_value) 
+                / (max_value - min_value + f64::EPSILON);
+            
+            c_power = self.a_values.amin + (self.a_values.amax - self.a_values.amin) * c_power;
+            
+            c_mat[m_pos] = c_mat[m_pos].powf(c_power);
+        }
+        
+        let mut img_result = Img::empty_with_size(img.w(), img.h());
+
+        for pos in hist_matrix.get_area_iter(fil_half_size, 
+            PixelPos::new(img.h(), img.w()) + fil_half_size) 
+        {
+            let mut val = if ext_copy[pos] > img_filtered_ext[pos] {
+                img_filtered_ext[pos] * (1_f64 + c_mat[pos]) / (1_f64 - c_mat[pos])
+            } else {
+                img_filtered_ext[pos] * (1_f64 - c_mat[pos]) / (1_f64 + c_mat[pos])
+            };
+
+            if val < 0_f64 { val = 0_f64; }
+            if val > 255_f64 { val = 255_f64; }
+
+            img_result[pos - fil_half_size] = val;
+        }
+
+        img_result
     }
 
     fn w(&self) -> usize { self.width }
 
     fn h(&self) -> usize { self.height }
 
+    fn get_extend_value(&self) -> ExtendValue {
+        self.ext_value
+    }
+}
+
+impl StringFromTo for HistogramLocalContrast {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let lines: Vec<&str> = string.split('\n').into_iter().collect();
+        let lines: Vec<&str> = utils::text_to_lines(string);
         if lines.len() != 1 {
             return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
         }
 
-        let words: Vec<&str> = lines[0].split(',').map(|w| w.trim() ).filter(|w| !w.is_empty() ).into_iter().collect();
-        if words.len() != 2 {
-            return Err(MyError::new("Должно быть 2 числа. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
+        let format_err_msg = "Формат (кол-во строк (число), кол-во столбцов (число), граничные условия): 'X, X, Ext: near/0'.".to_string();
+
+        let words: Vec<&str> = utils::line_to_words(lines[0], ",");
+        if words.len() != 5 {
+            return Err(MyError::new(format_err_msg));
         }
 
         let height = match words[0].parse::<usize>() {
-            Err(_) => return Err(MyError::new("Кол-во строк должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
 
         let width = match words[1].parse::<usize>() {
-            Err(_) => return Err(MyError::new("Кол-во столбцов должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
 
-        return Ok(HistogramLocalContrast::new(width, height));
+        let ext_value = ExtendValue::try_from_string(words[2])?;
+
+        let mut a_values_str = words[3].to_string();
+        a_values_str.push_str(", ");
+        a_values_str.push_str(words[4]);
+        let a_values = AValues::try_from_string(&a_values_str)?;
+
+        return Ok(HistogramLocalContrast::new(width, height, ext_value, 3, a_values ));
     }
     fn content_to_string(&self) -> String {
-        format!("{}, {}", self.height, self.width)
+        format!("{}, {}, {}, {}", self.height, self.width, self.ext_value.content_to_string(), self.a_values.content_to_string())
     }
 }
 
 impl Default for HistogramLocalContrast {
     fn default() -> Self {
-        HistogramLocalContrast::new(3, 3)
+        HistogramLocalContrast::new(3, 3, ExtendValue::Closest, 3, AValues::new(0.5, 0.5))
     }
 }
-*/

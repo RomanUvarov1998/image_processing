@@ -11,6 +11,7 @@ pub enum Message {
     DoStep { step_num: usize },
     AddStepLin, 
     AddStepMed, 
+    AddStepHistogramLocalContrast, 
     EditStep { step_num: usize }, 
     DeleteStep { step_num: usize }
 }
