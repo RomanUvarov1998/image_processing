@@ -1,5 +1,5 @@
 use std::result;
-use crate::{filter::{ExtendValue, LinearFilter, MedianFilter}, my_err::MyError, proc_steps::{ProcessingLine, StepAction}};
+use crate::{my_err::MyError, proc_steps::{ProcessingLine}};
 use fltk::{app, enums::Damage, prelude::*, window};
 
 pub const WIN_WIDTH: i32 = 640;
@@ -9,6 +9,7 @@ pub const WIN_HEIGHT: i32 = 480;
 pub enum Message {
     LoadImage,
     DoStep { step_num: usize },
+    AddStepLinCustom, 
     AddStepLinMean, 
     AddStepLinGauss, 
     AddStepMed, 
@@ -113,8 +114,6 @@ pub fn create_app() -> result::Result<(), MyError> {
     */
     
     let mut steps_line = ProcessingLine::new(wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
-    steps_line.add(StepAction::Linear(LinearFilter::mean_of_size(5, ExtendValue::Closest)));
-    steps_line.add(StepAction::Median(MedianFilter::new(5, 5, ExtendValue::Closest)));
     steps_line.end();
 
     steps_line.run(app)?;

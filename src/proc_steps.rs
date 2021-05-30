@@ -1,6 +1,7 @@
+use crate::filter::LinearGaussian;
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{ExtendValue, Filter, HistogramLocalContrast, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{ExtendValue, Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -10,7 +11,9 @@ const LEFT_MENU_WIDTH: i32 = 200;
 
 #[derive(Clone)]
 pub enum StepAction {
-    Linear(LinearFilter),
+    LinearCustom(LinearCustom),
+    LinearMean(LinearMean),
+    LinearGauss(LinearGaussian),
     Median(MedianFilter),
     HistogramLocalContrast(HistogramLocalContrast)
 }
@@ -50,6 +53,7 @@ impl ProcessingLine {
         btn_add_step = btn_add_step.below_of(&label, PADDING);
         btn_add_step.add_emit("Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinMean);
         btn_add_step.add_emit("Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinGauss);
+        btn_add_step.add_emit("Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinCustom);
         btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
         btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
             sender, Message::AddStepHistogramLocalContrast);
@@ -127,10 +131,19 @@ impl ProcessingLine {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
+                    Message::AddStepLinCustom => {
+                        match self.step_editor.add_step_action_with_dlg(
+                            app, 
+                            StepAction::LinearCustom(LinearCustom::default()))
+                        {
+                            Some(step_action) => self.add(step_action),
+                            None => {}
+                        }
+                    },
                     Message::AddStepLinMean => {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
-                            StepAction::Linear(LinearFilter::mean_of_size(5, ExtendValue::Closest)))
+                            StepAction::LinearMean(LinearMean::default()))
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}
@@ -139,7 +152,7 @@ impl ProcessingLine {
                     Message::AddStepLinGauss => {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
-                            StepAction::Linear(LinearFilter::gaussian_of_size(5, ExtendValue::Closest)))
+                            StepAction::LinearGauss(LinearGaussian::new(5, ExtendValue::Closest)))
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}
@@ -281,7 +294,9 @@ pub struct ProcessingStep {
 impl ProcessingStep {
     fn new(proc_line: &ProcessingLine, filter: StepAction) -> Self {
         let name = match filter {
-            StepAction::Linear(_) => "Линейный фильтр".to_string(),
+            StepAction::LinearCustom(_) => "Линейный фильтр".to_string(),
+            StepAction::LinearMean(_) => "Линейный фильтр (усредняющий)".to_string(),
+            StepAction::LinearGauss(_) => "Линейный фильтр (гауссовский)".to_string(),
             StepAction::Median(_) => "Медианный фильтр".to_string(),
             StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string()
         };
@@ -344,7 +359,11 @@ impl ProcessingStep {
         let (result_img, fil_w, fil_h) = match self.action {
             Some(ref mut action) => {
                 match action {
-                    StepAction::Linear(ref mut filter) => 
+                    StepAction::LinearCustom(ref mut filter) => 
+                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
+                        StepAction::LinearMean(ref mut filter) => 
+                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
+                        StepAction::LinearGauss(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
                     StepAction::Median(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),

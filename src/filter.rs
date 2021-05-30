@@ -169,7 +169,7 @@ fn filter_window<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_filt_
 }
 
 #[derive(Clone)]
-pub struct LinearFilter {
+pub struct LinearCustom {
     width: usize,
     height: usize,
     extend_value: ExtendValue,
@@ -177,7 +177,7 @@ pub struct LinearFilter {
     normalized: NormalizeOption
 }
 
-impl LinearFilter {
+impl LinearCustom {
     pub fn with_coeffs(mut coeffs: Vec<f64>, width: usize, height: usize, extend_value: ExtendValue, normalized: NormalizeOption) -> Self {
         assert!(width > 0);
         assert!(height > 0);
@@ -196,42 +196,11 @@ impl LinearFilter {
             NormalizeOption::NotNormalized => {}
         }
 
-        LinearFilter { width, height, arr: coeffs, extend_value, normalized }
-    }
-        
-    pub fn mean_of_size(size: usize, extend_value: ExtendValue) -> Self {
-        assert_eq!(size % 2, 1);
-
-        let mut arr = Vec::<f64>::new();
-        let coeff = 1_f64 / ((size * size) as f64);
-        arr.resize(size * size, coeff);
-        LinearFilter { width: size, height: size, arr, extend_value, normalized: NormalizeOption::Normalized }
-    }
-
-    pub fn gaussian_of_size(size: usize, extend_value: ExtendValue) -> Self {
-        assert_eq!(size % 2, 1);
-
-        let mut coeffs = Vec::<f64>::new();
-        coeffs.resize(size * size, 0_f64);
-        let r = size / 2;
-        let one_over_pi: f64 = 1_f64 / 3.14159265359_f64;
-        let one_over_2_r_squared: f64 =  1_f64 / (2_f64 * f64::powi(r as f64, 2));
-        
-        for row in 0..size {
-            for col in 0..size {
-                coeffs[row * size + col] = one_over_pi * one_over_2_r_squared 
-                    * f64::exp(
-                        -(f64::powi(col as f64, 2) + f64::powi(row as f64, 2)) 
-                        * one_over_2_r_squared);
-            }   
-        }
-
-        LinearFilter { width: size, height: size, arr: coeffs, normalized: NormalizeOption::Normalized, 
-            extend_value }
+        LinearCustom { width, height, arr: coeffs, extend_value, normalized }
     }
 }
 
-impl FilterIterable for LinearFilter {
+impl FilterIterable for LinearCustom {
     fn get_iterator(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
@@ -241,7 +210,7 @@ impl FilterIterable for LinearFilter {
     }
 }
 
-impl FilterBuffered for LinearFilter {
+impl FilterBuffered for LinearCustom {
     fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
         let mut sum: f64 = 0_f64;
 
@@ -254,9 +223,9 @@ impl FilterBuffered for LinearFilter {
     }
 }
 
-impl Filter for LinearFilter {
+impl Filter for LinearCustom {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, LinearFilter::filter_buffer)
+        filter_window(img, self, LinearCustom::filter_buffer)
     }
 
     fn w(&self) -> usize { self.width }
@@ -268,7 +237,7 @@ impl Filter for LinearFilter {
     }
 }
 
-impl StringFromTo for LinearFilter {
+impl StringFromTo for LinearCustom {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut rows = Vec::<Vec<f64>>::new();
 
@@ -316,7 +285,7 @@ impl StringFromTo for LinearFilter {
         let width = rows.last().unwrap().len();
         let height = rows.len();
 
-        Ok(LinearFilter::with_coeffs(coeffs, width, height, ext_value, normalized_value))
+        Ok(LinearCustom::with_coeffs(coeffs, width, height, ext_value, normalized_value))
     }
 
     fn content_to_string(&self) -> String {
@@ -342,9 +311,190 @@ impl StringFromTo for LinearFilter {
     }
 }
 
-impl Default for LinearFilter {
+impl Default for LinearCustom {
     fn default() -> Self {
-        LinearFilter::mean_of_size(3, ExtendValue::Closest)
+        let coeffs = vec![1_f64];
+        LinearCustom::with_coeffs(coeffs, 1, 1, ExtendValue::Closest, NormalizeOption::Normalized)
+    }
+}
+
+
+#[derive(Clone)]
+pub struct LinearMean {
+    width: usize,
+    height: usize,
+    extend_value: ExtendValue
+}
+
+impl LinearMean {
+    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {
+        LinearMean { width, height, extend_value }
+    }
+}
+
+impl FilterBuffered for LinearMean {
+    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
+        let sum: f64 = fragment.into_iter().map(|v| *v).sum();
+        sum / (self.width * self.height) as f64
+    }
+}
+
+impl Filter for LinearMean {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_window(img, self, Self::filter_buffer)
+    }
+
+    fn w(&self) -> usize { self.width }
+
+    fn h(&self) -> usize { self.height }
+
+    fn get_extend_value(&self) -> ExtendValue { self.extend_value }
+}
+
+impl Default for LinearMean {
+    fn default() -> Self {
+        LinearMean::new(3, 3, ExtendValue::Closest)
+    }
+}
+
+impl FilterIterable for LinearMean {
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.width,
+            height: self.height,
+            cur_pos: PixelPos::new(0, 0),
+        }
+    }
+}
+
+impl StringFromTo for LinearMean {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
+        let formar_err_msg = "Должно быть 3 строки: 'rows: <нечетное целое число>', 'cols: <нечетное целое число>', 'Ext: near/0'".to_string();
+        
+        let lines: Vec<&str> = utils::text_to_lines(string);
+        if lines.len() != 3 { return Err(MyError::new(formar_err_msg)); }
+
+        let height_words: Vec<&str> = utils::line_to_words(lines[0], " ");
+        if height_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
+        if height_words[0] != "rows:" { return Err(MyError::new(formar_err_msg)); }
+        let height = match height_words[1].parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(formar_err_msg)); }
+        };
+        if height % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
+
+        let width_words: Vec<&str> = utils::line_to_words(lines[1], " ");
+        if width_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
+        if width_words[0] != "cols:" { return Err(MyError::new(formar_err_msg)); }
+        let width = match width_words[1].parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(formar_err_msg)); }
+        };
+        if width % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
+
+        let ext_value: ExtendValue = ExtendValue::try_from_string(&lines[2])?;
+
+        Ok(LinearMean::new(width, height, ext_value))
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("rows: {}\ncols: {}\n{}", self.height, self.width, self.extend_value.content_to_string())
+    }
+}
+
+
+#[derive(Clone)]
+pub struct LinearGaussian {
+    size: usize,
+    extend_value: ExtendValue
+}
+
+impl LinearGaussian {
+    pub fn new(size: usize, extend_value: ExtendValue) -> Self {
+        assert_eq!(size % 2, 1);
+
+        let mut coeffs = Vec::<f64>::new();
+        coeffs.resize(size * size, 0_f64);
+        let r = size / 2;
+        let one_over_pi: f64 = 1_f64 / 3.14159265359_f64;
+        let one_over_2_r_squared: f64 =  1_f64 / (2_f64 * f64::powi(r as f64, 2));
+        
+        for row in 0..size {
+            for col in 0..size {
+                coeffs[row * size + col] = one_over_pi * one_over_2_r_squared 
+                    * f64::exp(
+                        -(f64::powi(col as f64, 2) + f64::powi(row as f64, 2)) 
+                        * one_over_2_r_squared);
+            }   
+        }
+
+        LinearGaussian { size, extend_value }
+    }
+}
+
+impl Filter for LinearGaussian {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_window(img, self, LinearGaussian::filter_buffer)
+    }
+
+    fn w(&self) -> usize { self.size }
+
+    fn h(&self) -> usize { self.size }
+
+    fn get_extend_value(&self) -> ExtendValue {
+        self.extend_value
+    }
+}
+
+impl FilterBuffered for LinearGaussian {
+    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
+        let mut sum = 0_f64;
+        for pos in self.get_iterator() {
+            sum += fragment[pos.row * self.w() + pos.col];
+        }
+        sum
+    }
+}
+
+impl FilterIterable for LinearGaussian {
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl Default for LinearGaussian {
+    fn default() -> Self {
+        LinearGaussian::new(5, ExtendValue::Closest)
+    }
+}
+
+impl StringFromTo for LinearGaussian {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
+        let formar_err_msg = "Должно быть 2 строки: 'size: <нечетное целое число>', 'Ext: near/0'".to_string();
+        
+        let lines: Vec<&str> = utils::text_to_lines(string);
+        if lines.len() != 2 { return Err(MyError::new(formar_err_msg)); }
+
+        let size_words: Vec<&str> = utils::line_to_words(lines[0], " ");
+        if size_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
+        if size_words[0] != "rows:" { return Err(MyError::new(formar_err_msg)); }
+        let size = match size_words[1].parse::<usize>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(formar_err_msg)); }
+        };
+        if size % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
+
+        let ext_value: ExtendValue = ExtendValue::try_from_string(&lines[1])?;
+
+        Ok(LinearGaussian::new(size, ext_value))
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("size: {}\n{}", self.size, self.extend_value.content_to_string())
     }
 }
 
@@ -470,7 +620,7 @@ pub struct HistogramLocalContrast {
     width: usize,
     height: usize,
     ext_value: ExtendValue,
-    mean_filter: LinearFilter,
+    mean_filter: LinearMean,
     a_values: AValues,
 }
 
@@ -522,7 +672,7 @@ impl HistogramLocalContrast {
             width, 
             height, 
             ext_value, 
-            mean_filter: LinearFilter::mean_of_size(mean_filter_size, ExtendValue::Given(0_f64)),
+            mean_filter: LinearMean::new(mean_filter_size, mean_filter_size, ExtendValue::Given(0_f64)),
             a_values
         }
     }

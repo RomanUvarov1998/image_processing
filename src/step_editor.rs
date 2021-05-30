@@ -1,6 +1,7 @@
+use crate::filter::LinearGaussian;
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{HistogramLocalContrast, LinearFilter, MedianFilter, StringFromTo}, proc_steps::{StepAction}};
+use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter, StringFromTo}, proc_steps::{StepAction}};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -64,10 +65,12 @@ impl StepEditor {
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
         match step_action {
-            StepAction::Linear(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
+            StepAction::LinearCustom(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
+            StepAction::LinearMean(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
+            StepAction::LinearGauss(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
             StepAction::Median(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
             StepAction::HistogramLocalContrast(ref filter) => 
-                self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),            
+                self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
         }
 
         // if window is closed by user, "Close" message helps exit the message loop
@@ -95,10 +98,32 @@ impl StepEditor {
                             None => continue
                         };
                         match step_action {
-                            StepAction::Linear(_) => {
-                                match LinearFilter::try_from_string(&text) {
+                            StepAction::LinearCustom(_) => {
+                                match LinearCustom::try_from_string(&text) {
                                     Ok(filter) => {
-                                        step_action = StepAction::Linear(filter);
+                                        step_action = StepAction::LinearCustom(filter);
+                                        self.lbl_message.set_label("");
+                                        self.wind.hide();
+                                        return Some(step_action);
+                                    },
+                                    Err(err) => self.lbl_message.set_label(&err.get_message())
+                                }
+                            },
+                            StepAction::LinearMean(_) => {
+                                match LinearMean::try_from_string(&text) {
+                                    Ok(filter) => {
+                                        step_action = StepAction::LinearMean(filter);
+                                        self.lbl_message.set_label("");
+                                        self.wind.hide();
+                                        return Some(step_action);
+                                    },
+                                    Err(err) => self.lbl_message.set_label(&err.get_message())
+                                }
+                            },
+                            StepAction::LinearGauss(_) => {
+                                match LinearGaussian::try_from_string(&text) {
+                                    Ok(filter) => {
+                                        step_action = StepAction::LinearGauss(filter);
                                         self.lbl_message.set_label("");
                                         self.wind.hide();
                                         return Some(step_action);
@@ -127,7 +152,7 @@ impl StepEditor {
                                     },
                                     Err(err) => self.lbl_message.set_label(&err.get_message())
                                 }
-                            }                            
+                            },
                         }
                     },
                     StepEditMessage::Exit => {
