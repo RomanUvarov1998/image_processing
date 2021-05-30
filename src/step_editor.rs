@@ -26,7 +26,7 @@ impl StepEditor {
     pub fn new() -> Self {
         let mut wind = window::Window::default()
             .with_size(WIN_WIDTH, WIN_HEIGHT)
-            .with_label("Добавление");
+            .with_label("Редактирование");
 
         let mut hpack = group::Pack::default()
             .with_pos(PADDING, PADDING)
