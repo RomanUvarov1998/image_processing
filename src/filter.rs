@@ -199,13 +199,35 @@ impl LinearFilter {
         LinearFilter { width, height, arr: coeffs, extend_value, normalized }
     }
         
-    pub fn mean_filter_of_size(size: usize, extend_value: ExtendValue) -> Self {
+    pub fn mean_of_size(size: usize, extend_value: ExtendValue) -> Self {
         assert_eq!(size % 2, 1);
 
         let mut arr = Vec::<f64>::new();
         let coeff = 1_f64 / ((size * size) as f64);
         arr.resize(size * size, coeff);
         LinearFilter { width: size, height: size, arr, extend_value, normalized: NormalizeOption::Normalized }
+    }
+
+    pub fn gaussian_of_size(size: usize, extend_value: ExtendValue) -> Self {
+        assert_eq!(size % 2, 1);
+
+        let mut coeffs = Vec::<f64>::new();
+        coeffs.resize(size * size, 0_f64);
+        let r = size / 2;
+        let one_over_pi: f64 = 1_f64 / 3.14159265359_f64;
+        let one_over_2_r_squared: f64 =  1_f64 / (2_f64 * f64::powi(r as f64, 2));
+        
+        for row in 0..size {
+            for col in 0..size {
+                coeffs[row * size + col] = one_over_pi * one_over_2_r_squared 
+                    * f64::exp(
+                        -(f64::powi(col as f64, 2) + f64::powi(row as f64, 2)) 
+                        * one_over_2_r_squared);
+            }   
+        }
+
+        LinearFilter { width: size, height: size, arr: coeffs, normalized: NormalizeOption::Normalized, 
+            extend_value }
     }
 }
 
@@ -322,7 +344,7 @@ impl StringFromTo for LinearFilter {
 
 impl Default for LinearFilter {
     fn default() -> Self {
-        LinearFilter::mean_filter_of_size(3, ExtendValue::Closest)
+        LinearFilter::mean_of_size(3, ExtendValue::Closest)
     }
 }
 
@@ -500,7 +522,7 @@ impl HistogramLocalContrast {
             width, 
             height, 
             ext_value, 
-            mean_filter: LinearFilter::mean_filter_of_size(mean_filter_size, ExtendValue::Given(0_f64)),
+            mean_filter: LinearFilter::mean_of_size(mean_filter_size, ExtendValue::Given(0_f64)),
             a_values
         }
     }

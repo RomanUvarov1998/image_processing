@@ -10,4 +10,4 @@ edition = "2018"
 fltk = "1.0.14"
 
 [profile.dev]
-opt-level = 0
+opt-level = 3

@@ -1,6 +1,6 @@
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, HistogramLocalContrast, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{ExtendValue, Filter, HistogramLocalContrast, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -48,7 +48,8 @@ impl ProcessingLine {
             btn_add_step.set_size(w + PADDING, h + PADDING);
         }
         btn_add_step = btn_add_step.below_of(&label, PADDING);
-        btn_add_step.add_emit("Линейный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLin);
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinMean);
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinGauss);
         btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
         btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
             sender, Message::AddStepHistogramLocalContrast);
@@ -126,10 +127,19 @@ impl ProcessingLine {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
-                    Message::AddStepLin => {
+                    Message::AddStepLinMean => {
                         match self.step_editor.add_step_action_with_dlg(
                             app, 
-                            StepAction::Linear(LinearFilter::default()))
+                            StepAction::Linear(LinearFilter::mean_of_size(5, ExtendValue::Closest)))
+                        {
+                            Some(step_action) => self.add(step_action),
+                            None => {}
+                        }
+                    },
+                    Message::AddStepLinGauss => {
+                        match self.step_editor.add_step_action_with_dlg(
+                            app, 
+                            StepAction::Linear(LinearFilter::gaussian_of_size(5, ExtendValue::Closest)))
                         {
                             Some(step_action) => self.add(step_action),
                             None => {}
