@@ -59,6 +59,45 @@ impl StringFromTo for ExtendValue {
     }
 }
 
+
+#[derive(Clone, Copy)]
+pub enum NormalizeOption {
+    Normalized,
+    NotNormalized
+}
+
+impl StringFromTo for NormalizeOption {
+    fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let ext_words: Vec<&str> = string.split(" ").into_iter().collect();
+
+        let format_err_msg = "После граничных условий должено быть указано условие нормализации коэффициентов: 'Normalize: true' или 'Normalize: false'".to_string();
+
+        if ext_words.len() != 2 {
+            return Err(MyError::new(format_err_msg));
+        }
+
+        if ext_words[0] != "Normalize:" {
+            return Err(MyError::new(format_err_msg));
+        }
+
+        let norm = match ext_words[1] {
+            "true" => NormalizeOption::Normalized,
+            "false" => NormalizeOption::NotNormalized,
+            _ => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        Ok(norm)
+    }
+
+    fn content_to_string(&self) -> String {
+        match self {
+            NormalizeOption::Normalized => "Normalize: true".to_string(),
+            NormalizeOption::NotNormalized => "Normalize: false".to_string()
+        }        
+    }
+}
+
+
 pub struct FilterIterator {
     width: usize,
     height: usize,
@@ -132,14 +171,29 @@ pub struct LinearFilter {
     height: usize,
     extend_value: ExtendValue,
     arr: Vec<f64>,
+    normalized: NormalizeOption
 }
 
 impl LinearFilter {
-    pub fn with_coeffs(coeffs: Vec<f64>, width: usize, height: usize, extend_value: ExtendValue) -> Self {
+    pub fn with_coeffs(mut coeffs: Vec<f64>, width: usize, height: usize, extend_value: ExtendValue, normalized: NormalizeOption) -> Self {
         assert!(width > 0);
         assert!(height > 0);
         assert!(coeffs.len() > 0);
-        LinearFilter { width, height, arr: coeffs, extend_value }
+
+        match normalized {
+            NormalizeOption::Normalized => {
+                let mut sum = 0_f64;
+                for coeff in coeffs.iter() {
+                    sum += *coeff;
+                }
+                for coeff in coeffs.iter_mut() {
+                    *coeff /= sum;
+                }
+            },
+            NormalizeOption::NotNormalized => {}
+        }
+
+        LinearFilter { width, height, arr: coeffs, extend_value, normalized }
     }
         
     pub fn mean_filter_of_size(size: usize, extend_value: ExtendValue) -> Self {
@@ -148,7 +202,7 @@ impl LinearFilter {
         let mut arr = Vec::<f64>::new();
         let coeff = 1_f64 / ((size * size) as f64);
         arr.resize(size * size, coeff);
-        LinearFilter { width: size, height: size, arr, extend_value }
+        LinearFilter { width: size, height: size, arr, extend_value, normalized: NormalizeOption::Normalized }
     }
 }
 
@@ -199,7 +253,7 @@ impl StringFromTo for LinearFilter {
             .into_iter()
             .collect();
 
-        for line in &lines[0..lines.len() - 1] {
+        for line in &lines[0..lines.len() - 2] {
             let mut row = Vec::<f64>::new();
             for word in line.trim().split(',').map(|w| w.trim()) {
                 if word.is_empty() { continue; }
@@ -210,8 +264,13 @@ impl StringFromTo for LinearFilter {
                     }
                 }
             }
-            if rows.len() > 0 && row.len() != rows.last().unwrap().len() {
-                return Err(MyError::new("Некорректная разменость матрицы".to_string()));
+            match rows.last() {
+                Some(last_row) => {
+                    if row.len() != last_row.len() {
+                        return Err(MyError::new("Некорректная разменость матрицы".to_string()));
+                    }
+                },
+                None => {}
             }
             if row.len() == 0 {
                 return Err(MyError::new("Некорректная разменость матрицы".to_string()));
@@ -223,7 +282,9 @@ impl StringFromTo for LinearFilter {
             return Err(MyError::new("Матрица должна иметь ненулевой размер".to_string()));
         }
 
-        let ext_value = ExtendValue::try_from_string(lines.last().unwrap())?;
+        let ext_value = ExtendValue::try_from_string(lines[lines.len() - 2])?;
+
+        let normalized_value = NormalizeOption::try_from_string(lines[lines.len() - 1])?;
 
         let mut coeffs = Vec::<f64>::new();
         for mut row in rows.clone() {
@@ -232,7 +293,7 @@ impl StringFromTo for LinearFilter {
         let width = rows.last().unwrap().len();
         let height = rows.len();
 
-        Ok(LinearFilter::with_coeffs(coeffs, width, height, ext_value))
+        Ok(LinearFilter::with_coeffs(coeffs, width, height, ext_value, normalized_value))
     }
 
     fn content_to_string(&self) -> String {
@@ -251,6 +312,8 @@ impl StringFromTo for LinearFilter {
         }
 
         fil_string.push_str(&format!("\n{}", self.extend_value.content_to_string()));
+
+        fil_string.push_str(&format!("\n{}", self.normalized.content_to_string()));
 
         fil_string
     }
@@ -271,7 +334,7 @@ pub struct MedianFilter {
 }
 
 impl MedianFilter {
-    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {
+    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {        
         MedianFilter { width, height, extend_value }
     }
 }
