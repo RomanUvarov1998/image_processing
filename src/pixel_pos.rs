@@ -8,9 +8,8 @@ impl PixelPos {
         PixelPos { row, col }
     }
 
-    pub fn negative_if_substract(&self, other: PixelPos) -> bool {
-        self.col < other.col || self.row < other.col
-    }
+    pub fn row_vec(&self) -> Self { PixelPos::new(self.row, 0) }
+    pub fn col_vec(&self) -> Self { PixelPos::new(0, self.col) }
 }
 
 impl Default for PixelPos {

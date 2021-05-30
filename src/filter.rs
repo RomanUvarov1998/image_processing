@@ -1,14 +1,22 @@
-use crate::{my_err::MyError, pixel_pos::PixelPos};
+use crate::{img::{ExtendValue, Img}, my_err::MyError, pixel_pos::PixelPos};
 
 pub const MAX_WINDOW_SIZE: usize = 11;
-pub const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
+const MAX_WINDOW_BUFFER_SIZE: usize = MAX_WINDOW_SIZE * MAX_WINDOW_SIZE;
 
-pub trait Filter : Default + Clone {
-    fn filter(&mut self, fragment: &mut [f64]) -> f64;
-    fn window_size(&self) -> usize;
-    fn get_iterator(&self) -> FilterIterator;
+pub trait Filter : FilterBuffered + Default + Clone {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img;
+    fn w(&self) -> usize;
+    fn h(&self) -> usize;
     fn try_from_string(string: &str) -> Result<Self, MyError>;
     fn content_to_string(&self) -> String;
+}
+
+pub trait FilterIterable {
+    fn get_iterator(&self) -> FilterIterator;
+}
+
+pub trait FilterBuffered {
+    fn filter_buffer(&self, fragment: &mut [f64]) -> f64;
 }
 
 pub struct FilterIterator {
@@ -45,6 +53,39 @@ impl Iterator for FilterIterator {
     }
 }
 
+fn filter_border_0<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Img {
+    let pixel_buf_actual_size = filter.w() * filter.h();
+
+    assert!(pixel_buf_actual_size < MAX_WINDOW_BUFFER_SIZE, 
+        "filter size must be <= {}", MAX_WINDOW_SIZE);
+
+    let mut pixel_buf = [0_f64; MAX_WINDOW_BUFFER_SIZE];
+
+    let fil_half_size = PixelPos::new(filter.h() / 2, filter.w() / 2);
+
+    let img_extended = img.copy_with_extended_borders(
+        ExtendValue::Closest, 
+        fil_half_size.row, 
+        fil_half_size.col);
+
+    for pos_im in img_extended.get_area_iter(
+        fil_half_size, 
+        PixelPos::new(img.h(), img.w()) + fil_half_size)
+    {
+        for pos_w in filter.get_iterator() {            
+            let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
+            let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
+            pixel_buf[buf_ind] = img_extended.pixel_at(pix_pos) as f64;
+        }
+
+        let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[0..pixel_buf_actual_size]);
+        img.set_pixel(pos_im - fil_half_size, filter_result as u8);
+    }
+
+    img
+}
+
+
 #[derive(Clone)]
 pub struct LinearFilter {
     width: usize,
@@ -68,13 +109,20 @@ impl LinearFilter {
         arr.resize(size * size, coeff);
         LinearFilter { width: size, height: size, arr }
     }
-
-    pub fn w(&self) -> usize { self.width }
-    pub fn h(&self) -> usize { self.height }
 }
 
-impl Filter for LinearFilter {
-    fn filter(&mut self, fragment: &mut [f64]) -> f64 {
+impl FilterIterable for LinearFilter {
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl FilterBuffered for LinearFilter {
+    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
         let mut sum: f64 = 0_f64;
 
         for pos in self.get_iterator() {
@@ -84,16 +132,16 @@ impl Filter for LinearFilter {
         
         sum
     }
+}
 
-    fn window_size(&self) -> usize { self.h() }
-
-    fn get_iterator(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
+impl Filter for LinearFilter {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_border_0(img, self, LinearFilter::filter_buffer)
     }
+
+    fn w(&self) -> usize { self.width }
+
+    fn h(&self) -> usize { self.height }
 
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut rows = Vec::<Vec<f64>>::new();
@@ -132,7 +180,6 @@ impl Filter for LinearFilter {
 
         Ok(LinearFilter::with_coeffs(coeffs, width, height))
     }
-
     fn content_to_string(&self) -> String {
         let mut fil_string = String::new();
 
@@ -158,6 +205,7 @@ impl Default for LinearFilter {
     }
 }
 
+
 #[derive(Clone)]
 pub struct MedianFilter {
     width: usize,
@@ -168,13 +216,20 @@ impl MedianFilter {
     pub fn new(width: usize, height: usize) -> Self {
         MedianFilter { width, height }
     }
-
-    pub fn w(&self) -> usize { self.width }
-    pub fn h(&self) -> usize { self.height }
 }
 
-impl Filter for MedianFilter {
-    fn filter(&mut self, fragment: &mut [f64]) -> f64 {
+impl FilterIterable for MedianFilter {
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl FilterBuffered for MedianFilter {
+    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {        
         /*
         * Algorithm from N. Wirth's book, implementation by N. Devillard.
         * This code in public domain.
@@ -209,17 +264,16 @@ impl Filter for MedianFilter {
 
         fragment[med_ind]
     }
+}
 
-    fn window_size(&self) -> usize { self.h() }
-
-    fn get_iterator(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
+impl Filter for MedianFilter {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_border_0(img, self, MedianFilter::filter_buffer)
     }
 
+    fn w(&self) -> usize { self.width }
+
+    fn h(&self) -> usize { self.height }
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let lines: Vec<&str> = string.split('\n').into_iter().collect();
         if lines.len() != 1 {
@@ -254,3 +308,90 @@ impl Default for MedianFilter {
         MedianFilter::new(3, 3)
     }
 }
+
+/*
+#[derive(Clone)]
+pub struct HistogramLocalContrast {
+    width: usize,
+    height: usize
+}
+
+impl HistogramLocalContrast {
+    pub fn new(width: usize, height: usize) -> Self {
+        HistogramLocalContrast { width, height }
+    }
+
+    pub fn w(&self) -> usize { self.width }
+    pub fn h(&self) -> usize { self.height }
+}
+
+impl FilterIterable for HistogramLocalContrast {
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl FilterBuffered for HistogramLocalContrast {
+    fn filter_buffer(&self, fragment: &[f64]) -> f64 {
+        
+    }
+}
+
+impl Filter for HistogramLocalContrast {
+    fn filter(&self, fragment: &mut [f64]) -> f64 {
+        let n: usize = 15_usize;
+        let m: usize = 3_usize;
+        let amin: f64 = 0.2_f64;
+        let amax: f64 = 0.7_f64;
+
+        let n1: usize = n / 2;
+        let m1: usize = m / 2;
+
+        // краевой эффект
+        //...
+
+        0.0_f64
+    }
+
+    fn w(&self) -> usize { self.width }
+
+    fn h(&self) -> usize { self.height }
+
+    fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let lines: Vec<&str> = string.split('\n').into_iter().collect();
+        if lines.len() != 1 {
+            return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
+        }
+
+        let words: Vec<&str> = lines[0].split(',').map(|w| w.trim() ).filter(|w| !w.is_empty() ).into_iter().collect();
+        if words.len() != 2 {
+            return Err(MyError::new("Должно быть 2 числа. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
+        }
+
+        let height = match words[0].parse::<usize>() {
+            Err(_) => return Err(MyError::new("Кол-во строк должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Ok(val) => val
+        };
+
+        let width = match words[1].parse::<usize>() {
+            Err(_) => return Err(MyError::new("Кол-во столбцов должно быть целым числом. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string())),
+            Ok(val) => val
+        };
+
+        return Ok(HistogramLocalContrast::new(width, height));
+    }
+    fn content_to_string(&self) -> String {
+        format!("{}, {}", self.height, self.width)
+    }
+}
+
+impl Default for HistogramLocalContrast {
+    fn default() -> Self {
+        HistogramLocalContrast::new(3, 3)
+    }
+}
+*/

@@ -1,6 +1,6 @@
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self, Img}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, LinearFilter, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -317,30 +317,21 @@ impl ProcessingStep {
        self.image.clone()
     }
 
-    pub fn process_image(&mut self, ititial_img: img::Img) -> result::Result<(), MyError> {
-        let fil_size: (usize, usize);
-
-        let result_img: Img;
-        match self.action {
+    pub fn process_image(&mut self, initial_img: img::Img) -> result::Result<(), MyError> {
+        let (result_img, fil_w, fil_h) = match self.action {
             Some(ref mut action) => {
                 match action {
-                    StepAction::Linear(ref mut filter) => {
-                        fil_size = (filter.w(), filter.h());
-                        result_img = ititial_img.apply_filter(filter);
-                    },
-                    StepAction::Median(ref mut filter) => {
-                        fil_size = (filter.window_size(), filter.window_size());
-                        result_img = ititial_img.apply_filter(filter);
-                    }
+                    StepAction::Linear(ref mut filter) => 
+                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
+                    StepAction::Median(ref mut filter) => 
+                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
                 }
             },
-            None => {
-                return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
-            }
+            None =>  return Err(MyError::new("В данном компоненте нет фильтра".to_string())) 
         };
         
         self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
-            &self.name, fil_size.0, fil_size.1, result_img.w(), result_img.h()));
+            &self.name, fil_w, fil_h, result_img.w(), result_img.h()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);
