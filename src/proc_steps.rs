@@ -1,7 +1,7 @@
 use crate::filter::LinearGaussian;
 use std::result;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{ExtendValue, Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -16,6 +16,47 @@ pub enum StepAction {
     LinearGauss(LinearGaussian),
     Median(MedianFilter),
     HistogramLocalContrast(HistogramLocalContrast)
+}
+impl StepAction {
+    fn edit_action_with_dlg(&self, app: app::App, step_editor: &mut StepEditor) -> StepAction {
+        match self {
+            StepAction::LinearCustom(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                return match res {
+                    Some(new_filter) => StepAction::LinearCustom(new_filter),
+                    None => StepAction::LinearCustom(old_filter.clone()),
+                };
+            },
+            StepAction::LinearMean(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                match res {
+                    Some(new_filter) => StepAction::LinearMean(new_filter),
+                    None => StepAction::LinearMean(old_filter.clone()),
+                }
+            },
+            StepAction::LinearGauss(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                match res {
+                    Some(new_filter) => StepAction::LinearGauss(new_filter),
+                    None => StepAction::LinearGauss(old_filter.clone()),
+                }
+            },
+            StepAction::Median(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                match res {
+                    Some(new_filter) => StepAction::Median(new_filter),
+                    None => StepAction::Median(old_filter.clone()),
+                }
+            },
+            StepAction::HistogramLocalContrast(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                match res {
+                    Some(new_filter) => StepAction::HistogramLocalContrast(new_filter),
+                    None => StepAction::HistogramLocalContrast(old_filter.clone()),
+                }
+            },
+        }
+    }
 }
 
 pub struct ProcessingLine {
@@ -132,65 +173,42 @@ impl ProcessingLine {
                         Err(err) => err_msg(&self.scroll_pack, &err.to_string())
                     }
                     Message::AddStepLinCustom => {
-                        match self.step_editor.add_step_action_with_dlg(
-                            app, 
-                            StepAction::LinearCustom(LinearCustom::default()))
-                        {
-                            Some(step_action) => self.add(step_action),
+                        match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
+                            Some(filter) => self.add(StepAction::LinearCustom(filter)),
                             None => {}
                         }
                     },
                     Message::AddStepLinMean => {
-                        match self.step_editor.add_step_action_with_dlg(
-                            app, 
-                            StepAction::LinearMean(LinearMean::default()))
-                        {
-                            Some(step_action) => self.add(step_action),
+                        match self.step_editor.add_step_action_with_dlg(app, LinearMean::default()) {
+                            Some(filter) => self.add(StepAction::LinearMean(filter)),
                             None => {}
                         }
                     },
                     Message::AddStepLinGauss => {
-                        match self.step_editor.add_step_action_with_dlg(
-                            app, 
-                            StepAction::LinearGauss(LinearGaussian::new(5, ExtendValue::Closest)))
-                        {
-                            Some(step_action) => self.add(step_action),
+                        match self.step_editor.add_step_action_with_dlg(app, LinearGaussian::default()) {
+                            Some(filter) => self.add(StepAction::LinearGauss(filter)),
                             None => {}
                         }
                     },
                     Message::AddStepMed => {
-                        match self.step_editor.add_step_action_with_dlg(
-                            app, 
-                            StepAction::Median(MedianFilter::default())) 
-                        {
-                            Some(step_action) => self.add(step_action),
+                        match self.step_editor.add_step_action_with_dlg(app, MedianFilter::default()) {
+                            Some(filter) => self.add(StepAction::Median(filter)),
                             None => {}
                         }
                     },
                     Message::AddStepHistogramLocalContrast => {
-                        match self.step_editor.add_step_action_with_dlg(
-                            app, 
-                            StepAction::HistogramLocalContrast(HistogramLocalContrast::default())) 
-                        {
-                            Some(step_action) => self.add(step_action),
+                        match self.step_editor.add_step_action_with_dlg(app, HistogramLocalContrast::default()) {
+                            Some(filter) => self.add(StepAction::HistogramLocalContrast(filter)),
                             None => {}
                         }
                     },
                     Message::EditStep { step_num } => {
-                        match self.steps[step_num].action {
-                            Some(ref action) => {
-                                match self.step_editor.add_step_action_with_dlg(app, action.clone()) 
-                                {
-                                    Some(edited_action) => {
-                                        self.steps[step_num].action = Some(edited_action);
-                                    },
-                                    None => {}
-                                }
-                            },
+                        self.steps[step_num].action = match self.steps[step_num].action {
+                            Some(ref action) => Some(action.edit_action_with_dlg(app, &mut self.step_editor)),
                             None => {
                                 return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
                             }
-                        }
+                        };
                     },
                     Message::DeleteStep { step_num } => {
                         self.scroll_pack.begin();

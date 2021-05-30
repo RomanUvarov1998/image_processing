@@ -1,7 +1,5 @@
-use crate::filter::LinearGaussian;
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
-
-use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter, StringFromTo}, proc_steps::{StepAction}};
+use crate::{filter::{StringFromTo}};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -59,19 +57,12 @@ impl StepEditor {
         }
     }
 
-    pub fn add_step_action_with_dlg(&mut self, app: app::App, mut step_action: StepAction) -> Option<StepAction> {
+    pub fn add_step_action_with_dlg<T: StringFromTo>(&mut self, app: app::App, filter: T) -> Option<T> {
         let (sender, receiver) = app::channel::<StepEditMessage>();
 
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
-        match step_action {
-            StepAction::LinearCustom(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
-            StepAction::LinearMean(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
-            StepAction::LinearGauss(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
-            StepAction::Median(ref filter) => self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
-            StepAction::HistogramLocalContrast(ref filter) => 
-                self.text_editor.buffer().unwrap().set_text(&filter.content_to_string()),
-        }
+        self.text_editor.buffer().unwrap().set_text(&filter.content_to_string());
 
         // if window is closed by user, "Close" message helps exit the message loop
         self.wind.handle(move |_, event| {
@@ -97,62 +88,13 @@ impl StepEditor {
                             Some(ref buf) => buf.text(),
                             None => continue
                         };
-                        match step_action {
-                            StepAction::LinearCustom(_) => {
-                                match LinearCustom::try_from_string(&text) {
-                                    Ok(filter) => {
-                                        step_action = StepAction::LinearCustom(filter);
-                                        self.lbl_message.set_label("");
-                                        self.wind.hide();
-                                        return Some(step_action);
-                                    },
-                                    Err(err) => self.lbl_message.set_label(&err.get_message())
-                                }
+                        match T::try_from_string(&text) {
+                            Ok(filter) => {
+                                self.lbl_message.set_label("");
+                                self.wind.hide();
+                                return Some(filter);
                             },
-                            StepAction::LinearMean(_) => {
-                                match LinearMean::try_from_string(&text) {
-                                    Ok(filter) => {
-                                        step_action = StepAction::LinearMean(filter);
-                                        self.lbl_message.set_label("");
-                                        self.wind.hide();
-                                        return Some(step_action);
-                                    },
-                                    Err(err) => self.lbl_message.set_label(&err.get_message())
-                                }
-                            },
-                            StepAction::LinearGauss(_) => {
-                                match LinearGaussian::try_from_string(&text) {
-                                    Ok(filter) => {
-                                        step_action = StepAction::LinearGauss(filter);
-                                        self.lbl_message.set_label("");
-                                        self.wind.hide();
-                                        return Some(step_action);
-                                    },
-                                    Err(err) => self.lbl_message.set_label(&err.get_message())
-                                }
-                            },
-                            StepAction::Median(_) => {
-                                match MedianFilter::try_from_string(&text) {
-                                    Ok(filter) => {
-                                        step_action = StepAction::Median(filter);
-                                        self.lbl_message.set_label("");
-                                        self.wind.hide();
-                                        return Some(step_action);
-                                    },
-                                    Err(err) => self.lbl_message.set_label(&err.get_message())
-                                }
-                            },
-                            StepAction::HistogramLocalContrast(_) => {
-                                match HistogramLocalContrast::try_from_string(&text) {
-                                    Ok(filter) => {
-                                        step_action = StepAction::HistogramLocalContrast(filter);
-                                        self.lbl_message.set_label("");
-                                        self.wind.hide();
-                                        return Some(step_action);
-                                    },
-                                    Err(err) => self.lbl_message.set_label(&err.get_message())
-                                }
-                            },
+                            Err(err) => self.lbl_message.set_label(&err.get_message())
                         }
                     },
                     StepEditMessage::Exit => {
