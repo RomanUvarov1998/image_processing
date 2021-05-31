@@ -1,7 +1,7 @@
-use std::{fs, path::PathBuf, result};
+use std::{fs::{self, File}, io::Write, path::PathBuf, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter, LinearGaussian}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -241,9 +241,9 @@ impl ProcessingLine {
                         self.scroll_pack.top_window().unwrap().set_damage(true);
                     }
                     Message::SaveSession => {
-                        match Self::try_save_project() {
-                            Ok(_) => {},
-                            Err(_) => {},
+                        match self.try_save_project() {
+                            Ok(_) => info_msg(&self.scroll_pack, "Проект успешно сохранен"),
+                            Err(err) => err_msg(&self.scroll_pack, &err.get_message()),
                         }
                     }
                 }
@@ -309,42 +309,69 @@ impl ProcessingLine {
         Ok(())
     }
 
-    fn try_save_project() -> result::Result<(), MyError> {
+    fn try_save_project(&self) -> result::Result<(), MyError> {
+        // check if there are any steps
+        if self.steps.len() == 0 {
+            return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
+        }
+
+        // check if all steps have filters defined
+        let all_steps_have_filter = self.steps.iter().all(|s| s.action.is_some());
+        if !all_steps_have_filter {
+            return Err(MyError::new("У всех шагов должны быть заданы фильтры".to_string()));
+        }
+
+        // // check if all steps have images
+        // let all_steps_have_filter = self.steps.iter().all(|s| s.image.is_some());
+        // if !all_steps_have_filter {
+        //     return Err(MyError::new("У всех шагов должны быть вычислены результаты".to_string()));
+        // }
+
+        // choose folder
         let mut chooser = dialog::FileChooser::new(
             ".","*", dialog::FileChooserType::Directory, 
             "Выберите папку для сохранения");
         chooser.show();
-
         while chooser.shown() { app::wait(); }
-
         if chooser.value(1).is_none() {
             return Ok(());
         }
+        
+        let mut path = chooser.directory().unwrap();       
 
-        let mut path = chooser.directory().unwrap();
-        println!("{}", &path);        
-
+        // create project folder
         let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("%d-%m(%b)-%Y_%a_%_H.%M.%S"); 
         let dir_name = format!("{}", current_datetime_formatter);
 
         path.push_str("/");
         path.push_str(&dir_name);
-        println!("{}", &path);  
         
         match fs::create_dir(&path) {
-            Ok(_) => println!("dir created"),
-            Err(err) => println!("{}", &err.to_string())
+            Ok(_) => {},
+            Err(err) => { return Err(MyError::new(err.to_string())); },
         };
 
-        // match path_buf.to_str() {
-        //     Some(p) => if !p.is_empty() { }
-        //     _ => {}
-        // };   
+        // save all steps
+        for step_num in 0..self.steps.len() {
+            let filter_content: String = match self.steps[step_num].action.as_ref().unwrap() {
+                StepAction::LinearCustom(ref filter) => filter.content_to_string(),
+                StepAction::LinearMean(ref filter) => filter.content_to_string(),
+                StepAction::LinearGauss(ref filter) => filter.content_to_string(),
+                StepAction::Median(ref filter) => filter.content_to_string(),
+                StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
+            };
 
-        // println!("{}", path_buf.to_str().unwrap());
-        // path_buf.push(dir_name);
-        // println!("{}", path_buf.to_str().unwrap());
-        // assert!(path_buf.is_dir());
+            let mut file_path = path.clone();
+            file_path.push_str(&format!("/{}.txt", step_num + 1));
+
+            let mut file = match File::create(file_path) {
+                Ok(f) => f,
+                Err(err) => { return Err(MyError::new(err.to_string())); }
+            };
+
+            file.write_all(filter_content.as_bytes())?;
+            file.sync_all()?;
+        }
 
         Ok(())
     }
