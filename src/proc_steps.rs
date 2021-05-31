@@ -1,7 +1,7 @@
-use crate::filter::LinearGaussian;
-use std::result;
+use std::{fs, path::PathBuf, result};
+use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearMean, MedianFilter, LinearGaussian}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -99,7 +99,15 @@ impl ProcessingLine {
         btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
             sender, Message::AddStepHistogramLocalContrast);
 
-        btn_add_step.end();
+        btn_add_step.end();        
+
+        let mut btn_save = button::Button::default();
+        btn_save.set_label("Сохранить проект");
+        btn_save.emit(sender, Message::SaveSession);
+        {            
+            let (w, h) = btn_save.measure_label();
+            btn_save.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        }
     
         left_menu.end();
 
@@ -214,8 +222,8 @@ impl ProcessingLine {
                         self.scroll_pack.begin();
                         self.scroll_pack.remove(&self.steps[step_num].hpack);
                         self.scroll_pack.remove(&self.steps[step_num].btn_process);
-                        self.scroll_pack.remove(&self.steps[step_num].btn_edit_step);
-                        self.scroll_pack.remove(&self.steps[step_num].btn_del_step);
+                        self.scroll_pack.remove(&self.steps[step_num].btn_edit);
+                        self.scroll_pack.remove(&self.steps[step_num].btn_delete);
                         self.scroll_pack.remove(&self.steps[step_num].frame_img);
                         self.scroll_pack.remove(&self.steps[step_num].label_step_name);
                         self.scroll_pack.end();
@@ -225,12 +233,18 @@ impl ProcessingLine {
 
                         for i in step_num..self.steps.len() {
                             self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
-                            self.steps[i].btn_edit_step.emit(sender, Message::EditStep { step_num: i } );
-                            self.steps[i].btn_del_step.emit(sender, Message::DeleteStep { step_num: i } );
+                            self.steps[i].btn_edit.emit(sender, Message::EditStep { step_num: i } );
+                            self.steps[i].btn_delete.emit(sender, Message::DeleteStep { step_num: i } );
                             self.steps[i].label_step_name.redraw_label();
                             self.steps[i].frame_img.set_damage(true);
                         }
                         self.scroll_pack.top_window().unwrap().set_damage(true);
+                    }
+                    Message::SaveSession => {
+                        match Self::try_save_project() {
+                            Ok(_) => {},
+                            Err(_) => {},
+                        }
                     }
                 }
             }
@@ -294,14 +308,54 @@ impl ProcessingLine {
 
         Ok(())
     }
+
+    fn try_save_project() -> result::Result<(), MyError> {
+        let mut chooser = dialog::FileChooser::new(
+            ".","*", dialog::FileChooserType::Directory, 
+            "Выберите папку для сохранения");
+        chooser.show();
+
+        while chooser.shown() { app::wait(); }
+
+        if chooser.value(1).is_none() {
+            return Ok(());
+        }
+
+        let mut path = chooser.directory().unwrap();
+        println!("{}", &path);        
+
+        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("%d-%m(%b)-%Y_%a_%_H.%M.%S"); 
+        let dir_name = format!("{}", current_datetime_formatter);
+
+        path.push_str("/");
+        path.push_str(&dir_name);
+        println!("{}", &path);  
+        
+        match fs::create_dir(&path) {
+            Ok(_) => println!("dir created"),
+            Err(err) => println!("{}", &err.to_string())
+        };
+
+        // match path_buf.to_str() {
+        //     Some(p) => if !p.is_empty() { }
+        //     _ => {}
+        // };   
+
+        // println!("{}", path_buf.to_str().unwrap());
+        // path_buf.push(dir_name);
+        // println!("{}", path_buf.to_str().unwrap());
+        // assert!(path_buf.is_dir());
+
+        Ok(())
+    }
 }
 
 pub struct ProcessingStep {
     name: String,
     hpack: group::Pack,
     btn_process: button::Button,
-    btn_edit_step: button::Button,
-    btn_del_step: button::Button,
+    btn_edit: button::Button,
+    btn_delete: button::Button,
     label_step_name: Frame,
     frame_img: Frame,
     pub action: Option<StepAction>,
@@ -336,17 +390,17 @@ impl ProcessingStep {
         let (w, h) = btn_process.measure_label();
         btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
-        let mut btn_edit_step = button::Button::default();
-        btn_edit_step.set_label("Изменить");
-        btn_edit_step.emit(sender, Message::EditStep { step_num: proc_line.steps.len() } );
-        let (w, h) = btn_edit_step.measure_label();
-        btn_edit_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        let mut btn_edit = button::Button::default();
+        btn_edit.set_label("Изменить");
+        btn_edit.emit(sender, Message::EditStep { step_num: proc_line.steps.len() } );
+        let (w, h) = btn_edit.measure_label();
+        btn_edit.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
-        let mut btn_del_step = button::Button::default();
-        btn_del_step.set_label("Удалить");
-        btn_del_step.emit(sender, Message::DeleteStep { step_num: proc_line.steps.len() } );
-        let (w, h) = btn_del_step.measure_label();
-        btn_del_step.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        let mut btn_delete = button::Button::default();
+        btn_delete.set_label("Удалить");
+        btn_delete.emit(sender, Message::DeleteStep { step_num: proc_line.steps.len() } );
+        let (w, h) = btn_delete.measure_label();
+        btn_delete.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
         hpack.end();
             
@@ -358,9 +412,7 @@ impl ProcessingStep {
         ProcessingStep { 
             name,            
             hpack,
-            btn_process,
-            btn_edit_step,
-            btn_del_step,
+            btn_process, btn_edit, btn_delete,
             frame_img, 
             label_step_name: label,
             action: Some(filter),

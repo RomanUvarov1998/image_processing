@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 fltk = "1.0.14"
+chrono = "0.4.19"
 
 [profile.dev]
 opt-level = 3
