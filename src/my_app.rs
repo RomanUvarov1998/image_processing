@@ -16,7 +16,8 @@ pub enum Message {
     AddStepHistogramLocalContrast, 
     EditStep { step_num: usize }, 
     DeleteStep { step_num: usize },
-    SaveSession
+    SaveProject,
+    SaveResults,
 }
 
 pub fn create_app() -> result::Result<(), MyError> {

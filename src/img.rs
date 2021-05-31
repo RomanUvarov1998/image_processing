@@ -1,4 +1,4 @@
-use std::{ops::{Index, IndexMut}, path::PathBuf, result};
+use std::{io::Write, ops::{Index, IndexMut}, path::PathBuf, result};
 
 use fltk::{image, prelude::ImageExt};
 use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};
@@ -101,6 +101,19 @@ impl Img {
             self.pixels.iter().map(|v| *v as u8).collect::<Vec<u8>>().as_slice(), 
             self.width as i32, self.height as i32,  fltk::enums::ColorDepth::L8)?;
         Ok(im_rgb)
+    }
+
+    pub fn try_save(&self, path: &str) -> Result<(), MyError> {
+        let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
+
+        for pos in self.get_iterator() {
+            let pix = bmp::Pixel::new(self[pos] as u8, self[pos] as u8, self[pos] as u8);
+            img_to_save.set_pixel(pos.col as u32, pos.row as u32, pix);
+        }
+
+        img_to_save.save(path)?;
+
+        Ok(())
     }
 
     pub fn copy_with_extended_borders(&self, with: ExtendValue, by_rows: usize, by_cols: usize) -> Self {

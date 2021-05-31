@@ -101,12 +101,20 @@ impl ProcessingLine {
 
         btn_add_step.end();        
 
-        let mut btn_save = button::Button::default();
-        btn_save.set_label("Сохранить проект");
-        btn_save.emit(sender, Message::SaveSession);
+        let mut btn_save_project = button::Button::default();
+        btn_save_project.set_label("Сохранить проект");
+        btn_save_project.emit(sender, Message::SaveProject);
         {            
-            let (w, h) = btn_save.measure_label();
-            btn_save.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+            let (w, h) = btn_save_project.measure_label();
+            btn_save_project.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        }  
+
+        let mut btn_save_results = button::Button::default();
+        btn_save_results.set_label("Сохранить результаты");
+        btn_save_results.emit(sender, Message::SaveResults);
+        {            
+            let (w, h) = btn_save_results.measure_label();
+            btn_save_results.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
         }
     
         left_menu.end();
@@ -240,11 +248,18 @@ impl ProcessingLine {
                         }
                         self.scroll_pack.top_window().unwrap().set_damage(true);
                     }
-                    Message::SaveSession => {
+                    Message::SaveProject => {
                         match self.try_save_project() {
                             Ok(_) => info_msg(&self.scroll_pack, "Проект успешно сохранен"),
                             Err(err) => err_msg(&self.scroll_pack, &err.get_message()),
                         }
+                    },
+                    Message::SaveResults => {
+                        match self.try_save_results() {
+                            Ok(_) => info_msg(&self.scroll_pack, "Результаты успешно сохранены"),
+                            Err(err) => err_msg(&self.scroll_pack, &err.get_message()),
+                        }
+
                     }
                 }
             }
@@ -340,7 +355,7 @@ impl ProcessingLine {
         let mut path = chooser.directory().unwrap();       
 
         // create project folder
-        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("%d-%m(%b)-%Y_%a_%_H.%M.%S"); 
+        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("Project %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
         let dir_name = format!("{}", current_datetime_formatter);
 
         path.push_str("/");
@@ -371,6 +386,53 @@ impl ProcessingLine {
 
             file.write_all(filter_content.as_bytes())?;
             file.sync_all()?;
+        }
+
+        Ok(())
+    }
+    
+    fn try_save_results(&self) -> result::Result<(), MyError> {
+        // check if there are any steps
+        if self.steps.len() == 0 {
+            return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
+        }
+
+        // check if all steps have images
+        let all_steps_have_image = self.steps.iter().all(|s| s.image.is_some());
+        if !all_steps_have_image {
+            return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
+        }
+
+        // choose folder
+        let mut chooser = dialog::FileChooser::new(
+            ".","*", dialog::FileChooserType::Directory, 
+            "Выберите папку для сохранения");
+        chooser.show();
+        while chooser.shown() { app::wait(); }
+        if chooser.value(1).is_none() {
+            return Ok(());
+        }
+        
+        let mut path = chooser.directory().unwrap();       
+
+        // create project folder
+        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("Results %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
+        let dir_name = format!("{}", current_datetime_formatter);
+
+        path.push_str("/");
+        path.push_str(&dir_name);
+        
+        match fs::create_dir(&path) {
+            Ok(_) => {},
+            Err(err) => { return Err(MyError::new(err.to_string())); },
+        };
+
+        // save all images
+        for step_num in 0..self.steps.len() {
+            let mut file_path = path.clone();
+            file_path.push_str(&format!("/{}.bmp", step_num + 1));
+
+            self.steps[step_num].image.as_ref().unwrap().try_save(&file_path)?;
         }
 
         Ok(())
