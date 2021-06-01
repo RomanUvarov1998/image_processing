@@ -59,7 +59,8 @@ impl StepAction {
     }
 }
 
-pub struct ProcessingLine {
+pub struct ProcessingLine<'wind> {
+    parent_window: &'wind window::Window,
     initial_img: Option<img::Img>,
     frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
@@ -69,8 +70,8 @@ pub struct ProcessingLine {
     step_editor: StepEditor
 }
 
-impl ProcessingLine {
-    pub fn new(wind: window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
+impl<'wind> ProcessingLine<'wind> {
+    pub fn new(wind: &'wind window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
         wind.begin();
 
         let mut left_menu = group::Pack::default()
@@ -154,13 +155,14 @@ impl ProcessingLine {
         wind.end();
 
         ProcessingLine {
+            parent_window: wind,
             initial_img: None,
             frame_img,
             steps: Vec::<ProcessingStep>::new(),
             w, h,
             scroll_pack,
             receiver,
-            step_editor: StepEditor::new()
+            step_editor: StepEditor::new(),
         }
     }
 
@@ -182,11 +184,11 @@ impl ProcessingLine {
                 match msg {
                     Message::LoadImage => match self.try_load() {
                         Ok(_) => {}
-                        Err(err) => err_msg(&self.scroll_pack, &err.to_string())
+                        Err(err) => err_msg(&self.parent_window, &err.to_string())
                     }
                     Message::DoStep { step_num } => match self.try_do_step(step_num) {
                         Ok(_) => {}
-                        Err(err) => err_msg(&self.scroll_pack, &err.to_string())
+                        Err(err) => err_msg(&self.parent_window, &err.to_string())
                     }
                     Message::AddStepLinCustom => {
                         match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
@@ -250,14 +252,14 @@ impl ProcessingLine {
                     }
                     Message::SaveProject => {
                         match self.try_save_project() {
-                            Ok(_) => info_msg(&self.scroll_pack, "Проект успешно сохранен"),
-                            Err(err) => err_msg(&self.scroll_pack, &err.get_message()),
+                            Ok(_) => info_msg(&self.parent_window, "Проект успешно сохранен"),
+                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
                         }
                     },
                     Message::SaveResults => {
                         match self.try_save_results() {
-                            Ok(_) => info_msg(&self.scroll_pack, "Результаты успешно сохранены"),
-                            Err(err) => err_msg(&self.scroll_pack, &err.get_message()),
+                            Ok(_) => info_msg(&self.parent_window, "Результаты успешно сохранены"),
+                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
                         }
 
                     }
@@ -270,7 +272,7 @@ impl ProcessingLine {
 
     fn try_load(&mut self) -> result::Result<(), MyError> {
         if self.initial_img.is_some() {
-            if small_dlg::confirm(&self.scroll_pack, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
+            if small_dlg::confirm(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step_num in 0..self.steps.len() {
                     self.steps[step_num].frame_img.set_image(Option::<RgbImage>::None);
                 }

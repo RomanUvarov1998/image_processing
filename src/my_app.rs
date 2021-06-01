@@ -115,7 +115,7 @@ pub fn create_app() -> result::Result<(), MyError> {
     tab_control.end();
     */
     
-    let mut steps_line = ProcessingLine::new(wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
+    let mut steps_line = ProcessingLine::new(&wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
     steps_line.end();
 
     steps_line.run(app)?;
