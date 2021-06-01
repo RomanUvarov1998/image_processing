@@ -2,7 +2,8 @@ use std::path::{PathBuf};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
+use crate::filter::{CutBrightness, WindowFilter};
+use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -15,7 +16,8 @@ pub enum StepAction {
     LinearMean(LinearMean),
     LinearGauss(LinearGaussian),
     Median(MedianFilter),
-    HistogramLocalContrast(HistogramLocalContrast)
+    HistogramLocalContrast(HistogramLocalContrast),
+    CutBrightness(CutBrightness)
 }
 impl StepAction {
     fn edit_action_with_dlg(&self, app: app::App, step_editor: &mut StepEditor) -> StepAction {
@@ -55,6 +57,13 @@ impl StepAction {
                     None => StepAction::HistogramLocalContrast(old_filter.clone()),
                 }
             },
+            StepAction::CutBrightness(old_filter) => {
+                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
+                match res {
+                    Some(new_filter) => StepAction::CutBrightness(new_filter),
+                    None => StepAction::CutBrightness(old_filter.clone()),
+                }
+            },          
         }
     }
 
@@ -105,6 +114,7 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Добавить/Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinCustom);
         menu.add_emit("Добавить/Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
         menu.add_emit("Добавить/Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepHistogramLocalContrast);
+        menu.add_emit("Добавить/Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepCutBrightness);
         menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, Message::SaveResults);
         menu.end();
         
@@ -204,6 +214,12 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::AddStepHistogramLocalContrast => {
                         match self.step_editor.add_step_action_with_dlg(app, HistogramLocalContrast::default()) {
                             Some(filter) => self.add(StepAction::HistogramLocalContrast(filter)),
+                            None => {}
+                        }
+                    },
+                    Message::AddStepCutBrightness => {
+                        match self.step_editor.add_step_action_with_dlg(app, CutBrightness::default()) {
+                            Some(filter) => self.add(StepAction::CutBrightness(filter)),
                             None => {}
                         }
                     },
@@ -333,12 +349,6 @@ impl<'wind> ProcessingLine<'wind> {
             return Err(MyError::new("У всех шагов должны быть заданы фильтры".to_string()));
         }
 
-        // // check if all steps have images
-        // let all_steps_have_filter = self.steps.iter().all(|s| s.image.is_some());
-        // if !all_steps_have_filter {
-        //     return Err(MyError::new("У всех шагов должны быть вычислены результаты".to_string()));
-        // }
-
         // choose folder
         let mut chooser = dialog::FileChooser::new(
             ".","*", dialog::FileChooserType::Directory, 
@@ -371,6 +381,7 @@ impl<'wind> ProcessingLine<'wind> {
                 StepAction::LinearGauss(ref filter) => filter.content_to_string(),
                 StepAction::Median(ref filter) => filter.content_to_string(),
                 StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
+                StepAction::CutBrightness(ref filter) => filter.content_to_string(),
             };
 
             let mut file_path = path.clone();
@@ -516,7 +527,8 @@ impl ProcessingStep {
             StepAction::LinearMean(_) => "Линейный фильтр (усредняющий)".to_string(),
             StepAction::LinearGauss(_) => "Линейный фильтр (гауссовский)".to_string(),
             StepAction::Median(_) => "Медианный фильтр".to_string(),
-            StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string()
+            StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string(),
+            StepAction::CutBrightness(_) => "Вырезание яркости".to_string(),
         };
 
         let label = frame::Frame::default()
@@ -577,14 +589,16 @@ impl ProcessingStep {
                 match action {
                     StepAction::LinearCustom(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                        StepAction::LinearMean(ref mut filter) => 
+                    StepAction::LinearMean(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                        StepAction::LinearGauss(ref mut filter) => 
+                    StepAction::LinearGauss(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
                     StepAction::Median(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
                     StepAction::HistogramLocalContrast(ref mut filter) => 
                         (initial_img.processed_copy(filter), filter.w(), filter.h()),
+                    StepAction::CutBrightness(ref mut filter) => 
+                    (initial_img.processed_copy(filter), 0, 0),
                 }
             },
             None =>  return Err(MyError::new("В данном компоненте нет фильтра".to_string())) 

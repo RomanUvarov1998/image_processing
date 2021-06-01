@@ -1,26 +1,22 @@
 
 use crate::{img::{Img}, matrix2d::{Matrix2D}, my_err::MyError, pixel_pos::PixelPos, utils};
 
-pub trait Filter : Default + Clone {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img;
-    fn w(&self) -> usize;
-    fn h(&self) -> usize;
-    fn get_extend_value(&self) -> ExtendValue;
-}
-
-pub trait FilterIterable {
-    fn get_iterator(&self) -> FilterIterator;
-}
-
-pub trait WindowFilter {
-    fn process_window(&self, window_buffer: &mut [f64]) -> f64;
-}
-
 pub trait StringFromTo {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
     fn content_to_string(&self) -> String;
 }
 
+pub trait Filter : Default + Clone + StringFromTo {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img;
+}
+
+pub trait WindowFilter : Filter {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64;
+    fn w(&self) -> usize;
+    fn h(&self) -> usize;
+    fn get_extend_value(&self) -> ExtendValue;
+    fn get_iterator(&self) -> FilterIterator;
+}
 
 #[derive(Clone, Copy)]
 pub enum ExtendValue {
@@ -150,7 +146,7 @@ impl Iterator for FilterIterator {
 }
 
 
-fn filter_window<T: Filter + FilterIterable>(mut img: Img, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Img {
+fn filter_window<T: WindowFilter>(mut img: Img, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Img {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
 
@@ -203,16 +199,6 @@ impl LinearCustom {
     }
 }
 
-impl FilterIterable for LinearCustom {
-    fn get_iterator(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
-    }
-}
-
 impl WindowFilter for LinearCustom {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut sum: f64 = 0_f64;
@@ -224,12 +210,6 @@ impl WindowFilter for LinearCustom {
         
         sum
     }
-}
-
-impl Filter for LinearCustom {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, LinearCustom::process_window)
-    }
 
     fn w(&self) -> usize { self.width }
 
@@ -237,6 +217,20 @@ impl Filter for LinearCustom {
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
+    }
+
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl Filter for LinearCustom {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_window(img, self, LinearCustom::process_window)
     }
 }
 
@@ -340,33 +334,31 @@ impl WindowFilter for LinearMean {
         let sum: f64 = window_buffer.into_iter().map(|v| *v).sum();
         sum / (self.width * self.height) as f64
     }
-}
-
-impl Filter for LinearMean {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, Self::process_window)
-    }
 
     fn w(&self) -> usize { self.width }
 
     fn h(&self) -> usize { self.height }
 
     fn get_extend_value(&self) -> ExtendValue { self.extend_value }
-}
 
-impl Default for LinearMean {
-    fn default() -> Self {
-        LinearMean::new(3, 3, ExtendValue::Closest)
-    }
-}
-
-impl FilterIterable for LinearMean {
     fn get_iterator(&self) -> FilterIterator {
         FilterIterator {
             width: self.width,
             height: self.height,
             cur_pos: PixelPos::new(0, 0),
         }
+    }
+}
+
+impl Filter for LinearMean {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_window(img, self, Self::process_window)
+    }
+}
+
+impl Default for LinearMean {
+    fn default() -> Self {
+        LinearMean::new(3, 3, ExtendValue::Closest)
     }
 }
 
@@ -451,14 +443,6 @@ impl Filter for LinearGaussian {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
         filter_window(img, self, LinearGaussian::process_window)
     }
-
-    fn w(&self) -> usize { self.size }
-
-    fn h(&self) -> usize { self.size }
-
-    fn get_extend_value(&self) -> ExtendValue {
-        self.extend_value
-    }
 }
 
 impl WindowFilter for LinearGaussian {
@@ -469,9 +453,15 @@ impl WindowFilter for LinearGaussian {
         }
         sum
     }
-}
 
-impl FilterIterable for LinearGaussian {
+    fn w(&self) -> usize { self.size }
+
+    fn h(&self) -> usize { self.size }
+
+    fn get_extend_value(&self) -> ExtendValue {
+        self.extend_value
+    }
+
     fn get_iterator(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
@@ -528,16 +518,6 @@ impl MedianFilter {
     }
 }
 
-impl FilterIterable for MedianFilter {
-    fn get_iterator(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
-    }
-}
-
 impl WindowFilter for MedianFilter {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {        
         /*
@@ -574,12 +554,6 @@ impl WindowFilter for MedianFilter {
 
         window_buffer[med_ind]
     }
-}
-
-impl Filter for MedianFilter {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, MedianFilter::process_window)
-    }
 
     fn w(&self) -> usize { self.width }
 
@@ -587,6 +561,20 @@ impl Filter for MedianFilter {
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
+    }
+
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl Filter for MedianFilter {
+    fn filter(&self, img: crate::img::Img) -> crate::img::Img {
+        filter_window(img, self, MedianFilter::process_window)
     }
 }
 
@@ -707,17 +695,6 @@ impl HistogramLocalContrast {
     pub fn h(&self) -> usize { self.height }
 }
 
-impl FilterIterable for HistogramLocalContrast {
-    fn get_iterator(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
-    }
-}
-
-
 impl Filter for HistogramLocalContrast {
     fn filter(&self, img: Img) -> Img {
         let mut pixel_buf = Vec::<f64>::new();
@@ -730,8 +707,6 @@ impl Filter for HistogramLocalContrast {
         let mut hist_matrix = Matrix2D::empty(
             img.w() + self.w(), img.h() + self.h());
 
-        let mut hist_counts: [u32; 256_usize] = [0; 256_usize];
-
         for pos_im in img.get_area_iter(fil_half_size, 
             fil_half_size + PixelPos::new(img.h(), img.w())) 
         {
@@ -740,29 +715,8 @@ impl Filter for HistogramLocalContrast {
                 let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
                 pixel_buf[buf_ind] = ext_copy[pix_pos];
             }
-
-            //count histogram bins            
-            for v in &pixel_buf[..] {
-                hist_counts[(*v as u8) as usize] += 1;
-            }
-
-            //count min and max 
-            let mut max_value = hist_counts[0];
-            let mut min_value = hist_counts[0];
-            for v in &hist_counts[1..] {
-                if *v == 0 { continue; }
-                if max_value < *v { max_value = *v; }
-                if min_value < *v { min_value = *v; }
-            }
-
-            let val: f64;
-            if min_value == max_value {
-                val = 0_f64;
-            } else {
-                val = (max_value as f64 - min_value as f64) / max_value as f64;
-            }
             
-            hist_matrix[pos_im] = val;
+            hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
         }
 
         let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter);
@@ -817,13 +771,46 @@ impl Filter for HistogramLocalContrast {
 
         img_result
     }
+}
 
+impl WindowFilter for HistogramLocalContrast {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
+        //count histogram bins            
+        let mut hist_counts: [u32; 256_usize] = [0; 256_usize];
+        for v in &window_buffer[..] {
+            hist_counts[(*v as u8) as usize] += 1;
+        }
+
+        //count min and max 
+        let mut max_value = hist_counts[0];
+        let mut min_value = hist_counts[0];
+        for v in &hist_counts[1..] {
+            if *v == 0 { continue; }
+            if max_value < *v { max_value = *v; }
+            if min_value < *v { min_value = *v; }
+        }
+        
+        return if min_value == max_value {
+            0_f64
+        } else {
+            (max_value as f64 - min_value as f64) / max_value as f64
+        }
+    }
+    
     fn w(&self) -> usize { self.width }
 
     fn h(&self) -> usize { self.height }
 
     fn get_extend_value(&self) -> ExtendValue {
         self.ext_value
+    }
+
+    fn get_iterator(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
     }
 }
 
@@ -877,5 +864,81 @@ impl StringFromTo for HistogramLocalContrast {
 impl Default for HistogramLocalContrast {
     fn default() -> Self {
         HistogramLocalContrast::new(3, 3, ExtendValue::Closest, 3, AValues::new(0.5, 0.5))
+    }
+}
+
+
+#[derive(Clone)]
+pub struct CutBrightness {
+    br_min: u8,
+    br_max: u8,
+    replace_with: u8
+}
+
+impl CutBrightness {
+    pub fn new(br_min: u8, br_max: u8, replace_with: u8) -> Self {
+        assert!(br_min < br_max);
+        CutBrightness { br_min, br_max, replace_with }
+    }
+}
+
+impl Filter for CutBrightness {
+    fn filter(&self, mut img: crate::img::Img) -> crate::img::Img {
+        for pos in img.get_iterator() {
+            if img[pos] >= self.br_min as f64 && img[pos] <= self.br_max as f64 {
+                img[pos] = self.replace_with as f64
+            }
+        }
+        img
+    }
+}
+
+impl Default for CutBrightness {
+    fn default() -> Self {
+        Self::new(100, 200, 0)
+    }
+}
+
+impl StringFromTo for CutBrightness {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
+        let format_err_msg = "Должно быть 3 строки: 
+        'Min: <целое число между 0 и 255 включительно>', 
+        'Max: <целое число между 0 и 255 включительно>', 
+        'ReplaceWith: <целое число между 0 и 255 включительно>'".to_string();
+        
+        let lines = utils::text_to_lines(string);
+        if lines.len() != 3 { return Err(MyError::new(format_err_msg)); }
+
+        let words_br_min = utils::line_to_words(lines[0], " ");
+        if words_br_min.len() != 2 { return Err(MyError::new(format_err_msg)); }
+        if words_br_min[0] != "Min:" { return Err(MyError::new(format_err_msg)); }
+        let br_min = match words_br_min[1].parse::<u8>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(format_err_msg)); }
+        };
+        
+        let words_br_max = utils::line_to_words(lines[1], " ");
+        if words_br_max.len() != 2 { return Err(MyError::new(format_err_msg)); }
+        if words_br_max[0] != "Max:" { return Err(MyError::new(format_err_msg)); }
+        let br_max = match words_br_max[1].parse::<u8>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        if br_min > br_max { return Err(MyError::new(format_err_msg)); }
+        
+        let words_replace_with = utils::line_to_words(lines[2], " ");
+        if words_replace_with.len() != 2 { return Err(MyError::new(format_err_msg)); }
+        if words_replace_with[0] != "ReplaceWith:" { return Err(MyError::new(format_err_msg)); }
+        let replace_with = match words_replace_with[1].parse::<u8>() {
+            Ok(val) => val,
+            Err(_) => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        Ok(CutBrightness::new(br_min, br_max, replace_with))
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("Min: {}\nMax: {}\nReplaceWith: {}", self.br_min, self.br_max, self.replace_with)
     }
 }

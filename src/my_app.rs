@@ -14,6 +14,7 @@ pub enum Message {
     AddStepLinGauss, 
     AddStepMed, 
     AddStepHistogramLocalContrast, 
+    AddStepCutBrightness, 
     EditStep { step_num: usize }, 
     DeleteStep { step_num: usize },
     SaveProject,
