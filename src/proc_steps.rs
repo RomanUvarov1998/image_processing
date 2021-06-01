@@ -8,7 +8,6 @@ pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
 pub const BTN_HEIGHT: i32 = 30;
 pub const BTN_TEXT_PADDING: i32 = 10;
-const LEFT_MENU_WIDTH: i32 = 200;
 
 #[derive(Clone)]
 pub enum StepAction {
@@ -96,86 +95,44 @@ impl<'wind> ProcessingLine<'wind> {
     pub fn new(wind: &'wind window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
         wind.begin();
 
-        let mut left_menu = group::Pack::default()
-            .with_pos(x, y)
-            .with_size(LEFT_MENU_WIDTH, h);
-        left_menu.set_type(PackType::Vertical);
-
         let (sender, _) = app::channel::<Message>();
 
-        let mut label = frame::Frame::default()
-            .with_label("Редактирование шагов");
-        let (lw, lh) = label.measure_label();
-        label.set_size(std::cmp::min(lw, LEFT_MENU_WIDTH), lh);
-
-        let mut btn_add_step = menu::MenuButton::default()
-            .with_label("Добавить");
-        {
-            let (w, h) = btn_add_step.measure_label();
-            btn_add_step.set_size(w + PADDING, h + PADDING);
-        }
-        btn_add_step = btn_add_step.below_of(&label, PADDING);
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinMean);
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinGauss);
-        btn_add_step.add_emit("Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinCustom);
-        btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
-            sender, Message::AddStepHistogramLocalContrast);
-
-        btn_add_step.end();      
-
-        let mut btn_save_project = button::Button::default();
-        btn_save_project.set_label("Сохранить проект");
-        btn_save_project.emit(sender, Message::SaveProject);
-        {            
-            let (w, h) = btn_save_project.measure_label();
-            btn_save_project.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-        }       
-
-        let mut btn_load_project = button::Button::default();
-        btn_load_project.set_label("Зарузить проект");
-        btn_load_project.emit(sender, Message::LoadProject);
-        {            
-            let (w, h) = btn_load_project.measure_label();
-            btn_load_project.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-        }  
-
-        let mut btn_save_results = button::Button::default();
-        btn_save_results.set_label("Сохранить результаты");
-        btn_save_results.emit(sender, Message::SaveResults);
-        {            
-            let (w, h) = btn_save_results.measure_label();
-            btn_save_results.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-        }
-    
-        left_menu.end();
-
+        let mut menu = menu::SysMenuBar::default().with_size(800, 35);
+        menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, Message::LoadProject);
+        menu.add_emit("Проект/Сохранить как", Shortcut::None, menu::MenuFlag::Normal, sender, Message::SaveProject);
+        menu.add_emit("Добавить/Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinMean);
+        menu.add_emit("Добавить/Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinGauss);
+        menu.add_emit("Добавить/Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinCustom);
+        menu.add_emit("Добавить/Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
+        menu.add_emit("Добавить/Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepHistogramLocalContrast);
+        menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, Message::SaveResults);
+        menu.end();
+        
         let scroll_area = group::Scroll::default()
-            .with_pos(x + LEFT_MENU_WIDTH, y)
-            .with_size(w - LEFT_MENU_WIDTH, h);
+            .with_pos(x, y + menu.h())
+            .with_size(w, h - menu.h());
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x + LEFT_MENU_WIDTH, y)
-            .with_size(w - LEFT_MENU_WIDTH, h);
+            .with_pos(x, y + menu.h())
+            .with_size(w, h - menu.h());
             
         frame::Frame::default()
-            .with_size(w - LEFT_MENU_WIDTH, BTN_HEIGHT)
-            .with_label("Загрузка изображения");
+            .with_size(w, BTN_HEIGHT)
+            .with_label("Исходное изображение");
 
         let (sender, receiver) = app::channel::<Message>();
 
-        let mut btn = button::Button::default()
+        let mut btn_load_initial_img = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
             .with_label("Загрузить");
-        btn.emit(sender, Message::LoadImage );
-        
+        btn_load_initial_img.emit(sender, Message::LoadImage );        
         {
-            let (bw, bh) = btn.measure_label();
-            btn.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
+            let (bw, bh) = btn_load_initial_img.measure_label();
+            btn_load_initial_img.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
         }
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w - LEFT_MENU_WIDTH, h - BTN_HEIGHT * 2);
+            .with_size(w, h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
 
@@ -563,13 +520,13 @@ impl ProcessingStep {
         };
 
         let label = frame::Frame::default()
-            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT)
+            .with_size(proc_line.w, BTN_HEIGHT)
             .with_label(&name);  
 
         let (sender, _) = app::channel::<Message>();
 
         let mut hpack = group::Pack::default()
-            .with_size(proc_line.w - LEFT_MENU_WIDTH, BTN_HEIGHT); 
+            .with_size(proc_line.w, BTN_HEIGHT); 
         hpack.set_type(PackType::Horizontal);
         hpack.set_spacing(PADDING);
 
@@ -594,7 +551,7 @@ impl ProcessingStep {
         hpack.end();
             
         let mut frame_img = frame::Frame::default()
-            .with_size(proc_line.w - LEFT_MENU_WIDTH, proc_line.h - BTN_HEIGHT * 2);
+            .with_size(proc_line.w, proc_line.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);    
         

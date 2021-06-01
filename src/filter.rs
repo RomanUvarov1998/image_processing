@@ -439,6 +439,8 @@ impl LinearGaussian {
 
         let sum: f64 = coeffs.iter().map(|v| *v).sum();
 
+        for c in coeffs.iter_mut() { *c /= sum; }
+
         println!("sum {}", sum);
 
         LinearGaussian { size, extend_value, coeffs }
@@ -741,7 +743,7 @@ impl Filter for HistogramLocalContrast {
 
             //count histogram bins            
             for v in &pixel_buf[..] {
-                hist_counts[*v as usize] += 1;
+                hist_counts[(*v as u8) as usize] += 1;
             }
 
             //count min and max 
