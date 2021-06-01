@@ -17,6 +17,7 @@ pub enum Message {
     EditStep { step_num: usize }, 
     DeleteStep { step_num: usize },
     SaveProject,
+    LoadProject,
     SaveResults,
 }
 
@@ -25,7 +26,7 @@ pub fn create_app() -> result::Result<(), MyError> {
     let mut wind = window::Window::default()
         .with_size(WIN_WIDTH, WIN_HEIGHT)
         .center_screen()
-        .with_label("Main window");
+        .with_label("Обработка изображений");
     wind.set_damage_type(Damage::All | Damage::Child | Damage::Scroll);
     wind.end();
     wind.make_resizable(true);

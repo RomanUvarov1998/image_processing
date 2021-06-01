@@ -372,7 +372,10 @@ impl FilterIterable for LinearMean {
 
 impl StringFromTo for LinearMean {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-        let formar_err_msg = "Должно быть 3 строки: 'rows: <нечетное целое число число больше 2>', 'cols: <нечетное целое число число больше 2>', 'Ext: near/0'".to_string();
+        let formar_err_msg = "Должно быть 3 строки: 
+            'rows: <нечетное целое число число больше 2>', 
+            'cols: <нечетное целое число число больше 2>', 
+            'Ext: near/0'".to_string();
         
         let lines: Vec<&str> = utils::text_to_lines(string);
         if lines.len() != 3 { return Err(MyError::new(formar_err_msg)); }
@@ -587,37 +590,45 @@ impl Filter for MedianFilter {
 
 impl StringFromTo for MedianFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let format_err_msg = "Должно быть 3 строки: 
+            'rows: <нечетное целое число число больше 2>', 
+            'cols: <нечетное целое число число больше 2>', 
+            'Ext: near/0'".to_string();
+
         let lines: Vec<&str> = utils::text_to_lines(string);
-        if lines.len() != 1 {
-            return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
-        }
-
-        let format_err_msg = "Формат (кол-во строк (целое число > 2), кол-во столбцов (число > 2), граничные условия): 'X, X, Ext: near/0'.".to_string();
-
-        let words: Vec<&str> = utils::line_to_words(lines[0], ",");
-        if words.len() != 3 {
+        if lines.len() != 3 {
             return Err(MyError::new(format_err_msg));
         }
 
-        let height = match words[0].parse::<usize>() {
+        let height_words: Vec<&str> = utils::line_to_words(lines[0], " ");
+        if height_words.len() != 2 {
+            return Err(MyError::new(format_err_msg));
+        }
+        if height_words[0] != "rows:" { return Err(MyError::new(format_err_msg)); }
+        let height = match height_words[1].parse::<usize>() {
             Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
         if height < 3 { return Err(MyError::new(format_err_msg)); }
 
-        let width = match words[1].parse::<usize>() {
+        let width_words: Vec<&str> = utils::line_to_words(lines[1], " ");
+        if width_words.len() != 2 {
+            return Err(MyError::new(format_err_msg));
+        }
+        if width_words[0] != "cols:" { return Err(MyError::new(format_err_msg)); }
+        let width = match width_words[1].parse::<usize>() {
             Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
         if width < 3 { return Err(MyError::new(format_err_msg)); }
 
-        let ext_value = ExtendValue::try_from_string(words[2])?;
+        let ext_value = ExtendValue::try_from_string(lines[2])?;
 
         return Ok(MedianFilter::new(width, height, ext_value));
     }
 
     fn content_to_string(&self) -> String {
-        format!("{}, {}, {}", self.height, self.width, self.extend_value.content_to_string())
+        format!("rows: {}\ncols: {}\n{}", self.height, self.width, self.extend_value.content_to_string())
     }
 }
 
@@ -816,42 +827,48 @@ impl Filter for HistogramLocalContrast {
 
 impl StringFromTo for HistogramLocalContrast {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
+        let format_err_msg = "Должно быть 4 строки: 
+        'rows: <нечетное целое число число больше 2>', 
+        'cols: <нечетное целое число число больше 2>', 
+        'Ext: near/0', 
+        'AMin: <дробное число х.хх>, AMax: <дробное число х.хх>'".to_string();
+
         let lines: Vec<&str> = utils::text_to_lines(string);
-        if lines.len() != 1 {
-            return Err(MyError::new("Должна быть 1 строка. Формат (кол-во строк, кол-во столбцов): 'X, X'.".to_string()));
-        }
-
-        let format_err_msg = "Формат (кол-во строк (число), кол-во столбцов (число), граничные условия): 'X, X, Ext: near/0'.".to_string();
-
-        let words: Vec<&str> = utils::line_to_words(lines[0], ",");
-        if words.len() != 5 {
+        if lines.len() != 4 {
             return Err(MyError::new(format_err_msg));
         }
 
-        let height = match words[0].parse::<usize>() {
+        let height_words: Vec<&str> = utils::line_to_words(lines[0], " ");
+        if height_words.len() != 2 {
+            return Err(MyError::new(format_err_msg));
+        }
+        if height_words[0] != "rows:" { return Err(MyError::new(format_err_msg)); }
+        let height = match height_words[1].parse::<usize>() {
             Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
         if height < 3 { return Err(MyError::new(format_err_msg)); }
 
-        let width = match words[1].parse::<usize>() {
+        let width_words: Vec<&str> = utils::line_to_words(lines[1], " ");
+        if width_words.len() != 2 {
+            return Err(MyError::new(format_err_msg));
+        }
+        if width_words[0] != "cols:" { return Err(MyError::new(format_err_msg)); }
+        let width = match width_words[1].parse::<usize>() {
             Err(_) => return Err(MyError::new(format_err_msg)),
             Ok(val) => val
         };
         if width < 3 { return Err(MyError::new(format_err_msg)); }
 
-        let ext_value = ExtendValue::try_from_string(words[2])?;
+        let ext_value = ExtendValue::try_from_string(lines[2])?;
 
-        let mut a_values_str = words[3].to_string();
-        a_values_str.push_str(", ");
-        a_values_str.push_str(words[4]);
-        let a_values = AValues::try_from_string(&a_values_str)?;
+        let a_values = AValues::try_from_string(&lines[3])?;
 
         return Ok(HistogramLocalContrast::new(width, height, ext_value, 3, a_values ));
     }
     
     fn content_to_string(&self) -> String {
-        format!("{}, {}, {}, {}", self.height, self.width, self.ext_value.content_to_string(), self.a_values.content_to_string())
+        format!("rows: {}\ncols: {}\n{}\n{}", self.height, self.width, self.ext_value.content_to_string(), self.a_values.content_to_string())
     }
 }
 

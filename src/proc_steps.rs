@@ -1,7 +1,8 @@
-use std::{fs::{self, File}, io::Write, result};
+use std::path::{PathBuf};
+use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg, info_msg}, step_editor::StepEditor};
+use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -57,6 +58,27 @@ impl StepAction {
             },
         }
     }
+
+    fn try_parce(string: &str) -> Option<Self> {
+        if let Ok(filter) = LinearCustom::try_from_string(string) {
+            Some(StepAction::LinearCustom(filter))
+        } 
+        else if let Ok(filter) = LinearMean::try_from_string(string) {
+            Some(StepAction::LinearMean(filter))
+        } 
+        else if let Ok(filter) = LinearGaussian::try_from_string(string) {
+            Some(StepAction::LinearGauss(filter))
+        } 
+        else if let Ok(filter) = LinearMean::try_from_string(string) {
+            Some(StepAction::LinearMean(filter))
+        } 
+        else if let Ok(filter) = HistogramLocalContrast::try_from_string(string) {
+            Some(StepAction::HistogramLocalContrast(filter))
+        } 
+        else {
+            None
+        }
+    }
 }
 
 pub struct ProcessingLine<'wind> {
@@ -100,7 +122,7 @@ impl<'wind> ProcessingLine<'wind> {
         btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, 
             sender, Message::AddStepHistogramLocalContrast);
 
-        btn_add_step.end();        
+        btn_add_step.end();      
 
         let mut btn_save_project = button::Button::default();
         btn_save_project.set_label("Сохранить проект");
@@ -108,6 +130,14 @@ impl<'wind> ProcessingLine<'wind> {
         {            
             let (w, h) = btn_save_project.measure_label();
             btn_save_project.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        }       
+
+        let mut btn_load_project = button::Button::default();
+        btn_load_project.set_label("Зарузить проект");
+        btn_load_project.emit(sender, Message::LoadProject);
+        {            
+            let (w, h) = btn_load_project.measure_label();
+            btn_load_project.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
         }  
 
         let mut btn_save_results = button::Button::default();
@@ -228,31 +258,16 @@ impl<'wind> ProcessingLine<'wind> {
                             }
                         };
                     },
-                    Message::DeleteStep { step_num } => {
-                        self.scroll_pack.begin();
-                        self.scroll_pack.remove(&self.steps[step_num].hpack);
-                        self.scroll_pack.remove(&self.steps[step_num].btn_process);
-                        self.scroll_pack.remove(&self.steps[step_num].btn_edit);
-                        self.scroll_pack.remove(&self.steps[step_num].btn_delete);
-                        self.scroll_pack.remove(&self.steps[step_num].frame_img);
-                        self.scroll_pack.remove(&self.steps[step_num].label_step_name);
-                        self.scroll_pack.end();
-                        self.steps.remove(step_num);
-                        
-                        let (sender, _) = app::channel::<Message>();
-
-                        for i in step_num..self.steps.len() {
-                            self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
-                            self.steps[i].btn_edit.emit(sender, Message::EditStep { step_num: i } );
-                            self.steps[i].btn_delete.emit(sender, Message::DeleteStep { step_num: i } );
-                            self.steps[i].label_step_name.redraw_label();
-                            self.steps[i].frame_img.set_damage(true);
-                        }
-                        self.scroll_pack.top_window().unwrap().set_damage(true);
-                    }
+                    Message::DeleteStep { step_num } => self.delete_step(step_num),
                     Message::SaveProject => {
                         match self.try_save_project() {
                             Ok(_) => info_msg(&self.parent_window, "Проект успешно сохранен"),
+                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                        }
+                    },
+                    Message::LoadProject => {
+                        match self.try_load_project() {
+                            Ok(_) => info_msg(&self.parent_window, "Проект успешно загружен"),
                             Err(err) => err_msg(&self.parent_window, &err.get_message()),
                         }
                     },
@@ -268,6 +283,29 @@ impl<'wind> ProcessingLine<'wind> {
         }
     
         Ok(())
+    }
+
+    fn delete_step(&mut self, step_num: usize) {
+        self.scroll_pack.begin();
+        self.scroll_pack.remove(&self.steps[step_num].hpack);
+        self.scroll_pack.remove(&self.steps[step_num].btn_process);
+        self.scroll_pack.remove(&self.steps[step_num].btn_edit);
+        self.scroll_pack.remove(&self.steps[step_num].btn_delete);
+        self.scroll_pack.remove(&self.steps[step_num].frame_img);
+        self.scroll_pack.remove(&self.steps[step_num].label_step_name);
+        self.scroll_pack.end();
+        self.steps.remove(step_num);
+        
+        let (sender, _) = app::channel::<Message>();
+
+        for i in step_num..self.steps.len() {
+            self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
+            self.steps[i].btn_edit.emit(sender, Message::EditStep { step_num: i } );
+            self.steps[i].btn_delete.emit(sender, Message::DeleteStep { step_num: i } );
+            self.steps[i].label_step_name.redraw_label();
+            self.steps[i].frame_img.set_damage(true);
+        }
+        self.scroll_pack.top_window().unwrap().set_damage(true);
     }
 
     fn try_load(&mut self) -> result::Result<(), MyError> {
@@ -393,6 +431,66 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
     
+    fn try_load_project(&mut self) -> result::Result<(), MyError> {
+        if self.steps.len() > 0 && confirm(self.parent_window,
+             "Есть несохраненный проект. Открыть вместо него?") 
+        {
+            while self.steps.len() > 0 {
+                self.delete_step(0);
+            }
+        }
+
+        // choose folder
+        let mut chooser = dialog::FileChooser::new(
+            ".","*", dialog::FileChooserType::Directory, 
+            "Выберите папку для загрузки");
+        chooser.show();
+        while chooser.shown() { app::wait(); }
+        if chooser.value(1).is_none() {
+            return Ok(());
+        }
+        
+        let dir_path = chooser.directory().unwrap();    
+
+        let mut step_num = 0;
+        loop {
+            let file_path_str = format!("{}/{}.txt", &dir_path, step_num + 1);
+            let file_path = PathBuf::from(file_path_str);
+
+            if !file_path.exists() { 
+                break; 
+            }
+
+            let mut file = match File::open(file_path) {
+                Ok(f) => f,
+                Err(err) => { return Err(MyError::new(err.to_string())); }
+            };
+
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+
+            if let Some(step_action) = StepAction::try_parce(&content) 
+            {
+                self.add(step_action);
+            } 
+            else 
+            {
+                if !confirm(self.parent_window, "Не удалось прочитать фильтр из файла. Оставить загруженное?
+                    Да - оставить, Нет - удалить.")
+                {
+                    while self.steps.len() > 0 {
+                        self.delete_step(0);
+                    }
+                } 
+                return Ok(());
+            }
+
+            step_num += 1;
+        }
+
+        Ok(())
+    }
+
     fn try_save_results(&self) -> result::Result<(), MyError> {
         // check if there are any steps
         if self.steps.len() == 0 {
