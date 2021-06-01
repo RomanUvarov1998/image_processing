@@ -1,4 +1,4 @@
-use std::{io::Write, ops::{Index, IndexMut}, path::PathBuf, result};
+use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 
 use fltk::{image, prelude::ImageExt};
 use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};

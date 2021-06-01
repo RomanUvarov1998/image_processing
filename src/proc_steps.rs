@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::Write, path::PathBuf, result};
+use std::{fs::{self, File}, io::Write, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::{filter::{Filter, HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, err_msg, info_msg}, step_editor::StepEditor};
@@ -384,7 +384,7 @@ impl ProcessingLine {
                 Err(err) => { return Err(MyError::new(err.to_string())); }
             };
 
-            file.write_all(filter_content.as_bytes())?;
+            file.write_all(&filter_content.as_bytes())?;
             file.sync_all()?;
         }
 
