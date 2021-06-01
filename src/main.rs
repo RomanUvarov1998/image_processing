@@ -3,9 +3,12 @@ use std::{
 };
 
 mod my_err;
-mod filter;
-mod proc_steps;
 use my_err::MyError;
+
+mod filter;
+mod filter_option;
+mod filter_trait;
+mod proc_steps;
 
 mod my_app;
 mod img;

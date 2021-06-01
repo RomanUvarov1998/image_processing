@@ -1,115 +1,5 @@
 
-use crate::{img::{Img}, matrix2d::{Matrix2D}, my_err::MyError, pixel_pos::PixelPos, utils};
-
-pub trait StringFromTo {
-    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
-    fn content_to_string(&self) -> String;
-}
-
-pub trait Filter : Default + Clone + StringFromTo {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img;
-}
-
-pub trait WindowFilter : Filter {
-    fn process_window(&self, window_buffer: &mut [f64]) -> f64;
-    fn w(&self) -> usize;
-    fn h(&self) -> usize;
-    fn get_extend_value(&self) -> ExtendValue;
-    fn get_iterator(&self) -> FilterIterator;
-}
-
-#[derive(Clone, Copy)]
-pub enum ExtendValue {
-    Closest,
-    Given(f64)
-}
-
-impl StringFromTo for ExtendValue {
-    fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let ext_words: Vec<&str> = utils::line_to_words(string, " ");
-
-        let foemat_err_msg = "После матрицы должны быть указаны граничные условия: 'Ext: near' или 'Ext: 0'".to_string();
-
-        if ext_words.len() != 2 {
-            return Err(MyError::new(foemat_err_msg));
-        }
-
-        if ext_words[0] != "Ext:" {
-            return Err(MyError::new(foemat_err_msg));
-        }
-
-        let ext_value = match ext_words[1] {
-            "0" => ExtendValue::Given(0_f64),
-            "near" => ExtendValue::Closest,
-            _ => { return Err(MyError::new(foemat_err_msg)); }
-        };
-
-        Ok(ext_value)
-    }
-
-    fn content_to_string(&self) -> String {
-        match self {
-            ExtendValue::Closest => "Ext: near".to_string(),
-            ExtendValue::Given(val) => format!("Ext: {}", val)
-        }        
-    }
-}
-
-
-#[derive(Clone, Copy)]
-pub enum NormalizeOption {
-    Normalized,
-    NotNormalized
-}
-
-impl NormalizeOption {
-    fn normalize(&self, values: &mut [f64]) {
-        match self {            
-            NormalizeOption::Normalized => {
-                let mut sum = 0_f64;
-        
-                for v in values.iter() { sum += v; }
-                
-                if f64::abs(sum) > f64::EPSILON{
-                    for v in values.iter_mut() { *v /= sum; }
-                }
-            }
-            NormalizeOption::NotNormalized => {}
-        }
-    }
-}
-
-impl StringFromTo for NormalizeOption {
-    fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let ext_words: Vec<&str> = utils::line_to_words(string, " ");
-
-        let format_err_msg = "После граничных условий должно быть указано условие нормализации коэффициентов: 'Normalize: true' или 'Normalize: false'".to_string();
-
-        if ext_words.len() != 2 {
-            return Err(MyError::new(format_err_msg));
-        }
-
-        if ext_words[0] != "Normalize:" {
-            return Err(MyError::new(format_err_msg));
-        }
-
-        let norm = match ext_words[1] {
-            "true" => NormalizeOption::Normalized,
-            "false" => NormalizeOption::NotNormalized,
-            _ => { return Err(MyError::new(format_err_msg)); }
-        };
-
-        Ok(norm)
-    }
-
-    fn content_to_string(&self) -> String {
-        match self {
-            NormalizeOption::Normalized => "Normalize: true".to_string(),
-            NormalizeOption::NotNormalized => "Normalize: false".to_string()
-        }        
-    }
-}
-
+use crate::{filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{Filter, StringFromTo, WindowFilter}, img::{Img}, matrix2d::{Matrix2D}, my_err::MyError, pixel_pos::PixelPos, utils};
 
 pub struct FilterIterator {
     width: usize,
@@ -318,33 +208,32 @@ impl Default for LinearCustom {
 
 #[derive(Clone)]
 pub struct LinearMean {
-    width: usize,
-    height: usize,
+    size: FilterWindowSize,
     extend_value: ExtendValue
 }
 
 impl LinearMean {
-    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {
-        LinearMean { width, height, extend_value }
+    pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {
+        LinearMean { size, extend_value }
     }
 }
 
 impl WindowFilter for LinearMean {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let sum: f64 = window_buffer.into_iter().map(|v| *v).sum();
-        sum / (self.width * self.height) as f64
+        sum / (self.w() * self.h()) as f64
     }
 
-    fn w(&self) -> usize { self.width }
+    fn w(&self) -> usize { self.size.width }
 
-    fn h(&self) -> usize { self.height }
+    fn h(&self) -> usize { self.size.height }
 
     fn get_extend_value(&self) -> ExtendValue { self.extend_value }
 
     fn get_iterator(&self) -> FilterIterator {
         FilterIterator {
-            width: self.width,
-            height: self.height,
+            width: self.w(),
+            height: self.h(),
             cur_pos: PixelPos::new(0, 0),
         }
     }
@@ -358,71 +247,52 @@ impl Filter for LinearMean {
 
 impl Default for LinearMean {
     fn default() -> Self {
-        LinearMean::new(3, 3, ExtendValue::Closest)
+        LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Closest)
     }
 }
 
 impl StringFromTo for LinearMean {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-        let formar_err_msg = "Должно быть 3 строки: 
-            'rows: <нечетное целое число число больше 2>', 
-            'cols: <нечетное целое число число больше 2>', 
-            'Ext: near/0'".to_string();
-        
         let lines: Vec<&str> = utils::text_to_lines(string);
-        if lines.len() != 3 { return Err(MyError::new(formar_err_msg)); }
+        if lines.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let height_words: Vec<&str> = utils::line_to_words(lines[0], " ");
-        if height_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
-        if height_words[0] != "rows:" { return Err(MyError::new(formar_err_msg)); }
-        let height = match height_words[1].parse::<usize>() {
-            Ok(val) => val,
-            Err(_) => { return Err(MyError::new(formar_err_msg)); }
-        };
-        if height % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
-        if height < 3 { return Err(MyError::new(formar_err_msg)); }
+        let size = FilterWindowSize::try_from_string(lines[0])?
+            .check_size_be_3()?
+            .check_w_equals_h()?
+            .check_w_h_odd()?;
 
-        let width_words: Vec<&str> = utils::line_to_words(lines[1], " ");
-        if width_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
-        if width_words[0] != "cols:" { return Err(MyError::new(formar_err_msg)); }
-        let width = match width_words[1].parse::<usize>() {
-            Ok(val) => val,
-            Err(_) => { return Err(MyError::new(formar_err_msg)); }
-        };
-        if width % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
-        if width < 3 { return Err(MyError::new(formar_err_msg)); }
+        let ext_value: ExtendValue = ExtendValue::try_from_string(&lines[1])?;
 
-        let ext_value: ExtendValue = ExtendValue::try_from_string(&lines[2])?;
-
-        Ok(LinearMean::new(width, height, ext_value))
+        Ok(LinearMean::new(size, ext_value))
     }
 
     fn content_to_string(&self) -> String {
-        format!("rows: {}\ncols: {}\n{}", self.height, self.width, self.extend_value.content_to_string())
+        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
     }
 }
 
 
 #[derive(Clone)]
 pub struct LinearGaussian {
-    size: usize,
+    size: FilterWindowSize,
     extend_value: ExtendValue,
     coeffs: Vec<f64>
 }
 
 impl LinearGaussian {
-    pub fn new(size: usize, extend_value: ExtendValue) -> Self {
-        assert_eq!(size % 2, 1);
+    pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {
+        assert_eq!(size.width % 2, 1);
+        assert_eq!(size.width, size.height);
 
         let mut coeffs = Vec::<f64>::new();
-        coeffs.resize(size * size, 0_f64);
-        let r = size / 2;
+        coeffs.resize(size.width * size.height, 0_f64);
+        let r = size.width / 2;
         let one_over_pi: f64 = 1_f64 / 3.14159265359_f64;
         let one_over_2_r_squared: f64 =  1_f64 / (2_f64 * f64::powi(r as f64, 2));
 
-        for row in 0..size {
-            for col in 0..size {
-                coeffs[row * size + col] = one_over_pi * one_over_2_r_squared 
+        for row in 0..size.width {
+            for col in 0..size.width {
+                coeffs[row * size.width + col] = one_over_pi * one_over_2_r_squared 
                     * f64::exp(
                         -(f64::powi(col as f64, 2) + f64::powi(row as f64, 2)) 
                         * one_over_2_r_squared);
@@ -432,8 +302,6 @@ impl LinearGaussian {
         let sum: f64 = coeffs.iter().map(|v| *v).sum();
 
         for c in coeffs.iter_mut() { *c /= sum; }
-
-        println!("sum {}", sum);
 
         LinearGaussian { size, extend_value, coeffs }
     }
@@ -454,9 +322,9 @@ impl WindowFilter for LinearGaussian {
         sum
     }
 
-    fn w(&self) -> usize { self.size }
+    fn w(&self) -> usize { self.size.width }
 
-    fn h(&self) -> usize { self.size }
+    fn h(&self) -> usize { self.size.height }
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
@@ -473,26 +341,19 @@ impl WindowFilter for LinearGaussian {
 
 impl Default for LinearGaussian {
     fn default() -> Self {
-        LinearGaussian::new(5, ExtendValue::Closest)
+        LinearGaussian::new(FilterWindowSize::new(5, 5), ExtendValue::Closest)
     }
 }
 
 impl StringFromTo for LinearGaussian {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-        let formar_err_msg = "Должно быть 2 строки: 'size: <нечетное целое число больше 2>', 'Ext: near/0'".to_string();
-        
         let lines: Vec<&str> = utils::text_to_lines(string);
-        if lines.len() != 2 { return Err(MyError::new(formar_err_msg)); }
+        if lines.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let size_words: Vec<&str> = utils::line_to_words(lines[0], " ");
-        if size_words.len() != 2 { return Err(MyError::new(formar_err_msg)); }
-        if size_words[0] != "size:" { return Err(MyError::new(formar_err_msg)); }
-        let size = match size_words[1].parse::<usize>() {
-            Ok(val) => val,
-            Err(_) => { return Err(MyError::new(formar_err_msg)); }
-        };
-        if size % 2 == 0 { return Err(MyError::new(formar_err_msg)); }
-        if size < 3 { return Err(MyError::new(formar_err_msg)); }
+        let size = FilterWindowSize::try_from_string(lines[0])?
+            .check_size_be_3()?
+            .check_w_equals_h()?
+            .check_w_h_odd()?;
 
         let ext_value: ExtendValue = ExtendValue::try_from_string(&lines[1])?;
 
@@ -500,21 +361,20 @@ impl StringFromTo for LinearGaussian {
     }
 
     fn content_to_string(&self) -> String {
-        format!("size: {}\n{}", self.size, self.extend_value.content_to_string())
+        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
     }
 }
 
 
 #[derive(Clone)]
 pub struct MedianFilter {
-    width: usize,
-    height: usize,
+    size: FilterWindowSize,
     extend_value: ExtendValue
 }
 
 impl MedianFilter {
-    pub fn new(width: usize, height: usize, extend_value: ExtendValue) -> Self {        
-        MedianFilter { width, height, extend_value }
+    pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {        
+        MedianFilter { size, extend_value }
     }
 }
 
@@ -555,9 +415,9 @@ impl WindowFilter for MedianFilter {
         window_buffer[med_ind]
     }
 
-    fn w(&self) -> usize { self.width }
+    fn w(&self) -> usize { self.size.width }
 
-    fn h(&self) -> usize { self.height }
+    fn h(&self) -> usize { self.size.height }
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
@@ -580,51 +440,27 @@ impl Filter for MedianFilter {
 
 impl StringFromTo for MedianFilter {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let format_err_msg = "Должно быть 3 строки: 
-            'rows: <нечетное целое число число больше 2>', 
-            'cols: <нечетное целое число число больше 2>', 
-            'Ext: near/0'".to_string();
-
         let lines: Vec<&str> = utils::text_to_lines(string);
-        if lines.len() != 3 {
-            return Err(MyError::new(format_err_msg));
-        }
+        if lines.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let height_words: Vec<&str> = utils::line_to_words(lines[0], " ");
-        if height_words.len() != 2 {
-            return Err(MyError::new(format_err_msg));
-        }
-        if height_words[0] != "rows:" { return Err(MyError::new(format_err_msg)); }
-        let height = match height_words[1].parse::<usize>() {
-            Err(_) => return Err(MyError::new(format_err_msg)),
-            Ok(val) => val
-        };
-        if height < 3 { return Err(MyError::new(format_err_msg)); }
+        let size = FilterWindowSize::try_from_string(lines[0])?
+            .check_size_be_3()?
+            .check_w_equals_h()?
+            .check_w_h_odd()?;
 
-        let width_words: Vec<&str> = utils::line_to_words(lines[1], " ");
-        if width_words.len() != 2 {
-            return Err(MyError::new(format_err_msg));
-        }
-        if width_words[0] != "cols:" { return Err(MyError::new(format_err_msg)); }
-        let width = match width_words[1].parse::<usize>() {
-            Err(_) => return Err(MyError::new(format_err_msg)),
-            Ok(val) => val
-        };
-        if width < 3 { return Err(MyError::new(format_err_msg)); }
+        let ext_value = ExtendValue::try_from_string(lines[1])?;
 
-        let ext_value = ExtendValue::try_from_string(lines[2])?;
-
-        return Ok(MedianFilter::new(width, height, ext_value));
+        return Ok(MedianFilter::new(size, ext_value));
     }
 
     fn content_to_string(&self) -> String {
-        format!("rows: {}\ncols: {}\n{}", self.height, self.width, self.extend_value.content_to_string())
+        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
     }
 }
 
 impl Default for MedianFilter {
     fn default() -> Self {
-        MedianFilter::new(3, 3, ExtendValue::Closest)
+        MedianFilter::new(FilterWindowSize::new(3, 3), ExtendValue::Closest)
     }
 }
 
@@ -679,14 +515,13 @@ impl StringFromTo for AValues {
 }
 
 impl HistogramLocalContrast {
-    pub fn new(width: usize, height: usize, ext_value: ExtendValue, mean_filter_size: usize, 
-        a_values: AValues) -> Self 
+    pub fn new(width: usize, height: usize, ext_value: ExtendValue, a_values: AValues) -> Self 
     {
         HistogramLocalContrast { 
             width, 
             height, 
             ext_value, 
-            mean_filter: LinearMean::new(mean_filter_size, mean_filter_size, ExtendValue::Given(0_f64)),
+            mean_filter: LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Given(0_f64)),
             a_values
         }
     }
@@ -853,7 +688,7 @@ impl StringFromTo for HistogramLocalContrast {
 
         let a_values = AValues::try_from_string(&lines[3])?;
 
-        return Ok(HistogramLocalContrast::new(width, height, ext_value, 3, a_values ));
+        return Ok(HistogramLocalContrast::new(width, height, ext_value, a_values));
     }
     
     fn content_to_string(&self) -> String {
@@ -863,7 +698,7 @@ impl StringFromTo for HistogramLocalContrast {
 
 impl Default for HistogramLocalContrast {
     fn default() -> Self {
-        HistogramLocalContrast::new(3, 3, ExtendValue::Closest, 3, AValues::new(0.5, 0.5))
+        HistogramLocalContrast::new(3, 3, ExtendValue::Closest, AValues::new(0.5, 0.5))
     }
 }
 

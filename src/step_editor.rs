@@ -1,5 +1,6 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
-use crate::{filter::{StringFromTo}};
+
+use crate::filter_trait::StringFromTo;
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;

@@ -2,8 +2,9 @@ use std::path::{PathBuf};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::filter::{CutBrightness, WindowFilter};
-use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter, StringFromTo}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
+use crate::filter::{CutBrightness};
+use crate::filter_trait::{StringFromTo, WindowFilter};
+use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;

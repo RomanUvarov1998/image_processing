@@ -1,7 +1,7 @@
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 
 use fltk::{image, prelude::ImageExt};
-use crate::{filter::{self, ExtendValue}, my_err::MyError, pixel_pos::PixelPos};
+use crate::{filter_option::ExtendValue, filter_trait::Filter, my_err::MyError, pixel_pos::PixelPos};
 
 #[derive(Clone)]
 pub struct Img {
@@ -212,7 +212,7 @@ impl Img {
         img
     }
 
-    pub fn processed_copy<T: filter::Filter>(&self, filter: &T) -> Self {
+    pub fn processed_copy<T: Filter>(&self, filter: &T) -> Self {
         let result_img = self.clone();
         filter.filter(result_img)
     }
