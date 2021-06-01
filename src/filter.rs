@@ -12,8 +12,8 @@ pub trait FilterIterable {
     fn get_iterator(&self) -> FilterIterator;
 }
 
-pub trait FilterBuffered {
-    fn filter_buffer(&self, fragment: &mut [f64]) -> f64;
+pub trait WindowFilter {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64;
 }
 
 pub trait StringFromTo {
@@ -213,13 +213,13 @@ impl FilterIterable for LinearCustom {
     }
 }
 
-impl FilterBuffered for LinearCustom {
-    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
+impl WindowFilter for LinearCustom {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut sum: f64 = 0_f64;
 
         for pos in self.get_iterator() {
             let ind = pos.row * self.width + pos.col;
-            sum += fragment[ind] * self.arr[ind];
+            sum += window_buffer[ind] * self.arr[ind];
         }
         
         sum
@@ -228,7 +228,7 @@ impl FilterBuffered for LinearCustom {
 
 impl Filter for LinearCustom {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, LinearCustom::filter_buffer)
+        filter_window(img, self, LinearCustom::process_window)
     }
 
     fn w(&self) -> usize { self.width }
@@ -335,16 +335,16 @@ impl LinearMean {
     }
 }
 
-impl FilterBuffered for LinearMean {
-    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
-        let sum: f64 = fragment.into_iter().map(|v| *v).sum();
+impl WindowFilter for LinearMean {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
+        let sum: f64 = window_buffer.into_iter().map(|v| *v).sum();
         sum / (self.width * self.height) as f64
     }
 }
 
 impl Filter for LinearMean {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, Self::filter_buffer)
+        filter_window(img, self, Self::process_window)
     }
 
     fn w(&self) -> usize { self.width }
@@ -449,7 +449,7 @@ impl LinearGaussian {
 
 impl Filter for LinearGaussian {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, LinearGaussian::filter_buffer)
+        filter_window(img, self, LinearGaussian::process_window)
     }
 
     fn w(&self) -> usize { self.size }
@@ -461,11 +461,11 @@ impl Filter for LinearGaussian {
     }
 }
 
-impl FilterBuffered for LinearGaussian {
-    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {
+impl WindowFilter for LinearGaussian {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut sum = 0_f64;
         for pos in self.get_iterator() {
-            sum += fragment[pos.row * self.w() + pos.col] * self.coeffs[pos.row * self.w() + pos.col];
+            sum += window_buffer[pos.row * self.w() + pos.col] * self.coeffs[pos.row * self.w() + pos.col];
         }
         sum
     }
@@ -538,30 +538,30 @@ impl FilterIterable for MedianFilter {
     }
 }
 
-impl FilterBuffered for MedianFilter {
-    fn filter_buffer(&self, fragment: &mut [f64]) -> f64 {        
+impl WindowFilter for MedianFilter {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {        
         /*
         * Algorithm from N. Wirth's book, implementation by N. Devillard.
         * This code in public domain.
         */
         let mut outer_beg: usize = 0;
-        let mut outer_end: usize = fragment.len() - 1;
+        let mut outer_end: usize = window_buffer.len() - 1;
         let mut inner_beg: usize;
         let mut inner_end: usize;
-        let med_ind: usize = fragment.len() / 2;
+        let med_ind: usize = window_buffer.len() / 2;
         let mut median: f64;
         
         while outer_beg < outer_end {
-            median = fragment[med_ind];
+            median = window_buffer[med_ind];
             inner_beg = outer_beg;
             inner_end = outer_end;
             
             loop {
-                while fragment[inner_beg] < median { inner_beg += 1; }
-                while median < fragment[inner_end] { inner_end -= 1; }
+                while window_buffer[inner_beg] < median { inner_beg += 1; }
+                while median < window_buffer[inner_end] { inner_end -= 1; }
 
                 if inner_beg <= inner_end {
-                    fragment.swap(inner_beg, inner_end);
+                    window_buffer.swap(inner_beg, inner_end);
                     inner_beg += 1; inner_end -= 1;
                 }
 
@@ -572,13 +572,13 @@ impl FilterBuffered for MedianFilter {
             if med_ind < inner_beg { outer_end = inner_end; }
         }
 
-        fragment[med_ind]
+        window_buffer[med_ind]
     }
 }
 
 impl Filter for MedianFilter {
     fn filter(&self, img: crate::img::Img) -> crate::img::Img {
-        filter_window(img, self, MedianFilter::filter_buffer)
+        filter_window(img, self, MedianFilter::process_window)
     }
 
     fn w(&self) -> usize { self.width }
