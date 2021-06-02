@@ -2,9 +2,8 @@ use std::path::{PathBuf};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::filter::{CutBrightness};
-use crate::filter_trait::{StringFromTo, WindowFilter};
-use crate::{filter::{HistogramLocalContrast, LinearCustom, LinearGaussian, LinearMean, MedianFilter}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
+use crate::filter::filter_trait::{StringFromTo, WindowFilter};
+use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -92,7 +91,7 @@ impl StepAction {
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind window::Window,
-    initial_img: Option<img::Img>,
+    initial_img: Option<img::Matrix2D>,
     frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
     w: i32, h: i32,
@@ -302,7 +301,7 @@ impl<'wind> ProcessingLine<'wind> {
             _ => {}
         }        
 
-        let init_image = img::Img::load(path_buf)?;
+        let init_image = img::Matrix2D::load(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
         img_copy.scale(self.frame_img.w(), self.frame_img.h(), true, true);
@@ -517,7 +516,7 @@ pub struct ProcessingStep {
     label_step_name: Frame,
     frame_img: Frame,
     pub action: Option<StepAction>,
-    image: Option<img::Img>,
+    image: Option<img::Matrix2D>,
     draw_data: Option<fltk::image::RgbImage>
 }
 
@@ -580,11 +579,11 @@ impl ProcessingStep {
         }
     }
 
-    pub fn get_data_copy(&self) -> Option<img::Img> {
+    pub fn get_data_copy(&self) -> Option<img::Matrix2D> {
        self.image.clone()
     }
 
-    pub fn process_image(&mut self, initial_img: img::Img) -> result::Result<(), MyError> {
+    pub fn process_image(&mut self, initial_img: img::Matrix2D) -> result::Result<(), MyError> {
         let (result_img, fil_w, fil_h) = match self.action {
             Some(ref mut action) => {
                 match action {

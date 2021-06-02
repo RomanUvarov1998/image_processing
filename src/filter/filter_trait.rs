@@ -1,4 +1,5 @@
-use crate::{filter::FilterIterator, filter_option::ExtendValue, my_err::MyError};
+use crate::{filter::FilterIterator, my_err::MyError};
+use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
@@ -6,7 +7,7 @@ pub trait StringFromTo {
 }
 
 pub trait Filter : Default + Clone + StringFromTo {
-    fn filter(&self, img: crate::img::Img) -> crate::img::Img;
+    fn filter(&self, img: crate::img::Matrix2D) -> crate::img::Matrix2D;
 }
 
 pub trait WindowFilter : Filter {

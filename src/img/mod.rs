@@ -1,20 +1,23 @@
-use std::{ops::{Index, IndexMut}, path::PathBuf, result};
+pub mod pixel_pos;
 
+use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{image, prelude::ImageExt};
-use crate::{filter_option::ExtendValue, filter_trait::Filter, my_err::MyError, pixel_pos::PixelPos};
+use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
+
+use self::pixel_pos::PixelPos;
 
 #[derive(Clone)]
-pub struct Img {
+pub struct Matrix2D {
     width: usize,
     height: usize,
     pixels: Vec<f64>
 }
 
-impl Img {
+impl Matrix2D {
     pub fn empty_with_size(width: usize, height: usize) -> Self {
         let mut pixels = Vec::<f64>::new();
         pixels.resize(width * height, 0_f64);        
-        Img { width, height, pixels }
+        Matrix2D { width, height, pixels }
     }
 
     pub fn load(path: PathBuf) -> result::Result<Self, MyError> {
@@ -71,7 +74,7 @@ impl Img {
         let height = im.height() as usize;
         let pixels = im_grey.to_rgb_data().into_iter().map(|v| v as f64).collect();
 
-        Ok(Img {
+        Ok(Matrix2D {
             pixels,
             width,
             height
@@ -224,7 +227,7 @@ impl Img {
     }
 }
 
-impl Index<PixelPos> for Img {
+impl Index<PixelPos> for Matrix2D {
     type Output = f64;
 
     fn index(&self, index: PixelPos) -> &Self::Output {
@@ -235,7 +238,7 @@ impl Index<PixelPos> for Img {
     }
 }
 
-impl IndexMut<PixelPos> for Img {
+impl IndexMut<PixelPos> for Matrix2D {
     fn index_mut(&mut self, index: PixelPos) -> &mut Self::Output {
         if !self.fits(index) {
             panic!("pos is {:?} which is doesn't fit into {}, {}", index, self.max_col(), self.max_row());
@@ -251,7 +254,7 @@ pub struct ImgIterator {
 }
 
 impl ImgIterator {
-    pub fn for_full_image(img: &Img) -> Self {
+    pub fn for_full_image(img: &Matrix2D) -> Self {
         ImgIterator {
             top_left: PixelPos::new(0, 0),
             bottom_right_excluded: PixelPos::new(img.h(), img.w()),

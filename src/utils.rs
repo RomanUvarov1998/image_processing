@@ -1,17 +1,45 @@
-pub fn text_to_lines<'a>(line: &'a str) -> Vec<&'a str> {
-    let words: Vec<&'a str> = line.split("\n")
-        .into_iter()
-        .map(|w| w.trim())
-        .filter(|w| !w.is_empty())
-        .collect();
-    words
+use std::{vec::IntoIter};
+
+pub struct LinesIter<'text> {
+    iter: IntoIter<&'text str>
 }
 
-pub fn line_to_words<'a>(line: &'a str, divider: &str) -> Vec<&'a str> {
-    let words: Vec<&'a str> = line.split(divider)
-        .into_iter()
-        .map(|w| w.trim())
-        .filter(|w| !w.is_empty())
-        .collect();
-    words
+impl<'text> LinesIter<'text> {
+    pub fn new(text: &'text str) -> Self {
+        let lines: Vec<&str> = text.split("\n")
+            .into_iter()
+            .map(|w| w.trim())
+            .filter(|w| !w.is_empty())
+            .collect();
+        let iter = lines.into_iter();
+        LinesIter { iter }
+    }
+
+    pub fn next(&mut self) -> &str {
+        self.iter.next().unwrap_or("")
+    }
+
+    pub fn len(&self) -> usize { self.iter.len() }
+}
+
+pub struct WordsIter<'text> {
+    iter: IntoIter<&'text str>
+}
+
+impl<'text> WordsIter<'text> {
+    pub fn new(text: &'text str, divider: &str) -> Self {
+        let lines: Vec<&str> = text.split(divider)
+            .into_iter()
+            .map(|w| w.trim())
+            .filter(|w| !w.is_empty())
+            .collect();
+        let iter = lines.into_iter();
+        WordsIter { iter }
+    }
+
+    pub fn next(&mut self) -> &str {
+        self.iter.next().unwrap_or("")
+    }
+
+    pub fn len(&self) -> usize { self.iter.len() }
 }
