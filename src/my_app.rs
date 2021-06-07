@@ -8,7 +8,7 @@ pub const WIN_HEIGHT: i32 = 480;
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
     LoadImage,
-    StepIsStarted { step_num: usize },
+    StepIsStarted { step_num: usize, do_chaining: bool },
     StepProgress { step_num: usize, cur_percents: usize },
     StepIsComplete { step_num: usize },
     AddStepLinCustom, 

@@ -4,6 +4,8 @@ use std::thread::JoinHandle;
 use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
+use fltk::app::Sender;
+use fltk::menu::MenuFlag;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{StringFromTo};
 use crate::img::Matrix2D;
@@ -100,10 +102,11 @@ pub struct ProcessingLine<'wind> {
     steps: Vec<ProcessingStep>,
     w: i32, h: i32,
     scroll_pack: group::Pack,    
-    receiver: Receiver<Message>,
+    sender: Sender<Message>,receiver: Receiver<Message>,
     step_editor: StepEditor,
     processing_data: Arc<Mutex<Option<ProcessingData>>>,
-    processing_thread: JoinHandle<()>
+    processing_thread: JoinHandle<()>,
+    are_steps_chained: bool
 }
 
 impl<'wind> ProcessingLine<'wind> {
@@ -208,10 +211,11 @@ impl<'wind> ProcessingLine<'wind> {
             steps: Vec::<ProcessingStep>::new(),
             w, h,
             scroll_pack,
-            receiver,
+            sender, receiver,
             step_editor: StepEditor::new(),
             processing_data,
-            processing_thread
+            processing_thread,
+            are_steps_chained: true
         }
     }
 
@@ -235,15 +239,22 @@ impl<'wind> ProcessingLine<'wind> {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.parent_window, &err.to_string())
                     }
-                    Message::StepIsStarted { step_num } => match self.try_do_step(step_num) {
-                        Ok(_) => {}
-                        Err(err) => err_msg(&self.parent_window, &err.to_string())
+                    Message::StepIsStarted { step_num, do_chaining } => {
+                        self.are_steps_chained = do_chaining;
+                        match self.try_do_step(step_num) {
+                            Ok(_) => {}
+                            Err(err) => err_msg(&self.parent_window, &err.to_string())
+                        }
                     },
                     Message::StepProgress { step_num, cur_percents: progress } => {
                         self.steps[step_num].display_progress(progress);
                     },
                     Message::StepIsComplete { step_num } => match self.steps[step_num].display_result(self.processing_data.clone()) {
-                        Ok(_) => {}
+                        Ok(_) => { 
+                            if self.are_steps_chained && step_num < self.steps.len() - 1 {
+                                self.sender.send(Message::StepIsStarted { step_num: step_num + 1, do_chaining: true });
+                            }
+                        }
                         Err(err) =>  err_msg(&self.parent_window, &err.to_string())
                     },
                     Message::AddStepLinCustom => {
@@ -319,23 +330,12 @@ impl<'wind> ProcessingLine<'wind> {
 
     fn delete_step(&mut self, step_num: usize) {
         self.scroll_pack.begin();
-        self.scroll_pack.remove(&self.steps[step_num].hpack);
-        self.scroll_pack.remove(&self.steps[step_num].btn_process);
-        self.scroll_pack.remove(&self.steps[step_num].btn_edit);
-        self.scroll_pack.remove(&self.steps[step_num].btn_delete);
-        self.scroll_pack.remove(&self.steps[step_num].frame_img);
-        self.scroll_pack.remove(&self.steps[step_num].label_step_name);
+        self.steps[step_num].remove_self_from(&mut self.scroll_pack);
         self.scroll_pack.end();
         self.steps.remove(step_num);
-        
-        let (sender, _) = app::channel::<Message>();
 
         for i in step_num..self.steps.len() {
-            self.steps[i].btn_process.emit(sender, Message::StepIsStarted { step_num: i } );
-            self.steps[i].btn_edit.emit(sender, Message::EditStep { step_num: i } );
-            self.steps[i].btn_delete.emit(sender, Message::DeleteStep { step_num: i } );
-            self.steps[i].label_step_name.redraw_label();
-            self.steps[i].frame_img.set_damage(true);
+            self.steps[i].set_step_num(i);
         }
         self.scroll_pack.top_window().unwrap().set_damage(true);
     }
@@ -591,14 +591,15 @@ impl ProcessingData {
 pub struct ProcessingStep {
     name: String,
     hpack: group::Pack,
-    btn_process: button::Button,
+    btn_process: menu::MenuButton,
     btn_edit: button::Button,
     btn_delete: button::Button,
     label_step_name: Frame,
     frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Matrix2D>,
-    step_num: usize
+    step_num: usize,
+    sender: Sender<Message>
 }
 
 impl ProcessingStep {
@@ -625,11 +626,12 @@ impl ProcessingStep {
 
         let step_num = proc_line.steps.len();
 
-        let mut btn_process = button::Button::default();
-        btn_process.set_label("Отфильтровать");
-        btn_process.emit(sender, Message::StepIsStarted { step_num } );
+        let mut btn_process = menu::MenuButton::default();
+        btn_process.set_label("Запустить");
         let (w, h) = btn_process.measure_label();
-        btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        btn_process.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
+        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, Message::StepIsStarted { step_num, do_chaining: false });
+        btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, Message::StepIsStarted { step_num, do_chaining: true });
 
         let mut btn_edit = button::Button::default();
         btn_edit.set_label("Изменить");
@@ -658,14 +660,46 @@ impl ProcessingStep {
             label_step_name: label,
             action: Some(filter),
             image: None, 
-            step_num
+            step_num,
+            sender
         }
     }
 
-    pub fn get_data_copy(&self) -> Option<img::Matrix2D> {
-       self.image.clone()
+    fn set_step_num(&mut self, step_num: usize) {
+        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, Message::StepIsStarted { step_num, do_chaining: false });
+        self.btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, Message::StepIsStarted { step_num, do_chaining: true });
+        self.btn_edit.emit(self.sender, Message::EditStep { step_num } );
+        self.btn_delete.emit(self.sender, Message::DeleteStep { step_num } );
+        self.label_step_name.redraw_label();
+        self.frame_img.set_damage(true);
+        self.step_num = step_num;
     }
 
+    fn set_buttons_active(&mut self, active: bool) {
+        if active {
+            self.btn_process.activate();
+            self.btn_edit.activate();
+            self.btn_delete.activate();
+        } else {
+            self.btn_process.deactivate();
+            self.btn_edit.deactivate();
+            self.btn_delete.deactivate();
+        }
+    }
+
+    fn remove_self_from(&mut self, pack: &mut group::Pack) {
+        pack.remove(&mut self.hpack);
+        pack.remove(&mut self.btn_process);
+        pack.remove(&mut self.btn_edit);
+        pack.remove(&mut self.btn_delete);
+        pack.remove(&mut self.frame_img);
+        pack.remove(&mut self.label_step_name);
+    }
+
+    fn get_data_copy(&self) -> Option<img::Matrix2D> {
+        self.image.clone()
+    }
+ 
     fn setup_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix2D) -> Result<(), MyError> {
         match self.action {
             Some(ref step_action) => {
@@ -675,9 +709,7 @@ impl ProcessingStep {
             None => { return Err(MyError::new("В данном шаге нет действия(((".to_string())); },
         };
 
-        self.btn_process.deactivate();
-        self.btn_edit.deactivate();
-        self.btn_delete.deactivate();
+        self.set_buttons_active(false);
 
         self.frame_img.set_image(Option::<RgbImage>::None);   
         self.frame_img.redraw();
@@ -708,10 +740,6 @@ impl ProcessingStep {
         println!("{} complete", self.step_num);
         self.frame_img.set_label("");
 
-        self.btn_process.activate();
-        self.btn_edit.activate();
-        self.btn_delete.activate();
-
         println!("getting data...");
         let pd_locked = processing_data.lock().unwrap().take();
         drop(processing_data);
@@ -723,6 +751,8 @@ impl ProcessingStep {
             },
             None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
         };
+
+        self.set_buttons_active(true);
         
         self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, 1, 1, result_img.w(), result_img.h()));
