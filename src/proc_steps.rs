@@ -162,45 +162,39 @@ impl<'wind> ProcessingLine<'wind> {
         let processing_data = Arc::new(Mutex::new(Option::<ProcessingData>::None));
         let processing_data_copy = processing_data.clone();
         let processing_thread = thread::spawn(move || {
-            thread::park();
             loop {
-                println!("act");
+                thread::park();
+                println!("resumed");
                 match processing_data_copy.try_lock() {
                     Ok(mut guard) => match guard.as_mut() {
                         Some(pd) => {
-                            println!("thread completed");
+                            let step_num = pd.step_num;
+                            let progress_cbk = |cur_percents: usize| {
+                                sender_copy.send(Message::StepProgress { step_num, cur_percents });
+                            };
+
                             let result_img = match pd.step_action {
                                 StepAction::LinearCustom(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                                 StepAction::LinearMean(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                                 StepAction::LinearGauss(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                                 StepAction::Median(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                                 StepAction::HistogramLocalContrast(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                                 StepAction::CutBrightness(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
+                                    pd.init_img.processed_copy(filter, progress_cbk),
                             };
                             pd.result_img = Some(result_img);
                             sender_copy.send(Message::StepIsComplete { step_num: pd.step_num });
                             println!("thread completed");
                         },
-                        None => {
-                            println!("yield");
-                            thread::yield_now();
-                            continue;
-                        }
+                        None => { }
                     },
-                    Err(_) => {
-                        println!("yield");
-                        thread::yield_now();
-                        continue;
-                    }
+                    Err(_) => { }
                 };
-                thread::park();
-                println!("resumed");
             }
         });
 

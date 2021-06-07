@@ -1,6 +1,4 @@
-use fltk::app::Sender;
-
-use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_app::Message, my_err::MyError, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_err::MyError, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -71,8 +69,8 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
-        super::filter_window(img, self, MedianFilter::process_window, step_num, sender)
+    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
+        super::filter_window(img, self, MedianFilter::process_window, progress_cbk)
     }
 }
 
@@ -127,7 +125,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn filter(&self, img: Matrix2D, step_num: usize, sender: Sender<Message>) -> Matrix2D {
+    fn filter<Cbk: Fn(usize)>(&self, img: Matrix2D, progress_cbk: Cbk) -> Matrix2D {
         let mut pixel_buf = Vec::<f64>::new();
         pixel_buf.resize(self.w() * self.h(), 0_f64);
 
@@ -138,6 +136,8 @@ impl Filter for HistogramLocalContrast {
         let mut hist_matrix = Matrix2D::empty_with_size(
             img.w() + self.w(), img.h() + self.h());
 
+        progress_cbk(10);
+
         for pos_im in img.get_area_iter(fil_half_size, 
             fil_half_size + PixelPos::new(img.h(), img.w())) 
         {
@@ -145,12 +145,12 @@ impl Filter for HistogramLocalContrast {
                 let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
                 let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
                 pixel_buf[buf_ind] = ext_copy[pix_pos];
-            }
+            }            
             
             hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
         }
 
-        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter, step_num, sender);
+        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter, |p| progress_cbk(10 + p / 100 * 30));
 
         let mut c_mat = Matrix2D::empty_with_size(img_filtered_ext.w(), img_filtered_ext.h());
         for pos in img_filtered_ext.get_iterator() {
@@ -158,6 +158,8 @@ impl Filter for HistogramLocalContrast {
             val /= ext_copy[pos] + img_filtered_ext[pos] + f64::EPSILON;
             c_mat[pos] = f64::abs(val)
         }
+
+        progress_cbk(50);
 
         for m_pos in hist_matrix.get_area_iter(fil_half_size, 
             PixelPos::new(img.h(), img.w()) + fil_half_size) 
@@ -182,6 +184,8 @@ impl Filter for HistogramLocalContrast {
             
             c_mat[m_pos] = c_mat[m_pos].powf(c_power);
         }
+
+        progress_cbk(70);
         
         let mut img_result = Matrix2D::empty_with_size(img.w(), img.h());
 
@@ -199,6 +203,8 @@ impl Filter for HistogramLocalContrast {
 
             img_result[pos - fil_half_size] = val;
         }
+
+        progress_cbk(100);
 
         img_result
     }
@@ -288,7 +294,7 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn filter(&self, mut img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
+    fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
         let mut prev_row = 0_usize;
 
         for pos in img.get_iterator() {
@@ -297,7 +303,7 @@ impl Filter for CutBrightness {
             }
             if pos.row > prev_row {
                 prev_row = pos.row;
-                sender.send(Message::StepProgress { step_num, cur_percents: prev_row * 100 / img.h() });
+                progress_cbk(prev_row * 100 / img.h());
             }
         }
         img

@@ -1,7 +1,4 @@
-use fltk::app::Sender;
-
-use crate::{img::pixel_pos::PixelPos, my_app::Message, my_err::MyError, utils::{LinesIter, WordsIter}};
-
+use crate::{img::pixel_pos::PixelPos, my_err::MyError, utils::{LinesIter, WordsIter}};
 use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 #[derive(Clone)]
@@ -40,8 +37,8 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
-        super::filter_window(img, self, LinearGaussian::process_window, step_num, sender)
+    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
+        super::filter_window(img, self, LinearGaussian::process_window, progress_cbk)
     }
 }
 
@@ -149,8 +146,8 @@ impl WindowFilter for LinearCustom {
 }
 
 impl Filter for LinearCustom {
-    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
-        super::filter_window(img, self, LinearCustom::process_window, step_num, sender)
+    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
+        super::filter_window(img, self, LinearCustom::process_window, progress_cbk)
     }
 }
 
@@ -265,8 +262,8 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
-        super::filter_window(img, self, Self::process_window, step_num, sender)
+    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
+        super::filter_window(img, self, Self::process_window, progress_cbk)
     }
 }
 

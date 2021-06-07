@@ -1,8 +1,8 @@
 pub mod pixel_pos;
 
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
-use fltk::{app::Sender, image, prelude::ImageExt};
-use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_app::Message, my_err::MyError};
+use fltk::{image, prelude::ImageExt};
+use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
 
 use self::pixel_pos::PixelPos;
 
@@ -215,9 +215,9 @@ impl Matrix2D {
         img
     }
 
-    pub fn processed_copy<T: Filter>(&self, filter: &T, step_num: usize, sender: Sender<Message>) -> Self {
+    pub fn processed_copy<T: Filter, Cbk: Fn(usize)>(&self, filter: &T, progress_cbk: Cbk) -> Self {
         let result_img = self.clone();
-        filter.filter(result_img, step_num, sender)
+        filter.filter(result_img, progress_cbk)
     }
 
     fn set_rect(&mut self, tl: PixelPos, br: PixelPos, value: f64) -> () {
@@ -258,7 +258,7 @@ impl ImgIterator {
         ImgIterator {
             top_left: PixelPos::new(0, 0),
             bottom_right_excluded: PixelPos::new(img.h(), img.w()),
-            cur_pos: PixelPos::new(0, 0)
+            cur_pos: PixelPos::new(0, 0),
         }
     }
 
@@ -269,14 +269,14 @@ impl ImgIterator {
         ImgIterator {
             top_left,
             bottom_right_excluded,
-            cur_pos: top_left
+            cur_pos: top_left,
         }
     }
 
     pub fn fits(&self, pos: PixelPos) -> bool {
         let mut val = 
-        self.top_left.col <= pos.col && pos.col < self.bottom_right_excluded.col 
-        && self.top_left.row <= pos.row && pos.row < self.bottom_right_excluded.row ;
+            self.top_left.col <= pos.col && pos.col < self.bottom_right_excluded.col 
+            && self.top_left.row <= pos.row && pos.row < self.bottom_right_excluded.row;
         if val == false {
             val = true;
         }

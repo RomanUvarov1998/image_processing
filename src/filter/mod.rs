@@ -3,9 +3,7 @@ pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
 
-use fltk::app::Sender;
-
-use crate::{img::{Matrix2D, pixel_pos::PixelPos}, my_app::Message};
+use crate::{img::{Matrix2D, pixel_pos::PixelPos}};
 
 use self::filter_trait::WindowFilter;
 
@@ -44,7 +42,7 @@ impl Iterator for FilterIterator {
 }
 
 
-fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, step_num: usize, sender: Sender<Message>) -> Matrix2D {
+fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, progress_cbk: Cbk) -> Matrix2D {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
 
@@ -79,9 +77,8 @@ fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: f
             let cur_percents = pos_im.row * 100 / img.h();
             if prev_percents < cur_percents {
                 prev_percents = cur_percents;
-                // println!("{} < {}", prev_row, pos_im.row);
                 prev_row = pos_im.row;
-                sender.send(Message::StepProgress{ step_num, cur_percents });
+                progress_cbk(cur_percents);
             }
         }
     }
