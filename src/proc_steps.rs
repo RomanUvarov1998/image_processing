@@ -168,17 +168,17 @@ impl<'wind> ProcessingLine<'wind> {
                             println!("thread completed");
                             let result_img = match pd.step_action {
                                 StepAction::LinearCustom(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                                 StepAction::LinearMean(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                                 StepAction::LinearGauss(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                                 StepAction::Median(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                                 StepAction::HistogramLocalContrast(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                                 StepAction::CutBrightness(ref mut filter) => 
-                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                    pd.init_img.processed_copy(filter, pd.step_num, sender_copy),
                             };
                             pd.result_img = Some(result_img);
                             sender_copy.send(Message::StepIsComplete { step_num: pd.step_num });
@@ -242,8 +242,9 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::StepProgress { step_num, cur_percents: progress } => {
                         self.steps[step_num].display_progress(progress);
                     },
-                    Message::StepIsComplete { step_num } => {
-                        self.steps[step_num].display_result(self.processing_data.clone())?;
+                    Message::StepIsComplete { step_num } => match self.steps[step_num].display_result(self.processing_data.clone()) {
+                        Ok(_) => {}
+                        Err(err) =>  err_msg(&self.parent_window, &err.to_string())
                     },
                     Message::AddStepLinCustom => {
                         match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
@@ -597,7 +598,6 @@ pub struct ProcessingStep {
     frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Matrix2D>,
-    draw_data: Option<fltk::image::RgbImage>,
     step_num: usize
 }
 
@@ -658,7 +658,6 @@ impl ProcessingStep {
             label_step_name: label,
             action: Some(filter),
             image: None, 
-            draw_data: None,
             step_num
         }
     }
@@ -680,7 +679,7 @@ impl ProcessingStep {
         self.btn_edit.deactivate();
         self.btn_delete.deactivate();
 
-        self.frame_img.deimage();
+        self.frame_img.set_image(Option::<RgbImage>::None);   
         self.frame_img.redraw();
 
         println!("{} started", self.step_num);
@@ -730,16 +729,9 @@ impl ProcessingStep {
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);
-        
-        match self.frame_img.deimage() {
-            Some(old_img) => drop(old_img),
-            None => {},
-        }
-        
-        self.frame_img.set_image(Some(rgb_image.clone()));
+                  
+        self.frame_img.set_image(Some(rgb_image));
         self.frame_img.redraw();
-
-        self.draw_data = Some(rgb_image);
 
         self.image = Some(result_img);
 
