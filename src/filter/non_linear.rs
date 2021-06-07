@@ -15,7 +15,7 @@ impl MedianFilter {
 }
 
 impl WindowFilter for MedianFilter {
-    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {        
+    /*fn process_window(&self, window_buffer: &mut [f64]) -> f64 {        
         /*
             * Algorithm from N. Wirth's book, implementation by N. Devillard.
             * This code in public domain.
@@ -49,6 +49,24 @@ impl WindowFilter for MedianFilter {
         }
 
         window_buffer[med_ind]
+    }*/
+    
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
+        let mut hist_buffer = [0_usize; 256];
+        
+        for val in window_buffer.iter() {
+            let ind = (*val as u8) as usize;
+            hist_buffer[ind] += 1_usize;
+        }
+        
+        let mut values_until_median = window_buffer.len() / 2;
+        let mut bin_ind = 0_usize;
+        while bin_ind < hist_buffer.len() && values_until_median > hist_buffer[bin_ind] {
+            values_until_median -= hist_buffer[bin_ind];
+            bin_ind += 1;
+        }
+
+        bin_ind as f64
     }
 
     fn w(&self) -> usize { self.size.width }
