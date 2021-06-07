@@ -1,9 +1,12 @@
 use std::path::{PathBuf};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver, Sender}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{StringFromTo};
+use crate::img::Matrix2D;
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
@@ -98,7 +101,9 @@ pub struct ProcessingLine<'wind> {
     w: i32, h: i32,
     scroll_pack: group::Pack,    
     receiver: Receiver<Message>,
-    step_editor: StepEditor
+    step_editor: StepEditor,
+    processing_data: Arc<Mutex<Option<ProcessingData>>>,
+    processing_thread: JoinHandle<()>
 }
 
 impl<'wind> ProcessingLine<'wind> {
@@ -150,6 +155,52 @@ impl<'wind> ProcessingLine<'wind> {
 
         wind.end();
 
+        let sender_copy = sender.clone();
+        let processing_data = Arc::new(Mutex::new(Option::<ProcessingData>::None));
+        let processing_data_copy = processing_data.clone();
+        let processing_thread = thread::spawn(move || {
+            thread::park();
+            loop {
+                println!("act");
+                match processing_data_copy.try_lock() {
+                    Ok(mut guard) => match guard.as_mut() {
+                        Some(pd) => {
+                            println!("thread completed");
+                            let result_img = match pd.step_action {
+                                StepAction::LinearCustom(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                StepAction::LinearMean(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                StepAction::LinearGauss(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                StepAction::Median(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                StepAction::HistogramLocalContrast(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                                StepAction::CutBrightness(ref mut filter) => 
+                                    (pd.init_img.processed_copy(filter, pd.step_num, sender_copy)),
+                            };
+                            pd.result_img = Some(result_img);
+                            sender_copy.send(Message::StepIsComplete { step_num: pd.step_num });
+                            println!("thread completed");
+                        },
+                        None => {
+                            println!("yield");
+                            thread::yield_now();
+                            continue;
+                        }
+                    },
+                    Err(_) => {
+                        println!("yield");
+                        thread::yield_now();
+                        continue;
+                    }
+                };
+                thread::park();
+                println!("resumed");
+            }
+        });
+
         ProcessingLine {
             parent_window: wind,
             initial_img: None,
@@ -159,6 +210,8 @@ impl<'wind> ProcessingLine<'wind> {
             scroll_pack,
             receiver,
             step_editor: StepEditor::new(),
+            processing_data,
+            processing_thread
         }
     }
 
@@ -190,7 +243,7 @@ impl<'wind> ProcessingLine<'wind> {
                         self.steps[step_num].display_progress(progress);
                     },
                     Message::StepIsComplete { step_num } => {
-                        self.steps[step_num].display_result()?;
+                        self.steps[step_num].display_result(self.processing_data.clone())?;
                     },
                     Message::AddStepLinCustom => {
                         match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
@@ -325,19 +378,21 @@ impl<'wind> ProcessingLine<'wind> {
             match self.initial_img {
                 Some(ref img) => {
                     let img_copy = img.clone();
-                    self.steps[step_num].start_processing(img_copy)?;
+                    self.steps[step_num].setup_processing(self.processing_data.clone(), img_copy)?;
                 },
                 None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
             }
         } else {
             let prev_step = &self.steps[step_num - 1];
             match prev_step.get_data_copy() {
-                Some(img) => {
-                    self.steps[step_num].start_processing(img)?;
+                Some(img_copy) => {
+                    self.steps[step_num].setup_processing(self.processing_data.clone(), img_copy)?;
                 },
                 None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             }
         }
+
+        self.processing_thread.thread().unpark();
 
         Ok(())
     }
@@ -512,6 +567,26 @@ impl<'wind> ProcessingLine<'wind> {
     }
 }
 
+struct ProcessingData {
+    step_num: usize,
+    step_action: StepAction,
+    init_img: Matrix2D,
+    result_img: Option<Matrix2D>,
+}
+
+impl ProcessingData {
+    fn new(step_num: usize, step_action: StepAction, init_img: Matrix2D) -> Self {
+        ProcessingData {
+            step_num,
+            step_action,
+            init_img,
+            result_img: None,
+        }
+    }
+
+    fn get_result(&mut self) -> Option<Matrix2D> { self.result_img.take() }
+}
+
 pub struct ProcessingStep {
     name: String,
     hpack: group::Pack,
@@ -523,8 +598,6 @@ pub struct ProcessingStep {
     pub action: Option<StepAction>,
     image: Option<img::Matrix2D>,
     draw_data: Option<fltk::image::RgbImage>,
-    sender: Sender<Message>,
-    handler: Option<thread::JoinHandle<img::Matrix2D>>,
     step_num: usize
 }
 
@@ -586,7 +659,7 @@ impl ProcessingStep {
             action: Some(filter),
             image: None, 
             draw_data: None,
-            sender, handler: None, step_num
+            step_num
         }
     }
 
@@ -594,14 +667,14 @@ impl ProcessingStep {
        self.image.clone()
     }
 
-    pub fn start_processing(&mut self, initial_img: img::Matrix2D) -> Result<(), MyError> {
-        let sender= self.sender;
-        let step_num = self.step_num;
-        let mut step_action_copy = match self.action {
-            Some(ref step_action) => step_action.clone(),
+    fn setup_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix2D) -> Result<(), MyError> {
+        match self.action {
+            Some(ref step_action) => {
+                processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, step_action.clone(), init_img));
+                drop(processing_data);
+            },
             None => { return Err(MyError::new("В данном шаге нет действия(((".to_string())); },
         };
-        let initial_img_copy = initial_img.clone();
 
         self.btn_process.deactivate();
         self.btn_edit.deactivate();
@@ -610,33 +683,12 @@ impl ProcessingStep {
         self.frame_img.deimage();
         self.frame_img.redraw();
 
-        self.handler = Some(thread::spawn(move || {
-            let result_img = match step_action_copy {
-                StepAction::LinearCustom(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-                StepAction::LinearMean(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-                StepAction::LinearGauss(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-                StepAction::Median(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-                StepAction::HistogramLocalContrast(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-                StepAction::CutBrightness(ref mut filter) => 
-                    (initial_img_copy.processed_copy(filter, step_num, sender)),
-            };
-
-            sender.send(Message::StepIsComplete{ step_num });
-
-            result_img
-        }));
-
         println!("{} started", self.step_num);
 
         Ok(())
     }
 
-    pub fn display_progress(&mut self, progress: usize) {
+    fn display_progress(&mut self, progress: usize) {
         let mut pr_str = String::from("|");
         let mut i = 10;
         while i < progress {
@@ -650,10 +702,10 @@ impl ProcessingStep {
         pr_str.push_str("|");
         self.frame_img.set_label(&pr_str);
 
-        // println!("{}: {}", self.step_num, progress);
+        println!("{}: {}", self.step_num, progress);
     }
 
-    pub fn display_result(&mut self) -> Result<(), MyError>  {
+    fn display_result(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>) -> Result<(), MyError>  {
         println!("{} complete", self.step_num);
         self.frame_img.set_label("");
 
@@ -661,13 +713,29 @@ impl ProcessingStep {
         self.btn_edit.activate();
         self.btn_delete.activate();
 
-        let result_img = self.handler.take().unwrap().join().unwrap();
+        println!("getting data...");
+        let pd_locked = processing_data.lock().unwrap().take();
+        drop(processing_data);
+        println!("got data");
+        let result_img = match pd_locked {
+            Some(mut p) => match p.get_result() {
+                Some(img) => img,
+                None => { return Err(MyError::new("Нет результирующего изображения(".to_string())); },
+            },
+            None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
+        };
         
         self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
             &self.name, 1, 1, result_img.w(), result_img.h()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);
+        
+        match self.frame_img.deimage() {
+            Some(old_img) => drop(old_img),
+            None => {},
+        }
+        
         self.frame_img.set_image(Some(rgb_image.clone()));
         self.frame_img.redraw();
 
