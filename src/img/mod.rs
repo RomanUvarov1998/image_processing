@@ -1,8 +1,8 @@
 pub mod pixel_pos;
 
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
-use fltk::{image, prelude::ImageExt};
-use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
+use fltk::{app::Sender, image, prelude::ImageExt};
+use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_app::Message, my_err::MyError};
 
 use self::pixel_pos::PixelPos;
 
@@ -215,9 +215,9 @@ impl Matrix2D {
         img
     }
 
-    pub fn processed_copy<T: Filter>(&self, filter: &T) -> Self {
+    pub fn processed_copy<T: Filter>(&self, filter: &T, step_num: usize, sender: Sender<Message>) -> Self {
         let result_img = self.clone();
-        filter.filter(result_img)
+        filter.filter(result_img, step_num, sender)
     }
 
     fn set_rect(&mut self, tl: PixelPos, br: PixelPos, value: f64) -> () {

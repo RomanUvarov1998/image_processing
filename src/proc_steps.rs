@@ -1,8 +1,9 @@
 use std::path::{PathBuf};
+use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::filter::filter_trait::{StringFromTo, WindowFilter};
+use fltk::{app::{self, Receiver, Sender}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
+use crate::filter::filter_trait::{StringFromTo};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
@@ -95,7 +96,7 @@ pub struct ProcessingLine<'wind> {
     frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
     w: i32, h: i32,
-    scroll_pack: group::Pack,
+    scroll_pack: group::Pack,    
     receiver: Receiver<Message>,
     step_editor: StepEditor
 }
@@ -104,7 +105,7 @@ impl<'wind> ProcessingLine<'wind> {
     pub fn new(wind: &'wind window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
         wind.begin();
 
-        let (sender, _) = app::channel::<Message>();
+        let (sender, receiver) = app::channel::<Message>();
 
         let mut menu = menu::SysMenuBar::default().with_size(800, 35);
         menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, Message::LoadProject);
@@ -129,8 +130,6 @@ impl<'wind> ProcessingLine<'wind> {
         frame::Frame::default()
             .with_size(w, BTN_HEIGHT)
             .with_label("Исходное изображение");
-
-        let (sender, receiver) = app::channel::<Message>();
 
         let mut btn_load_initial_img = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
@@ -183,10 +182,16 @@ impl<'wind> ProcessingLine<'wind> {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.parent_window, &err.to_string())
                     }
-                    Message::DoStep { step_num } => match self.try_do_step(step_num) {
+                    Message::StepIsStarted { step_num } => match self.try_do_step(step_num) {
                         Ok(_) => {}
                         Err(err) => err_msg(&self.parent_window, &err.to_string())
-                    }
+                    },
+                    Message::StepProgress { step_num, cur_percents: progress } => {
+                        self.steps[step_num].display_progress(progress);
+                    },
+                    Message::StepIsComplete { step_num } => {
+                        self.steps[step_num].display_result()?;
+                    },
                     Message::AddStepLinCustom => {
                         match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
                             Some(filter) => self.add(StepAction::LinearCustom(filter)),
@@ -272,7 +277,7 @@ impl<'wind> ProcessingLine<'wind> {
         let (sender, _) = app::channel::<Message>();
 
         for i in step_num..self.steps.len() {
-            self.steps[i].btn_process.emit(sender, Message::DoStep { step_num: i } );
+            self.steps[i].btn_process.emit(sender, Message::StepIsStarted { step_num: i } );
             self.steps[i].btn_edit.emit(sender, Message::EditStep { step_num: i } );
             self.steps[i].btn_delete.emit(sender, Message::DeleteStep { step_num: i } );
             self.steps[i].label_step_name.redraw_label();
@@ -320,7 +325,7 @@ impl<'wind> ProcessingLine<'wind> {
             match self.initial_img {
                 Some(ref img) => {
                     let img_copy = img.clone();
-                    self.steps[step_num].process_image(img_copy)?;
+                    self.steps[step_num].start_processing(img_copy)?;
                 },
                 None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
             }
@@ -328,7 +333,7 @@ impl<'wind> ProcessingLine<'wind> {
             let prev_step = &self.steps[step_num - 1];
             match prev_step.get_data_copy() {
                 Some(img) => {
-                    self.steps[step_num].process_image(img)?;
+                    self.steps[step_num].start_processing(img)?;
                 },
                 None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             }
@@ -517,7 +522,10 @@ pub struct ProcessingStep {
     frame_img: Frame,
     pub action: Option<StepAction>,
     image: Option<img::Matrix2D>,
-    draw_data: Option<fltk::image::RgbImage>
+    draw_data: Option<fltk::image::RgbImage>,
+    sender: Sender<Message>,
+    handler: Option<thread::JoinHandle<img::Matrix2D>>,
+    step_num: usize
 }
 
 impl ProcessingStep {
@@ -542,21 +550,23 @@ impl ProcessingStep {
         hpack.set_type(PackType::Horizontal);
         hpack.set_spacing(PADDING);
 
+        let step_num = proc_line.steps.len();
+
         let mut btn_process = button::Button::default();
         btn_process.set_label("Отфильтровать");
-        btn_process.emit(sender, Message::DoStep { step_num: proc_line.steps.len() } );
+        btn_process.emit(sender, Message::StepIsStarted { step_num } );
         let (w, h) = btn_process.measure_label();
         btn_process.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
         let mut btn_edit = button::Button::default();
         btn_edit.set_label("Изменить");
-        btn_edit.emit(sender, Message::EditStep { step_num: proc_line.steps.len() } );
+        btn_edit.emit(sender, Message::EditStep { step_num } );
         let (w, h) = btn_edit.measure_label();
         btn_edit.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
         let mut btn_delete = button::Button::default();
         btn_delete.set_label("Удалить");
-        btn_delete.emit(sender, Message::DeleteStep { step_num: proc_line.steps.len() } );
+        btn_delete.emit(sender, Message::DeleteStep { step_num } );
         let (w, h) = btn_delete.measure_label();
         btn_delete.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
@@ -575,7 +585,8 @@ impl ProcessingStep {
             label_step_name: label,
             action: Some(filter),
             image: None, 
-            draw_data: None 
+            draw_data: None,
+            sender, handler: None, step_num
         }
     }
 
@@ -583,29 +594,77 @@ impl ProcessingStep {
        self.image.clone()
     }
 
-    pub fn process_image(&mut self, initial_img: img::Matrix2D) -> result::Result<(), MyError> {
-        let (result_img, fil_w, fil_h) = match self.action {
-            Some(ref mut action) => {
-                match action {
-                    StepAction::LinearCustom(ref mut filter) => 
-                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                    StepAction::LinearMean(ref mut filter) => 
-                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                    StepAction::LinearGauss(ref mut filter) => 
-                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                    StepAction::Median(ref mut filter) => 
-                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                    StepAction::HistogramLocalContrast(ref mut filter) => 
-                        (initial_img.processed_copy(filter), filter.w(), filter.h()),
-                    StepAction::CutBrightness(ref mut filter) => 
-                    (initial_img.processed_copy(filter), 0, 0),
-                }
-            },
-            None =>  return Err(MyError::new("В данном компоненте нет фильтра".to_string())) 
+    pub fn start_processing(&mut self, initial_img: img::Matrix2D) -> Result<(), MyError> {
+        let sender= self.sender;
+        let step_num = self.step_num;
+        let mut step_action_copy = match self.action {
+            Some(ref step_action) => step_action.clone(),
+            None => { return Err(MyError::new("В данном шаге нет действия(((".to_string())); },
         };
+        let initial_img_copy = initial_img.clone();
+
+        self.btn_process.deactivate();
+        self.btn_edit.deactivate();
+        self.btn_delete.deactivate();
+
+        self.frame_img.deimage();
+        self.frame_img.redraw();
+
+        self.handler = Some(thread::spawn(move || {
+            let result_img = match step_action_copy {
+                StepAction::LinearCustom(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+                StepAction::LinearMean(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+                StepAction::LinearGauss(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+                StepAction::Median(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+                StepAction::HistogramLocalContrast(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+                StepAction::CutBrightness(ref mut filter) => 
+                    (initial_img_copy.processed_copy(filter, step_num, sender)),
+            };
+
+            sender.send(Message::StepIsComplete{ step_num });
+
+            result_img
+        }));
+
+        println!("{} started", self.step_num);
+
+        Ok(())
+    }
+
+    pub fn display_progress(&mut self, progress: usize) {
+        let mut pr_str = String::from("|");
+        let mut i = 10;
+        while i < progress {
+            pr_str.push_str(".");
+            i += 10;
+        }
+        while i < 100 {
+            pr_str.push_str(" ");
+            i += 10;
+        }
+        pr_str.push_str("|");
+        self.frame_img.set_label(&pr_str);
+
+        // println!("{}: {}", self.step_num, progress);
+    }
+
+    pub fn display_result(&mut self) -> Result<(), MyError>  {
+        println!("{} complete", self.step_num);
+        self.frame_img.set_label("");
+
+        self.btn_process.activate();
+        self.btn_edit.activate();
+        self.btn_delete.activate();
+
+        let result_img = self.handler.take().unwrap().join().unwrap();
         
         self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
-            &self.name, fil_w, fil_h, result_img.w(), result_img.h()));
+            &self.name, 1, 1, result_img.w(), result_img.h()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);

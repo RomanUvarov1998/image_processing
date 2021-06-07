@@ -3,7 +3,9 @@ pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
 
-use crate::{img::{Matrix2D, pixel_pos::PixelPos}};
+use fltk::app::Sender;
+
+use crate::{img::{Matrix2D, pixel_pos::PixelPos}, my_app::Message};
 
 use self::filter_trait::WindowFilter;
 
@@ -42,7 +44,7 @@ impl Iterator for FilterIterator {
 }
 
 
-fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64) -> Matrix2D {
+fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, step_num: usize, sender: Sender<Message>) -> Matrix2D {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
 
@@ -55,6 +57,9 @@ fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: f
         filter.get_extend_value(), 
         fil_half_size.row, 
         fil_half_size.col);
+
+    let mut prev_row = 0_usize;
+    let mut prev_percents = 0_usize;
 
     for pos_im in img_extended.get_area_iter(
         fil_half_size, 
@@ -69,6 +74,16 @@ fn filter_window<T: WindowFilter>(mut img: Matrix2D, filter: &T, buf_filt_fcn: f
         let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[..]);
         
         img[pos_im - fil_half_size] = filter_result;
+
+        if prev_row < pos_im.row {
+            let cur_percents = pos_im.row * 100 / img.h();
+            if prev_percents < cur_percents {
+                prev_percents = cur_percents;
+                // println!("{} < {}", prev_row, pos_im.row);
+                prev_row = pos_im.row;
+                sender.send(Message::StepProgress{ step_num, cur_percents });
+            }
+        }
     }
 
     img

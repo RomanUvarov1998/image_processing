@@ -1,4 +1,6 @@
-use crate::{filter::FilterIterator, my_err::MyError};
+use fltk::app::Sender;
+
+use crate::{filter::FilterIterator, my_app::Message, my_err::MyError};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
@@ -7,7 +9,7 @@ pub trait StringFromTo {
 }
 
 pub trait Filter : Default + Clone + StringFromTo {
-    fn filter(&self, img: crate::img::Matrix2D) -> crate::img::Matrix2D;
+    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D;
 }
 
 pub trait WindowFilter : Filter {

@@ -1,4 +1,6 @@
-use crate::{img::{Matrix2D}, my_err::MyError, img::pixel_pos::PixelPos, utils::{LinesIter}};
+use fltk::app::Sender;
+
+use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_app::Message, my_err::MyError, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -69,8 +71,8 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn filter(&self, img: crate::img::Matrix2D) -> crate::img::Matrix2D {
-        super::filter_window(img, self, MedianFilter::process_window)
+    fn filter(&self, img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
+        super::filter_window(img, self, MedianFilter::process_window, step_num, sender)
     }
 }
 
@@ -125,7 +127,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn filter(&self, img: Matrix2D) -> Matrix2D {
+    fn filter(&self, img: Matrix2D, step_num: usize, sender: Sender<Message>) -> Matrix2D {
         let mut pixel_buf = Vec::<f64>::new();
         pixel_buf.resize(self.w() * self.h(), 0_f64);
 
@@ -148,7 +150,7 @@ impl Filter for HistogramLocalContrast {
             hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
         }
 
-        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter);
+        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter, step_num, sender);
 
         let mut c_mat = Matrix2D::empty_with_size(img_filtered_ext.w(), img_filtered_ext.h());
         for pos in img_filtered_ext.get_iterator() {
@@ -286,10 +288,16 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn filter(&self, mut img: crate::img::Matrix2D) -> crate::img::Matrix2D {
+    fn filter(&self, mut img: crate::img::Matrix2D, step_num: usize, sender: Sender<Message>) -> crate::img::Matrix2D {
+        let mut prev_row = 0_usize;
+
         for pos in img.get_iterator() {
             if img[pos] >= self.cut_range.min as f64 && img[pos] <= self.cut_range.max as f64 {
                 img[pos] = self.replace_with.value as f64
+            }
+            if pos.row > prev_row {
+                prev_row = pos.row;
+                sender.send(Message::StepProgress { step_num, cur_percents: prev_row * 100 / img.h() });
             }
         }
         img
