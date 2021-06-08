@@ -9,6 +9,7 @@ mod filter;
 mod proc_steps;
 
 mod my_app;
+mod message;
 mod img;
 mod step_editor;
 mod small_dlg;

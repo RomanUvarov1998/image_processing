@@ -9,7 +9,8 @@ use fltk::menu::MenuFlag;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{StringFromTo};
 use crate::img::Matrix2D;
-use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_app::{Message}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
+use crate::message::{Message, Processing, Project, Step};
+use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
@@ -96,7 +97,7 @@ impl StepAction {
 }
 
 pub struct ProcessingLine<'wind> {
-    parent_window: &'wind window::Window,
+    parent_window: &'wind mut window::Window,
     initial_img: Option<img::Matrix2D>,
     frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
@@ -110,21 +111,30 @@ pub struct ProcessingLine<'wind> {
 }
 
 impl<'wind> ProcessingLine<'wind> {
-    pub fn new(wind: &'wind window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
+    pub fn new(wind: &'wind mut window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
         wind.begin();
 
         let (sender, receiver) = app::channel::<Message>();
 
         let mut menu = menu::SysMenuBar::default().with_size(800, 35);
-        menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, Message::LoadProject);
-        menu.add_emit("Проект/Сохранить как", Shortcut::None, menu::MenuFlag::Normal, sender, Message::SaveProject);
-        menu.add_emit("Добавить/Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinMean);
-        menu.add_emit("Добавить/Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinGauss);
-        menu.add_emit("Добавить/Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepLinCustom);
-        menu.add_emit("Добавить/Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepMed);
-        menu.add_emit("Добавить/Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepHistogramLocalContrast);
-        menu.add_emit("Добавить/Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, Message::AddStepCutBrightness);
-        menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, Message::SaveResults);
+        menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Project(Project::LoadProject));
+        menu.add_emit("Проект/Сохранить как", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Project(Project::SaveProject));
+        menu.add_emit("Добавить/Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinMean));
+        menu.add_emit("Добавить/Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinGauss));
+        menu.add_emit("Добавить/Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinCustom));
+        menu.add_emit("Добавить/Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepMed));
+        menu.add_emit("Добавить/Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepHistogramLocalContrast));
+        menu.add_emit("Добавить/Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepCutBrightness));
+        menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Project(Project::SaveResults));
         menu.end();
         
         let scroll_area = group::Scroll::default()
@@ -142,7 +152,7 @@ impl<'wind> ProcessingLine<'wind> {
         let mut btn_load_initial_img = button::Button::default()
             .with_size(BTN_WIDTH, BTN_HEIGHT)
             .with_label("Загрузить");
-        btn_load_initial_img.emit(sender, Message::LoadImage );        
+        btn_load_initial_img.emit(sender, Message::Project(Project::LoadImage));        
         {
             let (bw, bh) = btn_load_initial_img.measure_label();
             btn_load_initial_img.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
@@ -170,7 +180,7 @@ impl<'wind> ProcessingLine<'wind> {
                         Some(pd) => {
                             let step_num = pd.step_num;
                             let progress_cbk = |cur_percents: usize| {
-                                sender_copy.send(Message::StepProgress { step_num, cur_percents });
+                                sender_copy.send(Message::Processing(Processing::StepProgress { step_num, cur_percents }));
                             };
 
                             let result_img = match pd.step_action {
@@ -188,7 +198,7 @@ impl<'wind> ProcessingLine<'wind> {
                                     pd.init_img.processed_copy(filter, progress_cbk),
                             };
                             pd.result_img = Some(result_img);
-                            sender_copy.send(Message::StepIsComplete { step_num: pd.step_num });
+                            sender_copy.send(Message::Processing(Processing::StepIsComplete { step_num: pd.step_num }));
                             println!("thread completed");
                         },
                         None => { }
@@ -229,91 +239,114 @@ impl<'wind> ProcessingLine<'wind> {
         while app.wait() {
             if let Some(msg) = self.receiver.recv() {
                 match msg {
-                    Message::LoadImage => match self.try_load() {
-                        Ok(_) => {}
-                        Err(err) => err_msg(&self.parent_window, &err.to_string())
-                    }
-                    Message::StepIsStarted { step_num, do_chaining } => {
-                        self.are_steps_chained = do_chaining;
-                        match self.try_do_step(step_num) {
-                            Ok(_) => {}
-                            Err(err) => err_msg(&self.parent_window, &err.to_string())
-                        }
-                    },
-                    Message::StepProgress { step_num, cur_percents: progress } => {
-                        self.steps[step_num].display_progress(progress);
-                    },
-                    Message::StepIsComplete { step_num } => match self.steps[step_num].display_result(self.processing_data.clone()) {
-                        Ok(_) => { 
-                            if self.are_steps_chained && step_num < self.steps.len() - 1 {
-                                self.sender.send(Message::StepIsStarted { step_num: step_num + 1, do_chaining: true });
-                            }
-                        }
-                        Err(err) =>  err_msg(&self.parent_window, &err.to_string())
-                    },
-                    Message::AddStepLinCustom => {
-                        match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
-                            Some(filter) => self.add(StepAction::LinearCustom(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::AddStepLinMean => {
-                        match self.step_editor.add_step_action_with_dlg(app, LinearMean::default()) {
-                            Some(filter) => self.add(StepAction::LinearMean(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::AddStepLinGauss => {
-                        match self.step_editor.add_step_action_with_dlg(app, LinearGaussian::default()) {
-                            Some(filter) => self.add(StepAction::LinearGauss(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::AddStepMed => {
-                        match self.step_editor.add_step_action_with_dlg(app, MedianFilter::default()) {
-                            Some(filter) => self.add(StepAction::Median(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::AddStepHistogramLocalContrast => {
-                        match self.step_editor.add_step_action_with_dlg(app, HistogramLocalContrast::default()) {
-                            Some(filter) => self.add(StepAction::HistogramLocalContrast(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::AddStepCutBrightness => {
-                        match self.step_editor.add_step_action_with_dlg(app, CutBrightness::default()) {
-                            Some(filter) => self.add(StepAction::CutBrightness(filter)),
-                            None => {}
-                        }
-                    },
-                    Message::EditStep { step_num } => {
-                        self.steps[step_num].action = match self.steps[step_num].action {
-                            Some(ref action) => Some(action.edit_action_with_dlg(app, &mut self.step_editor)),
-                            None => {
-                                return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
+                    Message::Project(msg) => {
+                        match msg {
+                            Project::LoadImage => {
+                                match self.try_load() {
+                                    Ok(_) => {}
+                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                };
+                                self.parent_window.redraw();
+                            },
+                            Project::SaveProject => {
+                                match self.try_save_project() {
+                                    Ok(_) => info_msg(&self.parent_window, "Проект успешно сохранен"),
+                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                }
+                            },
+                            Project::LoadProject => {
+                                match self.try_load_project() {
+                                    Ok(_) => info_msg(&self.parent_window, "Проект успешно загружен"),
+                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                }
+                            },
+                            Project::SaveResults => {
+                                match self.try_save_results() {
+                                    Ok(_) => info_msg(&self.parent_window, "Результаты успешно сохранены"),
+                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                }
                             }
                         };
+                        self.parent_window.redraw();
                     },
-                    Message::DeleteStep { step_num } => self.delete_step(step_num),
-                    Message::SaveProject => {
-                        match self.try_save_project() {
-                            Ok(_) => info_msg(&self.parent_window, "Проект успешно сохранен"),
-                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
-                        }
-                    },
-                    Message::LoadProject => {
-                        match self.try_load_project() {
-                            Ok(_) => info_msg(&self.parent_window, "Проект успешно загружен"),
-                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
-                        }
-                    },
-                    Message::SaveResults => {
-                        match self.try_save_results() {
-                            Ok(_) => info_msg(&self.parent_window, "Результаты успешно сохранены"),
-                            Err(err) => err_msg(&self.parent_window, &err.get_message()),
-                        }
-
+                    Message::Step(msg) => {
+                        match msg {
+                            Step::AddStepLinCustom => {
+                                match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
+                                    Some(filter) => self.add(StepAction::LinearCustom(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::AddStepLinMean => {
+                                match self.step_editor.add_step_action_with_dlg(app, LinearMean::default()) {
+                                    Some(filter) => self.add(StepAction::LinearMean(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::AddStepLinGauss => {
+                                match self.step_editor.add_step_action_with_dlg(app, LinearGaussian::default()) {
+                                    Some(filter) => self.add(StepAction::LinearGauss(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::AddStepMed => {
+                                match self.step_editor.add_step_action_with_dlg(app, MedianFilter::default()) {
+                                    Some(filter) => self.add(StepAction::Median(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::AddStepHistogramLocalContrast => {
+                                match self.step_editor.add_step_action_with_dlg(app, HistogramLocalContrast::default()) {
+                                    Some(filter) => self.add(StepAction::HistogramLocalContrast(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::AddStepCutBrightness => {
+                                match self.step_editor.add_step_action_with_dlg(app, CutBrightness::default()) {
+                                    Some(filter) => self.add(StepAction::CutBrightness(filter)),
+                                    None => {}
+                                }
+                            },
+                            Step::EditStep { step_num } => {
+                                self.steps[step_num].action = match self.steps[step_num].action {
+                                    Some(ref action) => Some(action.edit_action_with_dlg(app, &mut self.step_editor)),
+                                    None => {
+                                        return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
+                                    }
+                                };
+                            },
+                            Step::DeleteStep { step_num } => self.delete_step(step_num),
+                        };
+                        self.scroll_pack.redraw();
+                    }
+                    Message::Processing(msg) => {
+                        match msg {
+                            Processing::StepIsStarted { step_num, do_chaining } => {
+                                println!("start");
+                                self.are_steps_chained = do_chaining;
+                                match self.try_do_step(step_num) {
+                                    Ok(_) => {}
+                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                };
+                                self.parent_window.redraw();
+                            },
+                            Processing::StepProgress { step_num, cur_percents } => {
+                                self.steps[step_num].display_progress(cur_percents);
+                            },
+                            Processing::StepIsComplete { step_num } => {
+                                match self.steps[step_num].display_result(self.processing_data.clone()) {
+                                    Ok(_) => { 
+                                        if self.are_steps_chained && step_num < self.steps.len() - 1 {
+                                            println!("continue...");
+                                            self.sender.send(Message::Processing(Processing::StepIsStarted 
+                                                { step_num: step_num + 1, do_chaining: true }));
+                                        }
+                                    }
+                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                };
+                                println!("after redrawing");
+                            },
+                        };
                     }
                 }
             }
@@ -624,18 +657,18 @@ impl ProcessingStep {
         btn_process.set_label("Запустить");
         let (w, h) = btn_process.measure_label();
         btn_process.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
-        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, Message::StepIsStarted { step_num, do_chaining: false });
-        btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, Message::StepIsStarted { step_num, do_chaining: true });
+        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
+        btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
 
         let mut btn_edit = button::Button::default();
         btn_edit.set_label("Изменить");
-        btn_edit.emit(sender, Message::EditStep { step_num } );
+        btn_edit.emit(sender, Message::Step(Step::EditStep { step_num }));
         let (w, h) = btn_edit.measure_label();
         btn_edit.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
         let mut btn_delete = button::Button::default();
         btn_delete.set_label("Удалить");
-        btn_delete.emit(sender, Message::DeleteStep { step_num } );
+        btn_delete.emit(sender, Message::Step(Step::DeleteStep { step_num }));
         let (w, h) = btn_delete.measure_label();
         btn_delete.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
@@ -660,10 +693,10 @@ impl ProcessingStep {
     }
 
     fn set_step_num(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, Message::StepIsStarted { step_num, do_chaining: false });
-        self.btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, Message::StepIsStarted { step_num, do_chaining: true });
-        self.btn_edit.emit(self.sender, Message::EditStep { step_num } );
-        self.btn_delete.emit(self.sender, Message::DeleteStep { step_num } );
+        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
+        self.btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
+        self.btn_edit.emit(self.sender, Message::Step(Step::EditStep { step_num } ));
+        self.btn_delete.emit(self.sender, Message::Step(Step::DeleteStep { step_num }));
         self.label_step_name.redraw_label();
         self.frame_img.set_damage(true);
         self.step_num = step_num;
@@ -705,8 +738,7 @@ impl ProcessingStep {
 
         self.set_buttons_active(false);
 
-        self.frame_img.set_image(Option::<RgbImage>::None);   
-        self.frame_img.redraw();
+        self.frame_img.set_image(Option::<RgbImage>::None); 
 
         println!("{} started", self.step_num);
 

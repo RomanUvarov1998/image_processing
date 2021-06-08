@@ -5,25 +5,6 @@ use fltk::{app, enums::Damage, prelude::*, window};
 pub const WIN_WIDTH: i32 = 640;
 pub const WIN_HEIGHT: i32 = 480;
 
-#[derive(Debug, Copy, Clone)]
-pub enum Message {
-    LoadImage,
-    StepIsStarted { step_num: usize, do_chaining: bool },
-    StepProgress { step_num: usize, cur_percents: usize },
-    StepIsComplete { step_num: usize },
-    AddStepLinCustom, 
-    AddStepLinMean, 
-    AddStepLinGauss, 
-    AddStepMed, 
-    AddStepHistogramLocalContrast, 
-    AddStepCutBrightness, 
-    EditStep { step_num: usize }, 
-    DeleteStep { step_num: usize },
-    SaveProject,
-    LoadProject,
-    SaveResults,
-}
-
 pub fn create_app() -> result::Result<(), MyError> {
     let app = app::App::default();
     let mut wind = window::Window::default()
@@ -35,7 +16,7 @@ pub fn create_app() -> result::Result<(), MyError> {
     wind.make_resizable(true);
     wind.show();
     
-    let mut steps_line = ProcessingLine::new(&wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
+    let mut steps_line = ProcessingLine::new(&mut wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
     steps_line.end();
 
     steps_line.run(app)?;
