@@ -316,9 +316,15 @@ impl Filter for CutBrightness {
         let mut prev_row = 0_usize;
 
         for pos in img.get_iterator() {
-            if img[pos] >= self.cut_range.min as f64 && img[pos] <= self.cut_range.max as f64 {
-                img[pos] = self.replace_with.value as f64
-            }
+            let pix_val = img[pos] as u8;
+            let before_min = pix_val < self.cut_range.min;
+            let after_max = pix_val > self.cut_range.max;
+
+            let result = pix_val * (!before_min) as u8 * (!after_max) as u8
+                + self.replace_with.value * before_min as u8 * after_max as u8;
+
+            img[pos] = result as f64;
+
             if pos.row > prev_row {
                 prev_row = pos.row;
                 progress_cbk(prev_row * 100 / img.h());
