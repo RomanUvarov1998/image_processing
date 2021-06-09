@@ -103,7 +103,7 @@ pub struct ProcessingLine<'wind> {
     steps: Vec<ProcessingStep>,
     w: i32, h: i32,
     scroll_pack: group::Pack,    
-    sender: Sender<Message>,receiver: Receiver<Message>,
+    receiver: Receiver<Message>,
     step_editor: StepEditor,
     processing_data: Arc<Mutex<Option<ProcessingData>>>,
     processing_thread: JoinHandle<()>,
@@ -174,7 +174,6 @@ impl<'wind> ProcessingLine<'wind> {
         let processing_thread = thread::spawn(move || {
             loop {
                 thread::park();
-                println!("resumed");
                 match processing_data_copy.try_lock() {
                     Ok(mut guard) => match guard.as_mut() {
                         Some(pd) => {
@@ -199,7 +198,6 @@ impl<'wind> ProcessingLine<'wind> {
                             };
                             pd.result_img = Some(result_img);
                             sender_copy.send(Message::Processing(Processing::StepIsComplete { step_num: pd.step_num }));
-                            println!("thread completed");
                         },
                         None => { }
                     },
@@ -215,7 +213,7 @@ impl<'wind> ProcessingLine<'wind> {
             steps: Vec::<ProcessingStep>::new(),
             w, h,
             scroll_pack,
-            sender, receiver,
+            receiver,
             step_editor: StepEditor::new(),
             processing_data,
             processing_thread,
@@ -322,13 +320,11 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::Processing(msg) => {
                         match msg {
                             Processing::StepIsStarted { step_num, do_chaining } => {
-                                println!("start");
                                 self.are_steps_chained = do_chaining;
-                                match self.try_do_step(step_num) {
+                                match self.try_start_step(step_num) {
                                     Ok(_) => {}
                                     Err(err) => err_msg(&self.parent_window, &err.to_string())
                                 };
-                                self.parent_window.redraw();
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
                                 self.steps[step_num].display_progress(cur_percents);
@@ -337,16 +333,17 @@ impl<'wind> ProcessingLine<'wind> {
                                 match self.steps[step_num].display_result(self.processing_data.clone()) {
                                     Ok(_) => { 
                                         if self.are_steps_chained && step_num < self.steps.len() - 1 {
-                                            println!("continue...");
-                                            self.sender.send(Message::Processing(Processing::StepIsStarted 
-                                                { step_num: step_num + 1, do_chaining: true }));
+                                            match self.try_start_step(step_num + 1) {
+                                                Ok(_) => {}
+                                                Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                            };
                                         }
                                     }
                                     Err(err) => err_msg(&self.parent_window, &err.to_string())
                                 };
-                                println!("after redrawing");
                             },
                         };
+                        self.parent_window.redraw();
                     }
                 }
             }
@@ -399,7 +396,7 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn try_do_step(&mut self, step_num: usize) -> result::Result<(), MyError> {
+    fn try_start_step(&mut self, step_num: usize) -> result::Result<(), MyError> {
         assert!(self.steps.len() > step_num);
 
         if step_num == 0 {
@@ -740,36 +737,19 @@ impl ProcessingStep {
 
         self.frame_img.set_image(Option::<RgbImage>::None); 
 
-        println!("{} started", self.step_num);
-
         Ok(())
     }
 
-    fn display_progress(&mut self, progress: usize) {
-        let mut pr_str = String::from("|");
-        let mut i = 10;
-        while i < progress {
-            pr_str.push_str(".");
-            i += 10;
-        }
-        while i < 100 {
-            pr_str.push_str(" ");
-            i += 10;
-        }
-        pr_str.push_str("|");
-        self.frame_img.set_label(&pr_str);
-
-        println!("{}: {}", self.step_num, progress);
+    fn display_progress(&mut self, progress_percents: usize) {
+        self.frame_img.set_label(&format!("{}%", progress_percents));
+        self.frame_img.redraw_label();
     }
 
     fn display_result(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>) -> Result<(), MyError>  {
-        println!("{} complete", self.step_num);
         self.frame_img.set_label("");
 
-        println!("getting data...");
         let pd_locked = processing_data.lock().unwrap().take();
         drop(processing_data);
-        println!("got data");
         let result_img = match pd_locked {
             Some(mut p) => match p.get_result() {
                 Some(img) => img,
