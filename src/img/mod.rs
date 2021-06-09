@@ -99,7 +99,11 @@ impl Matrix2D {
         ImgIterator::for_rect_area( from, to_excluded)
     }
 
-    pub fn get_progress_iter<Cbk: Fn(usize)>(&self, from: PixelPos, to_excluded: PixelPos, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
+    pub fn get_progress_iter<Cbk: Fn(usize)>(&self, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
+        ProgressIterator::<Cbk>::for_full_image(self, progress_cbk)
+    }
+
+    pub fn get_progress_iter_area<Cbk: Fn(usize)>(&self, from: PixelPos, to_excluded: PixelPos, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
         ProgressIterator::<Cbk>::for_rect_area(from,to_excluded, progress_cbk)
     }
 
@@ -319,6 +323,16 @@ pub struct ProgressIterator<Cbk: Fn(usize)> {
 }
 
 impl<Cbk: Fn(usize)> ProgressIterator<Cbk> {
+    pub fn for_full_image(img: &Matrix2D, progress_cbk: Cbk) -> Self {
+        ProgressIterator::<Cbk> {
+            top_left: PixelPos::new(0, 0),
+            bottom_right_excluded: PixelPos::new(img.h(), img.w()),
+            cur_pos: PixelPos::new(0, 0),
+            progress_cbk,
+            prev_time: time::Instant::now()
+        }
+    }
+
     pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos, progress_cbk: Cbk) -> Self {
         assert!(top_left.row < bottom_right_excluded.row);
         assert!(top_left.col < bottom_right_excluded.col);

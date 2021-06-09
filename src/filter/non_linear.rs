@@ -313,9 +313,7 @@ impl CutBrightness {
 
 impl Filter for CutBrightness {
     fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        let mut prev_row = 0_usize;
-
-        for pos in img.get_iterator() {
+        for pos in img.get_progress_iter(progress_cbk) {
             let pix_val = img[pos] as u8;
             let before_min = pix_val < self.cut_range.min;
             let after_max = pix_val > self.cut_range.max;
@@ -324,12 +322,8 @@ impl Filter for CutBrightness {
                 + self.replace_with.value * before_min as u8 * after_max as u8;
 
             img[pos] = result as f64;
-
-            if pos.row > prev_row {
-                prev_row = pos.row;
-                progress_cbk(prev_row * 100 / img.h());
-            }
         }
+        
         img
     }
 }

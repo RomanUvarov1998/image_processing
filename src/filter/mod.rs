@@ -59,7 +59,7 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T,
     // let mut prev_row = 0_usize;
     // let mut prev_percents = 0_usize;
 
-    for pos_im in img_extended.get_progress_iter(
+    for pos_im in img_extended.get_progress_iter_area(
         fil_half_size, 
         PixelPos::new(img.h(), img.w()) + fil_half_size,
         progress_cbk)
