@@ -1,4 +1,4 @@
-use crate::{filter::FilterIterator, my_err::MyError};
+use crate::{filter::FilterIterator, my_err::MyError, proc_steps::StepAction};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
@@ -6,7 +6,7 @@ pub trait StringFromTo {
     fn content_to_string(&self) -> String;
 }
 
-pub trait Filter : Default + Clone + StringFromTo {
+pub trait Filter : Default + Clone + StringFromTo + Into<StepAction> {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D;
 }
 

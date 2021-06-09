@@ -1,4 +1,4 @@
-use crate::{img::pixel_pos::PixelPos, my_err::MyError, utils::{LinesIter, WordsIter}};
+use crate::{img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter, WordsIter}};
 use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 #[derive(Clone)]
@@ -91,6 +91,12 @@ impl StringFromTo for LinearGaussian {
 
     fn content_to_string(&self) -> String {
         format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
+    }
+}
+
+impl Into<StepAction> for LinearGaussian {
+    fn into(self) -> StepAction {
+        StepAction::LinearGaussian(self)
     }
 }
 
@@ -227,6 +233,11 @@ fn default() -> Self {
 }
 }
 
+impl Into<StepAction> for LinearCustom {
+    fn into(self) -> StepAction {
+        StepAction::LinearCustom(self)
+    }
+}
 
 #[derive(Clone)]
 pub struct LinearMean {
@@ -291,4 +302,10 @@ fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
 fn content_to_string(&self) -> String {
     format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
 }
+}
+
+impl Into<StepAction> for LinearMean {
+    fn into(self) -> StepAction {
+        StepAction::LinearMean(self)
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_err::MyError, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -118,6 +118,11 @@ impl Default for MedianFilter {
     }
 }
 
+impl Into<StepAction> for MedianFilter {
+    fn into(self) -> StepAction {
+        StepAction::MedianFilter(self)
+    }
+}
 
 #[derive(Clone)]
 pub struct HistogramLocalContrast {
@@ -297,6 +302,11 @@ impl Default for HistogramLocalContrast {
     }
 }
 
+impl Into<StepAction> for HistogramLocalContrast {
+    fn into(self) -> StepAction {
+        StepAction::HistogramLocalContrast(self)
+    }
+}
 
 
 #[derive(Clone)]
@@ -348,5 +358,11 @@ impl StringFromTo for CutBrightness {
 
     fn content_to_string(&self) -> String {
         format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string())
+    }
+}
+
+impl Into<StepAction> for CutBrightness {
+    fn into(self) -> StepAction {
+        StepAction::CutBrightness(self)
     }
 }

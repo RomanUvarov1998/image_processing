@@ -1,6 +1,6 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::filter::filter_trait::StringFromTo;
+use crate::{filter::{filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -58,12 +58,20 @@ impl StepEditor {
         }
     }
 
-    pub fn add_step_action_with_dlg<T: StringFromTo>(&mut self, app: app::App, filter: T) -> Option<T> {
+    pub fn add_with_dlg(&mut self, app: app::App, action: StepAction) -> Option<StepAction> {
         let (sender, receiver) = app::channel::<StepEditMessage>();
 
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
-        self.text_editor.buffer().unwrap().set_text(&filter.content_to_string());
+        let filter_settings: String = match &action {
+            StepAction::LinearCustom(filter) => filter.content_to_string(),
+            StepAction::LinearMean(filter) => filter.content_to_string(),
+            StepAction::LinearGaussian(filter) => filter.content_to_string(),
+            StepAction::MedianFilter(filter) => filter.content_to_string(),
+            StepAction::HistogramLocalContrast(filter) => filter.content_to_string(),
+            StepAction::CutBrightness(filter) => filter.content_to_string(),
+        };
+        self.text_editor.buffer().unwrap().set_text(&filter_settings);
 
         // if window is closed by user, "Close" message helps exit the message loop
         self.wind.handle(move |_, event| {
@@ -77,7 +85,10 @@ impl StepEditor {
             return false;
         });
 
+        self.lbl_message.set_label("");
+
         self.wind.show();
+        self.wind.redraw();
 
         loop {
             if !app.wait() { break; }
@@ -89,14 +100,50 @@ impl StepEditor {
                             Some(ref buf) => buf.text(),
                             None => continue
                         };
-                        match T::try_from_string(&text) {
-                            Ok(filter) => {
-                                self.lbl_message.set_label("");
-                                self.wind.hide();
-                                return Some(filter);
+                        match &action {
+                            StepAction::LinearCustom(_) => match LinearCustom::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
                             },
-                            Err(err) => self.lbl_message.set_label(&err.get_message())
-                        }
+                            StepAction::LinearMean(_) => match LinearMean::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::LinearGaussian(_) => match LinearGaussian::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::MedianFilter(_) => match MedianFilter::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::HistogramLocalContrast(_) => match HistogramLocalContrast::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::CutBrightness(_) => match CutBrightness::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                        };
                     },
                     StepEditMessage::Exit => {
                         return None;

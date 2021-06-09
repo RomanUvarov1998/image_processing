@@ -4,7 +4,7 @@ use std::thread::JoinHandle;
 use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::app::Sender;
+use fltk::app::{App, Sender};
 use fltk::menu::MenuFlag;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{StringFromTo};
@@ -21,80 +21,39 @@ pub const BTN_TEXT_PADDING: i32 = 10;
 pub enum StepAction {
     LinearCustom(LinearCustom),
     LinearMean(LinearMean),
-    LinearGauss(LinearGaussian),
-    Median(MedianFilter),
+    LinearGaussian(LinearGaussian),
+    MedianFilter(MedianFilter),
     HistogramLocalContrast(HistogramLocalContrast),
     CutBrightness(CutBrightness)
 }
+
 impl StepAction {
-    fn edit_action_with_dlg(&self, app: app::App, step_editor: &mut StepEditor) -> StepAction {
-        match self {
-            StepAction::LinearCustom(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                return match res {
-                    Some(new_filter) => StepAction::LinearCustom(new_filter),
-                    None => StepAction::LinearCustom(old_filter.clone()),
-                };
-            },
-            StepAction::LinearMean(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                match res {
-                    Some(new_filter) => StepAction::LinearMean(new_filter),
-                    None => StepAction::LinearMean(old_filter.clone()),
-                }
-            },
-            StepAction::LinearGauss(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                match res {
-                    Some(new_filter) => StepAction::LinearGauss(new_filter),
-                    None => StepAction::LinearGauss(old_filter.clone()),
-                }
-            },
-            StepAction::Median(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                match res {
-                    Some(new_filter) => StepAction::Median(new_filter),
-                    None => StepAction::Median(old_filter.clone()),
-                }
-            },
-            StepAction::HistogramLocalContrast(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                match res {
-                    Some(new_filter) => StepAction::HistogramLocalContrast(new_filter),
-                    None => StepAction::HistogramLocalContrast(old_filter.clone()),
-                }
-            },
-            StepAction::CutBrightness(old_filter) => {
-                let res = step_editor.add_step_action_with_dlg(app, old_filter.clone());
-                match res {
-                    Some(new_filter) => StepAction::CutBrightness(new_filter),
-                    None => StepAction::CutBrightness(old_filter.clone()),
-                }
-            },          
+    fn edit_with_dlg(&self, app: App, step_editor: &mut StepEditor) -> StepAction {
+        if let Some(edited_action) = step_editor.add_with_dlg(app, self.clone()) {
+            edited_action
+        } else {
+            self.clone()
         }
     }
 
-    fn try_parce(string: &str) -> Option<Self> {
-        if let Ok(filter) = LinearCustom::try_from_string(string) {
-            Some(StepAction::LinearCustom(filter))
-        } 
-        else if let Ok(filter) = LinearMean::try_from_string(string) {
-            Some(StepAction::LinearMean(filter))
-        } 
-        else if let Ok(filter) = LinearGaussian::try_from_string(string) {
-            Some(StepAction::LinearGauss(filter))
-        } 
-        else if let Ok(filter) = LinearMean::try_from_string(string) {
-            Some(StepAction::LinearMean(filter))
-        } 
-        else if let Ok(filter) = HistogramLocalContrast::try_from_string(string) {
-            Some(StepAction::HistogramLocalContrast(filter))
-        } 
-        else {
-            None
+    fn act<Cbk: Fn(usize)>(&mut self, init_img: &Matrix2D, progress_cbk: Cbk) -> Matrix2D{
+        match self {
+            StepAction::LinearCustom(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::LinearMean(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::LinearGaussian(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::MedianFilter(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::HistogramLocalContrast(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::CutBrightness(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),
         }
     }
 }
+
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
@@ -182,21 +141,8 @@ impl<'wind> ProcessingLine<'wind> {
                                 sender_copy.send(Message::Processing(Processing::StepProgress { step_num, cur_percents }));
                             };
 
-                            let result_img = match pd.step_action {
-                                StepAction::LinearCustom(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                                StepAction::LinearMean(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                                StepAction::LinearGauss(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                                StepAction::Median(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                                StepAction::HistogramLocalContrast(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                                StepAction::CutBrightness(ref mut filter) => 
-                                    pd.init_img.processed_copy(filter, progress_cbk),
-                            };
-                            pd.result_img = Some(result_img);
+                            pd.result_img = Some(pd.step_action.act(&pd.init_img, progress_cbk));
+
                             sender_copy.send(Message::Processing(Processing::StepIsComplete { step_num: pd.step_num }));
                         },
                         None => { }
@@ -270,48 +216,37 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::Step(msg) => {
                         match msg {
                             Step::AddStepLinCustom => {
-                                match self.step_editor.add_step_action_with_dlg(app, LinearCustom::default()) {
-                                    Some(filter) => self.add(StepAction::LinearCustom(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearCustom::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::AddStepLinMean => {
-                                match self.step_editor.add_step_action_with_dlg(app, LinearMean::default()) {
-                                    Some(filter) => self.add(StepAction::LinearMean(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearMean::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::AddStepLinGauss => {
-                                match self.step_editor.add_step_action_with_dlg(app, LinearGaussian::default()) {
-                                    Some(filter) => self.add(StepAction::LinearGauss(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearGaussian::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::AddStepMed => {
-                                match self.step_editor.add_step_action_with_dlg(app, MedianFilter::default()) {
-                                    Some(filter) => self.add(StepAction::Median(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, MedianFilter::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::AddStepHistogramLocalContrast => {
-                                match self.step_editor.add_step_action_with_dlg(app, HistogramLocalContrast::default()) {
-                                    Some(filter) => self.add(StepAction::HistogramLocalContrast(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, HistogramLocalContrast::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::AddStepCutBrightness => {
-                                match self.step_editor.add_step_action_with_dlg(app, CutBrightness::default()) {
-                                    Some(filter) => self.add(StepAction::CutBrightness(filter)),
-                                    None => {}
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, CutBrightness::default().into()) {
+                                    self.add(new_action);
                                 }
                             },
                             Step::EditStep { step_num } => {
-                                self.steps[step_num].action = match self.steps[step_num].action {
-                                    Some(ref action) => Some(action.edit_action_with_dlg(app, &mut self.step_editor)),
-                                    None => {
-                                        return Err(MyError::new("В данном компоненте нет фильтра".to_string()));
-                                    }
-                                };
+                                self.steps[step_num].edit_action_with_dlg(app, &mut self.step_editor);
                             },
                             Step::DeleteStep { step_num } => self.delete_step(step_num),
                         };
@@ -403,7 +338,7 @@ impl<'wind> ProcessingLine<'wind> {
             match self.initial_img {
                 Some(ref img) => {
                     let img_copy = img.clone();
-                    self.steps[step_num].setup_processing(self.processing_data.clone(), img_copy)?;
+                    self.steps[step_num].start_processing(self.processing_data.clone(), img_copy)?;
                 },
                 None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
             }
@@ -411,7 +346,7 @@ impl<'wind> ProcessingLine<'wind> {
             let prev_step = &self.steps[step_num - 1];
             match prev_step.get_data_copy() {
                 Some(img_copy) => {
-                    self.steps[step_num].setup_processing(self.processing_data.clone(), img_copy)?;
+                    self.steps[step_num].start_processing(self.processing_data.clone(), img_copy)?;
                 },
                 None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             }
@@ -426,12 +361,6 @@ impl<'wind> ProcessingLine<'wind> {
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
-        }
-
-        // check if all steps have filters defined
-        let all_steps_have_filter = self.steps.iter().all(|s| s.action.is_some());
-        if !all_steps_have_filter {
-            return Err(MyError::new("У всех шагов должны быть заданы фильтры".to_string()));
         }
 
         // choose folder
@@ -460,11 +389,11 @@ impl<'wind> ProcessingLine<'wind> {
 
         // save all steps
         for step_num in 0..self.steps.len() {
-            let filter_content: String = match self.steps[step_num].action.as_ref().unwrap() {
+            let filter_content: String = match &self.steps[step_num].action {
                 StepAction::LinearCustom(ref filter) => filter.content_to_string(),
                 StepAction::LinearMean(ref filter) => filter.content_to_string(),
-                StepAction::LinearGauss(ref filter) => filter.content_to_string(),
-                StepAction::Median(ref filter) => filter.content_to_string(),
+                StepAction::LinearGaussian(ref filter) => filter.content_to_string(),
+                StepAction::MedianFilter(ref filter) => filter.content_to_string(),
                 StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
                 StepAction::CutBrightness(ref filter) => filter.content_to_string(),
             };
@@ -522,8 +451,14 @@ impl<'wind> ProcessingLine<'wind> {
             let mut content = String::new();
             file.read_to_string(&mut content)?;
 
-            if let Some(step_action) = StepAction::try_parce(&content) 
-            {
+            if let Some(step_action) = {
+                if let Ok(filter) = LinearCustom::try_from_string(&content) { Some(filter.into()) } 
+                else if let Ok(filter) = LinearMean::try_from_string(&content) { Some(filter.into()) } 
+                else if let Ok(filter) = LinearGaussian::try_from_string(&content) { Some(filter.into()) } 
+                else if let Ok(filter) = LinearMean::try_from_string(&content) { Some(filter.into()) } 
+                else if let Ok(filter) = HistogramLocalContrast::try_from_string(&content) { Some(filter.into()) } 
+                else { None }
+            } {
                 self.add(step_action);
             } 
             else 
@@ -620,19 +555,19 @@ pub struct ProcessingStep {
     btn_delete: button::Button,
     label_step_name: Frame,
     frame_img: Frame,
-    pub action: Option<StepAction>,
+    pub action: StepAction,
     image: Option<img::Matrix2D>,
     step_num: usize,
     sender: Sender<Message>
 }
 
 impl ProcessingStep {
-    fn new(proc_line: &ProcessingLine, filter: StepAction) -> Self {
-        let name = match filter {
+    fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
+        let name = match action {
             StepAction::LinearCustom(_) => "Линейный фильтр".to_string(),
             StepAction::LinearMean(_) => "Линейный фильтр (усредняющий)".to_string(),
-            StepAction::LinearGauss(_) => "Линейный фильтр (гауссовский)".to_string(),
-            StepAction::Median(_) => "Медианный фильтр".to_string(),
+            StepAction::LinearGaussian(_) => "Линейный фильтр (гауссовский)".to_string(),
+            StepAction::MedianFilter(_) => "Медианный фильтр".to_string(),
             StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string(),
             StepAction::CutBrightness(_) => "Вырезание яркости".to_string(),
         };
@@ -682,11 +617,15 @@ impl ProcessingStep {
             btn_process, btn_edit, btn_delete,
             frame_img, 
             label_step_name: label,
-            action: Some(filter),
+            action,
             image: None, 
             step_num,
             sender
         }
+    }
+    
+    fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
+        self.action = self.action.edit_with_dlg(app, step_editor);
     }
 
     fn set_step_num(&mut self, step_num: usize) {
@@ -724,14 +663,9 @@ impl ProcessingStep {
         self.image.clone()
     }
  
-    fn setup_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix2D) -> Result<(), MyError> {
-        match self.action {
-            Some(ref step_action) => {
-                processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, step_action.clone(), init_img));
-                drop(processing_data);
-            },
-            None => { return Err(MyError::new("В данном шаге нет действия(((".to_string())); },
-        };
+    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix2D) -> Result<(), MyError> {
+        processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
+        drop(processing_data);
 
         self.set_buttons_active(false);
 
