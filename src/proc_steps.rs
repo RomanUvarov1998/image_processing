@@ -315,7 +315,7 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             Step::DeleteStep { step_num } => self.delete_step(step_num),
                         };
-                        self.scroll_pack.redraw();
+                        self.parent_window.redraw();
                     }
                     Message::Processing(msg) => {
                         match msg {
