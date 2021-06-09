@@ -1,6 +1,6 @@
 pub mod pixel_pos;
 
-use std::{ops::{Index, IndexMut}, path::PathBuf, result};
+use std::{ops::{Index, IndexMut}, path::PathBuf, result, time};
 use fltk::{image, prelude::ImageExt};
 use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
 
@@ -97,6 +97,10 @@ impl Matrix2D {
 
     pub fn get_area_iter(&self, from: PixelPos, to_excluded: PixelPos) -> ImgIterator {
         ImgIterator::for_rect_area( from, to_excluded)
+    }
+
+    pub fn get_progress_iter<Cbk: Fn(usize)>(&self, from: PixelPos, to_excluded: PixelPos, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
+        ProgressIterator::<Cbk>::for_rect_area(from,to_excluded, progress_cbk)
     }
 
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
@@ -298,6 +302,57 @@ impl Iterator for ImgIterator {
         } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
             self.cur_pos.col = self.top_left.col;
             self.cur_pos.row += 1;
+            return Some(curr);
+        } else {
+            self.cur_pos = self.top_left;
+            return None;
+        }        
+    }
+}
+
+pub struct ProgressIterator<Cbk: Fn(usize)> {
+    top_left: PixelPos,
+    bottom_right_excluded: PixelPos,
+    cur_pos: PixelPos,
+    progress_cbk: Cbk,
+    prev_time: time::Instant
+}
+
+impl<Cbk: Fn(usize)> ProgressIterator<Cbk> {
+    pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos, progress_cbk: Cbk) -> Self {
+        assert!(top_left.row < bottom_right_excluded.row);
+        assert!(top_left.col < bottom_right_excluded.col);
+
+        ProgressIterator::<Cbk>{
+            top_left,
+            bottom_right_excluded,
+            cur_pos: top_left,
+            progress_cbk,
+            prev_time: time::Instant::now()
+        }
+    }
+}
+
+impl<Cbk: Fn(usize)> Iterator for ProgressIterator<Cbk> {
+    type Item = PixelPos;
+
+    fn next(&mut self) -> Option<PixelPos> {
+        let curr = self.cur_pos;
+
+        const ONE_FIFTH_OF_A_SECOND_MS: u128 = 200;
+
+        if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
+            self.cur_pos.col += 1;
+            return Some(curr);
+        } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
+            self.cur_pos.col = self.top_left.col;
+            self.cur_pos.row += 1;
+
+            if self.prev_time.elapsed().as_millis() > ONE_FIFTH_OF_A_SECOND_MS {
+                self.prev_time = time::Instant::now();
+                (self.progress_cbk)(curr.row * 100 / (self.bottom_right_excluded.row - self.top_left.row));
+            }
+
             return Some(curr);
         } else {
             self.cur_pos = self.top_left;

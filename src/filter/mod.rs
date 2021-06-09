@@ -56,12 +56,13 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T,
         fil_half_size.row, 
         fil_half_size.col);
 
-    let mut prev_row = 0_usize;
-    let mut prev_percents = 0_usize;
+    // let mut prev_row = 0_usize;
+    // let mut prev_percents = 0_usize;
 
-    for pos_im in img_extended.get_area_iter(
+    for pos_im in img_extended.get_progress_iter(
         fil_half_size, 
-        PixelPos::new(img.h(), img.w()) + fil_half_size)
+        PixelPos::new(img.h(), img.w()) + fil_half_size,
+        progress_cbk)
     {
         for pos_w in filter.get_iterator() {            
             let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
@@ -73,14 +74,14 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T,
         
         img[pos_im - fil_half_size] = filter_result;
 
-        if prev_row < pos_im.row {
-            let cur_percents = pos_im.row * 100 / img.h();
-            if prev_percents < cur_percents {
-                prev_percents = cur_percents;
-                prev_row = pos_im.row;
-                progress_cbk(cur_percents);
-            }
-        }
+        // if prev_row < pos_im.row {
+        //     let cur_percents = pos_im.row * 100 / img.h();
+        //     if prev_percents < cur_percents {
+        //         prev_percents = cur_percents;
+        //         prev_row = pos_im.row;
+        //         progress_cbk(cur_percents);
+        //     }
+        // }
     }
 
     img
