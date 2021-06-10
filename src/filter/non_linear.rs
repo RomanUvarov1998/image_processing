@@ -5,12 +5,13 @@ use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendVa
 #[derive(Clone)]
 pub struct MedianFilter {
     size: FilterWindowSize,
-    extend_value: ExtendValue
+    extend_value: ExtendValue,
+    name: String
 }
 
 impl MedianFilter {
     pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {        
-        MedianFilter { size, extend_value }
+        MedianFilter { size, extend_value, name: "Медианный фильтр".to_string() }
     }
 }
 
@@ -90,6 +91,8 @@ impl Filter for MedianFilter {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
         super::filter_window(img, self, MedianFilter::process_window, progress_cbk)
     }
+    
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 }
 
 impl StringFromTo for MedianFilter {
@@ -130,6 +133,7 @@ pub struct HistogramLocalContrast {
     ext_value: ExtendValue,
     mean_filter: LinearMean,
     a_values: ARange,
+    name: String
 }
 
 impl HistogramLocalContrast {
@@ -139,7 +143,8 @@ impl HistogramLocalContrast {
             size, 
             ext_value, 
             mean_filter: LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Given(0_f64)),
-            a_values
+            a_values,
+            name: "Локальный контраст (гистограмма)".to_string()
         }
     }
 
@@ -231,6 +236,8 @@ impl Filter for HistogramLocalContrast {
 
         img_result
     }
+    
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 }
 
 impl WindowFilter for HistogramLocalContrast {
@@ -312,12 +319,13 @@ impl Into<StepAction> for HistogramLocalContrast {
 #[derive(Clone)]
 pub struct CutBrightness {
     cut_range: CutBrightnessRange,
-    replace_with: ValueRepaceWith
+    replace_with: ValueRepaceWith,
+    name: String
 }
 
 impl CutBrightness {
     pub fn new(cut_range: CutBrightnessRange, replace_with: ValueRepaceWith) -> Self {
-        CutBrightness { cut_range, replace_with }
+        CutBrightness { cut_range, replace_with, name: "Вырезание яркости".to_string() }
     }
 }
 
@@ -336,6 +344,8 @@ impl Filter for CutBrightness {
         
         img
     }
+
+    fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
 }
 
 impl Default for CutBrightness {

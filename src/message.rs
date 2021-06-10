@@ -14,6 +14,9 @@ pub enum Project {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub enum MoveStep { Up, Down }
+
+#[derive(Debug, Copy, Clone)]
 pub enum Step {
     AddStepLinCustom, 
     AddStepLinMean, 
@@ -22,6 +25,7 @@ pub enum Step {
     AddStepHistogramLocalContrast, 
     AddStepCutBrightness, 
     EditStep { step_num: usize }, 
+    MoveStep { step_num: usize, direction: MoveStep }, 
     DeleteStep { step_num: usize },
 }
 

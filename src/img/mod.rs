@@ -87,6 +87,10 @@ impl Matrix2D {
     pub fn max_col(&self) -> usize { self.width - 1 }
     pub fn max_row(&self) -> usize { self.height - 1 }
 
+    pub fn get_description(&self) -> String {
+        format!("изображение {}x{}", self.h(), self.w())
+    }
+
     pub fn fits(&self, pos: PixelPos) -> bool {
         pos.col <= self.max_col() && pos.row <= self.max_row()
     }

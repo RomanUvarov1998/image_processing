@@ -7,9 +7,9 @@ use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::menu::MenuFlag;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
-use crate::filter::filter_trait::{StringFromTo};
+use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::img::Matrix2D;
-use crate::message::{Message, Processing, Project, Step};
+use crate::message::{self, Message, Processing, Project, Step};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
@@ -28,6 +28,17 @@ pub enum StepAction {
 }
 
 impl StepAction {
+    fn filter_description(&self) -> String {
+        match self {
+            StepAction::LinearCustom(filter) => filter.get_description(),
+            StepAction::LinearMean(filter) => filter.get_description(),
+            StepAction::LinearGaussian(filter) => filter.get_description(),
+            StepAction::MedianFilter(filter) => filter.get_description(),
+            StepAction::HistogramLocalContrast(filter) => filter.get_description(),
+            StepAction::CutBrightness(filter) => filter.get_description(),
+        }
+    }
+
     fn edit_with_dlg(&self, app: App, step_editor: &mut StepEditor) -> StepAction {
         if let Some(edited_action) = step_editor.add_with_dlg(app, self.clone()) {
             edited_action
@@ -249,6 +260,47 @@ impl<'wind> ProcessingLine<'wind> {
                                 self.steps[step_num].edit_action_with_dlg(app, &mut self.step_editor);
                             },
                             Step::DeleteStep { step_num } => self.delete_step(step_num),
+                            Step::MoveStep { step_num, direction } => {
+                                match direction {
+                                    message::MoveStep::Up => {
+                                        if step_num > 0 {                                            
+                                            self.scroll_pack.begin();
+
+                                            for step in self.steps[step_num - 1..].iter_mut() {
+                                                step.remove_self_from(&mut self.scroll_pack);
+                                            }
+
+                                            self.steps.swap(step_num - 1, step_num);
+
+                                            for step in self.steps[step_num - 1..].iter_mut() {
+                                                step.draw_self_on(&mut self.scroll_pack);
+                                            }
+
+                                            self.scroll_pack.end();
+                                        }
+                                    },
+                                    message::MoveStep::Down => {                                        
+                                        if step_num < self.steps.len() - 1 {                                            
+                                            self.scroll_pack.begin();
+
+                                            for step in self.steps[step_num..].iter_mut() {
+                                                step.remove_self_from(&mut self.scroll_pack);
+                                            }
+
+                                            self.steps.swap(step_num, step_num + 1);
+
+                                            for step in self.steps[step_num..].iter_mut() {
+                                                step.draw_self_on(&mut self.scroll_pack);
+                                            }
+
+                                            self.scroll_pack.end();
+                                        }
+                                    },
+                                };
+                                for i in 0..self.steps.len() {
+                                    self.steps[i].set_step_num(i);
+                                }
+                            },
                         };
                         self.parent_window.redraw();
                     }
@@ -291,11 +343,13 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.begin();
         self.steps[step_num].remove_self_from(&mut self.scroll_pack);
         self.scroll_pack.end();
+
         self.steps.remove(step_num);
 
         for i in step_num..self.steps.len() {
             self.steps[i].set_step_num(i);
         }
+
         self.scroll_pack.top_window().unwrap().set_damage(true);
     }
 
@@ -548,11 +602,11 @@ impl ProcessingData {
 }
 
 pub struct ProcessingStep {
-    name: String,
     hpack: group::Pack,
     btn_process: menu::MenuButton,
     btn_edit: button::Button,
     btn_delete: button::Button,
+    btn_move_step: menu::MenuButton,
     label_step_name: Frame,
     frame_img: Frame,
     pub action: StepAction,
@@ -563,14 +617,7 @@ pub struct ProcessingStep {
 
 impl ProcessingStep {
     fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
-        let name = match action {
-            StepAction::LinearCustom(_) => "Линейный фильтр".to_string(),
-            StepAction::LinearMean(_) => "Линейный фильтр (усредняющий)".to_string(),
-            StepAction::LinearGaussian(_) => "Линейный фильтр (гауссовский)".to_string(),
-            StepAction::MedianFilter(_) => "Медианный фильтр".to_string(),
-            StepAction::HistogramLocalContrast(_) => "Локальный контраст (гистограмма)".to_string(),
-            StepAction::CutBrightness(_) => "Вырезание яркости".to_string(),
-        };
+        let name: String = action.filter_description();
 
         let label = frame::Frame::default()
             .with_size(proc_line.w, BTN_HEIGHT)
@@ -589,8 +636,10 @@ impl ProcessingStep {
         btn_process.set_label("Запустить");
         let (w, h) = btn_process.measure_label();
         btn_process.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
-        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
-        btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
+        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, 
+            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
+        btn_process.add_emit("Этот шаг и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, 
+            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
 
         let mut btn_edit = button::Button::default();
         btn_edit.set_label("Изменить");
@@ -604,6 +653,15 @@ impl ProcessingStep {
         let (w, h) = btn_delete.measure_label();
         btn_delete.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
 
+        let mut btn_move_step = menu::MenuButton::default();
+        btn_move_step.set_label("Переупорядочить");
+        let (w, h) = btn_move_step.measure_label();
+        btn_move_step.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
+        btn_move_step.add_emit("Сдвинуть вверх", Shortcut::None, MenuFlag::Normal, sender, 
+            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Up } ));
+        btn_move_step.add_emit("Сдвинуть вниз", Shortcut::None, MenuFlag::Normal, sender, 
+            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Down } ));
+
         hpack.end();
             
         let mut frame_img = frame::Frame::default()
@@ -612,9 +670,8 @@ impl ProcessingStep {
         frame_img.set_align(Align::Center);    
         
         ProcessingStep { 
-            name,            
             hpack,
-            btn_process, btn_edit, btn_delete,
+            btn_process, btn_edit, btn_delete, btn_move_step,
             frame_img, 
             label_step_name: label,
             action,
@@ -623,16 +680,55 @@ impl ProcessingStep {
             sender
         }
     }
+
+    fn draw_self_on(&mut self, pack: &mut group::Pack) {
+        pack.add(&mut self.label_step_name);
+        pack.add(&mut self.hpack);
+        self.hpack.begin();
+        self.hpack.add(&mut self.btn_process);
+        self.hpack.add(&mut self.btn_edit);
+        self.hpack.add(&mut self.btn_delete);
+        self.hpack.add(&mut self.btn_move_step);
+        self.hpack.end();
+        pack.add(&mut self.frame_img);
+    }
+
+    fn remove_self_from(&mut self, pack: &mut group::Pack) {
+        pack.remove(&mut self.label_step_name);
+        self.hpack.begin();
+        self.hpack.remove(&mut self.btn_process);
+        self.hpack.remove(&mut self.btn_edit);
+        self.hpack.remove(&mut self.btn_delete);
+        self.hpack.remove(&mut self.btn_move_step);
+        self.hpack.end();
+        pack.remove(&mut self.hpack);
+        pack.remove(&mut self.frame_img);
+    }
     
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
         self.action = self.action.edit_with_dlg(app, step_editor);
+        
+        let filter_description: String = self.action.filter_description();
+
+        let img_description: String = match self.image {
+            Some(ref img) => img.get_description(),
+            None => String::new(),
+        };
+
+        self.label_step_name.set_label(&format!("{} {}", &filter_description, &img_description));
     }
 
     fn set_step_num(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
-        self.btn_process.add_emit("Этот и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
+        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, 
+            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
+        self.btn_process.add_emit("Этот шаг и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, 
+            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
         self.btn_edit.emit(self.sender, Message::Step(Step::EditStep { step_num } ));
         self.btn_delete.emit(self.sender, Message::Step(Step::DeleteStep { step_num }));
+        self.btn_move_step.add_emit("Сдвинуть вверх", Shortcut::None, MenuFlag::Normal, self.sender, 
+            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Up } ));
+        self.btn_move_step.add_emit("Сдвинуть вниз", Shortcut::None, MenuFlag::Normal, self.sender, 
+            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Down } ));
         self.label_step_name.redraw_label();
         self.frame_img.set_damage(true);
         self.step_num = step_num;
@@ -643,20 +739,13 @@ impl ProcessingStep {
             self.btn_process.activate();
             self.btn_edit.activate();
             self.btn_delete.activate();
+            self.btn_move_step.activate();
         } else {
             self.btn_process.deactivate();
             self.btn_edit.deactivate();
             self.btn_delete.deactivate();
+            self.btn_move_step.deactivate();
         }
-    }
-
-    fn remove_self_from(&mut self, pack: &mut group::Pack) {
-        pack.remove(&mut self.hpack);
-        pack.remove(&mut self.btn_process);
-        pack.remove(&mut self.btn_edit);
-        pack.remove(&mut self.btn_delete);
-        pack.remove(&mut self.frame_img);
-        pack.remove(&mut self.label_step_name);
     }
 
     fn get_data_copy(&self) -> Option<img::Matrix2D> {
@@ -693,9 +782,6 @@ impl ProcessingStep {
         };
 
         self.set_buttons_active(true);
-        
-        self.label_step_name.set_label(&format!("{} {}x{}, изображение {}x{}", 
-            &self.name, 1, 1, result_img.w(), result_img.h()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);

@@ -5,7 +5,8 @@ use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, Norma
 pub struct LinearGaussian {
     size: FilterWindowSize,
     extend_value: ExtendValue,
-    coeffs: Vec<f64>
+    coeffs: Vec<f64>,
+    name: String
 }
 
 impl LinearGaussian {
@@ -32,7 +33,7 @@ impl LinearGaussian {
 
         for c in coeffs.iter_mut() { *c /= sum; }
 
-        LinearGaussian { size, extend_value, coeffs }
+        LinearGaussian { size, extend_value, coeffs, name: "Линейный фильтр (гауссовский)".to_string() }
     }
 }
 
@@ -40,6 +41,8 @@ impl Filter for LinearGaussian {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
         super::filter_window(img, self, LinearGaussian::process_window, progress_cbk)
     }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 }
 
 impl WindowFilter for LinearGaussian {
@@ -107,7 +110,8 @@ pub struct LinearCustom {
     height: usize,
     extend_value: ExtendValue,
     arr: Vec<f64>,
-    normalized: NormalizeOption
+    normalized: NormalizeOption,
+    name: String
 }
 
 impl LinearCustom {
@@ -118,7 +122,7 @@ impl LinearCustom {
 
         normalized.normalize(&mut coeffs[..]);
 
-        LinearCustom { width, height, arr: coeffs, extend_value, normalized }
+        LinearCustom { width, height, arr: coeffs, extend_value, normalized, name: "Линейный фильтр".to_string() }
     }
 }
 
@@ -155,6 +159,8 @@ impl Filter for LinearCustom {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
         super::filter_window(img, self, LinearCustom::process_window, progress_cbk)
     }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 }
 
 impl StringFromTo for LinearCustom {
@@ -242,12 +248,13 @@ impl Into<StepAction> for LinearCustom {
 #[derive(Clone)]
 pub struct LinearMean {
     size: FilterWindowSize,
-    extend_value: ExtendValue
+    extend_value: ExtendValue,
+    name: String
 }
 
 impl LinearMean {
     pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {
-        LinearMean { size, extend_value }
+        LinearMean { size, extend_value, name: "Линейный фильтр (усредняющий)".to_string() }
     }
 }
 
@@ -276,6 +283,8 @@ impl Filter for LinearMean {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
         super::filter_window(img, self, Self::process_window, progress_cbk)
     }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 }
 
 impl Default for LinearMean {

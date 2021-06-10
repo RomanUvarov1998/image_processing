@@ -8,6 +8,7 @@ pub trait StringFromTo {
 
 pub trait Filter : Default + Clone + StringFromTo + Into<StepAction> {
     fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D;
+    fn get_description(&self) -> String;
 }
 
 pub trait WindowFilter : Filter {
