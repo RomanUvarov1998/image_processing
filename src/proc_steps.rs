@@ -88,35 +88,24 @@ impl<'wind> ProcessingLine<'wind> {
 
         let (sender, receiver) = app::channel::<Message>();
 
-        let mut menu = menu::SysMenuBar::default().with_size(800, 35);
+        let mut hor_pack = group::Pack::default()
+            .with_pos(x, y)
+            .with_size(w, h);
+        hor_pack.set_type(PackType::Horizontal);
+            
+        let mut init_img_pack = group::Pack::default()
+            .with_pos(x, y)
+            .with_size(w / 2, h);
+        init_img_pack.set_type(PackType::Vertical);
+
+        let mut menu = menu::SysMenuBar::default().with_size(w / 2, BTN_HEIGHT);
         menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, 
             Message::Project(Project::LoadProject));
         menu.add_emit("Проект/Сохранить как", Shortcut::None, menu::MenuFlag::Normal, sender, 
             Message::Project(Project::SaveProject));
-        menu.add_emit("Добавить/Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinMean));
-        menu.add_emit("Добавить/Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinGauss));
-        menu.add_emit("Добавить/Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinCustom));
-        menu.add_emit("Добавить/Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepMed));
-        menu.add_emit("Добавить/Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepHistogramLocalContrast));
-        menu.add_emit("Добавить/Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepCutBrightness));
         menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, 
             Message::Project(Project::SaveResults));
         menu.end();
-
-        let mut hor_pack = group::Pack::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w, h - menu.h());
-        hor_pack.set_type(PackType::Horizontal);
-            
-        let init_img_pack = group::Pack::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w / 2, h - menu.h());
 
         frame::Frame::default()
             .with_size(w / 2, BTN_HEIGHT)
@@ -138,19 +127,41 @@ impl<'wind> ProcessingLine<'wind> {
         
         init_img_pack.end();
 
+        let mut processing_pack = group::Pack::default()
+            .with_size(w / 2, h);
+        processing_pack.set_type(PackType::Vertical);
+
+        let mut btn_add_step = menu::MenuButton::default().with_size(w / 2, BTN_HEIGHT);
+        btn_add_step.set_label("Добавить");
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinMean));
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinGauss));
+        btn_add_step.add_emit("Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepLinCustom));
+        btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepMed));
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepHistogramLocalContrast));
+        btn_add_step.add_emit("Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, 
+            Message::Step(Step::AddStepCutBrightness));
+        btn_add_step.end();
+
         let scroll_area = group::Scroll::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w / 2, h - menu.h());
+            .with_pos(x, y + btn_add_step.h())
+            .with_size(w / 2, h - btn_add_step.h());
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w / 2, h - menu.h());
+            .with_pos(x, y + btn_add_step.h())
+            .with_size(w / 2, h - btn_add_step.h());
 
         scroll_pack.end();
         scroll_area.end();
+        processing_pack.end();
 
         let mut hor_pack_copy = hor_pack.clone();
         let mut init_img_pack_copy = init_img_pack.clone();
+        let mut processing_pack_copy = processing_pack.clone();
         let mut scroll_area_copy = scroll_area.clone();
         let mut scroll_pack_copy = scroll_pack.clone();
         wind.handle(move |wind_parent, ev| {
@@ -158,11 +169,16 @@ impl<'wind> ProcessingLine<'wind> {
                 fltk::enums::Event::Fullscreen | fltk::enums::Event::Resize => {
                     hor_pack_copy.set_size(wind_parent.w(), wind_parent.h());
                     init_img_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+
+                    processing_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+                    processing_pack_copy.set_pos(x + wind_parent.w() / 2, y);
                     scroll_area_copy.set_size(wind_parent.w() / 2, wind_parent.h());
                     scroll_area_copy.set_pos(x + wind_parent.w() / 2, y);
                     scroll_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
                     scroll_pack_copy.set_pos(x + wind_parent.w() / 2, y);
+
                     wind_parent.redraw();
+
                     return true;
                 },
                 _ => {},
