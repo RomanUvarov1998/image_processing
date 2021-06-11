@@ -357,7 +357,7 @@ impl<Cbk: Fn(usize)> Iterator for ProgressIterator<Cbk> {
     fn next(&mut self) -> Option<PixelPos> {
         let curr = self.cur_pos;
 
-        const ONE_FIFTH_OF_A_SECOND_MS: u128 = 200;
+        const MS_DELAY: u128 = 100;
 
         if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
             self.cur_pos.col += 1;
@@ -366,7 +366,7 @@ impl<Cbk: Fn(usize)> Iterator for ProgressIterator<Cbk> {
             self.cur_pos.col = self.top_left.col;
             self.cur_pos.row += 1;
 
-            if self.prev_time.elapsed().as_millis() > ONE_FIFTH_OF_A_SECOND_MS {
+            if self.prev_time.elapsed().as_millis() > MS_DELAY {
                 self.prev_time = time::Instant::now();
                 (self.progress_cbk)(curr.row * 100 / (self.bottom_right_excluded.row - self.top_left.row));
             }
