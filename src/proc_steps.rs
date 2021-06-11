@@ -6,7 +6,6 @@ use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::menu::MenuFlag;
-use fltk::prelude::WidgetBase;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::img::Matrix2D;
@@ -71,27 +70,33 @@ impl StepAction {
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
     initial_img: Option<img::Matrix2D>,
-    frame_img: frame::Frame,
     steps: Vec<ProcessingStep>,
-    w: i32, h: i32,
-    scroll_pack: group::Pack,    
+    x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
     step_editor: StepEditor,
     processing_data: Arc<Mutex<Option<ProcessingData>>>,
     processing_thread: JoinHandle<()>,
-    are_steps_chained: bool
+    are_steps_chained: bool,
+    // graphical parts
+    wind_size_prev: (i32, i32),
+    frame_img: frame::Frame,
+    main_horz_pack: group::Pack,
+    init_img_pack: group::Pack,
+    processing_pack: group::Pack,
+    scroll_area: group::Scroll,
+    scroll_pack: group::Pack,    
 }
 
 impl<'wind> ProcessingLine<'wind> {
-    pub fn new(wind: &'wind mut window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
-        wind.begin();
+    pub fn new(wind_parent: &'wind mut window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
+        wind_parent.begin();
 
         let (sender, receiver) = app::channel::<Message>();
 
-        let mut hor_pack = group::Pack::default()
+        let mut main_horz_pack = group::Pack::default()
             .with_pos(x, y)
             .with_size(w, h);
-        hor_pack.set_type(PackType::Horizontal);
+        main_horz_pack.set_type(PackType::Horizontal);
             
         let mut init_img_pack = group::Pack::default()
             .with_pos(x, y)
@@ -159,37 +164,9 @@ impl<'wind> ProcessingLine<'wind> {
         scroll_area.end();
         processing_pack.end();
 
-        let mut hor_pack_copy = hor_pack.clone();
-        let mut init_img_pack_copy = init_img_pack.clone();
-        let mut processing_pack_copy = processing_pack.clone();
-        let mut scroll_area_copy = scroll_area.clone();
-        let mut scroll_pack_copy = scroll_pack.clone();
-        wind.handle(move |wind_parent, ev| {
-            match ev {
-                fltk::enums::Event::Fullscreen | fltk::enums::Event::Resize => {
-                    hor_pack_copy.set_size(wind_parent.w(), wind_parent.h());
-                    init_img_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+        main_horz_pack.end();
 
-                    processing_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
-                    processing_pack_copy.set_pos(x + wind_parent.w() / 2, y);
-                    scroll_area_copy.set_size(wind_parent.w() / 2, wind_parent.h());
-                    scroll_area_copy.set_pos(x + wind_parent.w() / 2, y);
-                    scroll_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
-                    scroll_pack_copy.set_pos(x + wind_parent.w() / 2, y);
-
-                    wind_parent.redraw();
-
-                    return true;
-                },
-                _ => {},
-            };
-
-            return false;
-        });
-
-        hor_pack.end();
-
-        wind.end();
+        wind_parent.end();
 
         let sender_copy = sender.clone();
         let processing_data = Arc::new(Mutex::new(Option::<ProcessingData>::None));
@@ -216,18 +193,27 @@ impl<'wind> ProcessingLine<'wind> {
             }
         });
 
+        let wind_size_prev = (wind_parent.w(), wind_parent.h());
+
         ProcessingLine {
-            parent_window: wind,
+            parent_window: wind_parent,
             initial_img: None,
-            frame_img,
             steps: Vec::<ProcessingStep>::new(),
-            w, h,
-            scroll_pack,
+            x, y, w, h,
             receiver,
             step_editor: StepEditor::new(),
             processing_data,
             processing_thread,
-            are_steps_chained: true
+            are_steps_chained: true,
+            
+            // graphical parts
+            wind_size_prev,
+            frame_img,
+            main_horz_pack,
+            init_img_pack,
+            processing_pack,
+            scroll_area,
+            scroll_pack,
         }
     }
 
@@ -381,10 +367,45 @@ impl<'wind> ProcessingLine<'wind> {
                         };
                         self.parent_window.redraw();
                     }
-                }
-            }
+                };
+            }            
+                  
+            self.auto_resize()?;
         }
     
+        Ok(())
+    }
+
+    fn auto_resize(&mut self) -> Result<(), MyError> {
+        let ww = self.parent_window.w();
+        let wh = self.parent_window.h(); 
+
+        if self.wind_size_prev.0 == ww && self.wind_size_prev.1 == wh { return Ok(()); }
+        
+        self.main_horz_pack.set_size(ww, wh);
+        self.init_img_pack.set_size(ww / 2, wh);
+
+        self.processing_pack.set_size(ww / 2, wh);
+        self.processing_pack.set_pos(self.x + ww / 2, self.y);
+        self.scroll_area.set_size(ww / 2, wh);
+        self.scroll_area.set_pos(self.x + ww / 2, self.y);
+        self.scroll_pack.set_size(ww / 2, wh);
+        self.scroll_pack.set_pos(self.x + ww / 2, self.y);
+
+        if let Some(img) = &self.initial_img {
+            let mut rgb_copy = img.get_drawable_copy()?;
+            rgb_copy.scale(ww / 2 - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
+            self.frame_img.set_image(Some(rgb_copy));
+        }
+
+        for step in self.steps.iter_mut() {
+            step.auto_resize(ww / 2)?;
+        }
+
+        self.wind_size_prev = (ww, wh);
+
+        self.parent_window.redraw();      
+
         Ok(())
     }
 
@@ -728,6 +749,18 @@ impl ProcessingStep {
             step_num,
             sender
         }
+    }
+
+    fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
+        self.frame_img.set_size(new_width, self.frame_img.h());
+
+        if let Some(img) = &self.image {
+            let mut rgb_copy = img.get_drawable_copy()?;
+            rgb_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
+            self.frame_img.set_image(Some(rgb_copy));
+        }
+
+        Ok(())
     }
 
     fn draw_self_on(&mut self, pack: &mut group::Pack) {

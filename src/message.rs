@@ -33,5 +33,5 @@ pub enum Step {
 pub enum Message {
     Project(Project),
     Step(Step),
-    Processing(Processing)
+    Processing(Processing),
 }
