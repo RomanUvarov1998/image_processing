@@ -17,13 +17,17 @@ pub enum Project {
 pub enum MoveStep { Up, Down }
 
 #[derive(Debug, Copy, Clone)]
-pub enum Step {
+pub enum AddStep {
     AddStepLinCustom, 
     AddStepLinMean, 
     AddStepLinGauss, 
     AddStepMed, 
     AddStepHistogramLocalContrast, 
     AddStepCutBrightness, 
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum StepOp {
     EditStep { step_num: usize }, 
     MoveStep { step_num: usize, direction: MoveStep }, 
     DeleteStep { step_num: usize },
@@ -32,6 +36,7 @@ pub enum Step {
 #[derive(Debug, Copy, Clone)]
 pub enum Message {
     Project(Project),
-    Step(Step),
+    AddStep(AddStep),
+    StepOp(StepOp),
     Processing(Processing),
 }

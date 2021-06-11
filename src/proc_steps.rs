@@ -5,17 +5,14 @@ use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
-use fltk::menu::MenuFlag;
-use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::img::Matrix2D;
-use crate::message::{self, Message, Processing, Project, Step};
+use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
+use crate::my_component::{MyButton, MyLabel, MyMenuBar, MyMenuButton, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
 pub const PADDING: i32 = 3;
-pub const BTN_WIDTH: i32 = 100;
-pub const BTN_HEIGHT: i32 = 30;
-pub const BTN_TEXT_PADDING: i32 = 10;
 pub const IMG_PADDING: i32 = 10;
 
 #[derive(Clone)]
@@ -70,7 +67,7 @@ impl StepAction {
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
     initial_img: Option<img::Matrix2D>,
-    steps: Vec<ProcessingStep>,
+    steps: Vec<ProcessingStep<'wind>>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
     step_editor: StepEditor,
@@ -103,30 +100,18 @@ impl<'wind> ProcessingLine<'wind> {
             .with_size(w / 2, h);
         init_img_pack.set_type(PackType::Vertical);
 
-        let mut menu = menu::SysMenuBar::default().with_size(w / 2, BTN_HEIGHT);
-        menu.add_emit("Проект/Зарузить", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Project(Project::LoadProject));
-        menu.add_emit("Проект/Сохранить как", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Project(Project::SaveProject));
-        menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Project(Project::SaveResults));
+        let mut menu = MyMenuBar::new(&init_img_pack);
+        menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
+        menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
+        menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
 
-        frame::Frame::default()
-            .with_size(w / 2, BTN_HEIGHT)
-            .with_label("Исходное изображение");
+        MyLabel::new("Исходное изображение");
 
-        let mut btn_load_initial_img = button::Button::default()
-            .with_size(BTN_WIDTH, BTN_HEIGHT)
-            .with_label("Загрузить");
-        btn_load_initial_img.emit(sender, Message::Project(Project::LoadImage));        
-        {
-            let (bw, bh) = btn_load_initial_img.measure_label();
-            btn_load_initial_img.set_size(bw + BTN_TEXT_PADDING, bh + BTN_TEXT_PADDING);
-        }
+        let btn_load_initial_img = MyButton::new("Загрузить", sender, Message::Project(Project::LoadImage));
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w / 2, h - BTN_HEIGHT * 2);
+            .with_size(w / 2, h - btn_load_initial_img.h() * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
         
@@ -136,20 +121,13 @@ impl<'wind> ProcessingLine<'wind> {
             .with_size(w / 2, h);
         processing_pack.set_type(PackType::Vertical);
 
-        let mut btn_add_step = menu::MenuButton::default().with_size(w / 2, BTN_HEIGHT);
-        btn_add_step.set_label("Добавить");
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinMean));
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinGauss));
-        btn_add_step.add_emit("Линейный фильтр (другой)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepLinCustom));
-        btn_add_step.add_emit("Медианный фильтр", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepMed));
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepHistogramLocalContrast));
-        btn_add_step.add_emit("Обрезание яркости", Shortcut::None, menu::MenuFlag::Normal, sender, 
-            Message::Step(Step::AddStepCutBrightness));
+        let mut btn_add_step = MyMenuButton::new("Добавить");
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
+        btn_add_step.add_emit("Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
+        btn_add_step.add_emit("Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
+        btn_add_step.add_emit("Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
         btn_add_step.end();
 
         let scroll_area = group::Scroll::default()
@@ -259,43 +237,48 @@ impl<'wind> ProcessingLine<'wind> {
                         };
                         self.parent_window.redraw();
                     },
-                    Message::Step(msg) => {
+                    Message::AddStep(msg) => {
                         match msg {
-                            Step::AddStepLinCustom => {
+                            AddStep::AddStepLinCustom => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearCustom::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::AddStepLinMean => {
+                            AddStep::AddStepLinMean => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearMean::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::AddStepLinGauss => {
+                            AddStep::AddStepLinGauss => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearGaussian::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::AddStepMed => {
+                            AddStep::AddStepMed => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, MedianFilter::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::AddStepHistogramLocalContrast => {
+                            AddStep::AddStepHistogramLocalContrast => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, HistogramLocalContrast::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::AddStepCutBrightness => {
+                            AddStep::AddStepCutBrightness => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, CutBrightness::default().into()) {
                                     self.add(new_action);
                                 }
                             },
-                            Step::EditStep { step_num } => {
+                        };
+                        self.parent_window.redraw();
+                    },
+                    Message::StepOp(msg) => {
+                        match msg {
+                            StepOp::EditStep { step_num } => {
                                 self.steps[step_num].edit_action_with_dlg(app, &mut self.step_editor);
                             },
-                            Step::DeleteStep { step_num } => self.delete_step(step_num),
-                            Step::MoveStep { step_num, direction } => {
+                            StepOp::DeleteStep { step_num } => self.delete_step(step_num),
+                            StepOp::MoveStep { step_num, direction } => {
                                 match direction {
                                     message::MoveStep::Up => {
                                         if step_num > 0 {                                            
@@ -332,13 +315,13 @@ impl<'wind> ProcessingLine<'wind> {
                                         }
                                     },
                                 };
-                                for i in 0..self.steps.len() {
-                                    self.steps[i].set_step_num(i);
+                                for step_num in 0..self.steps.len() {
+                                    self.steps[step_num].update_btn_emits(step_num);
                                 }
                             },
-                        };
+                        }
                         self.parent_window.redraw();
-                    }
+                    },
                     Message::Processing(msg) => {
                         match msg {
                             Processing::StepIsStarted { step_num, do_chaining } => {
@@ -416,8 +399,8 @@ impl<'wind> ProcessingLine<'wind> {
 
         self.steps.remove(step_num);
 
-        for i in step_num..self.steps.len() {
-            self.steps[i].set_step_num(i);
+        for sn in step_num..self.steps.len() {
+            self.steps[sn].update_btn_emits(sn);
         }
 
         self.scroll_pack.top_window().unwrap().set_damage(true);
@@ -671,13 +654,13 @@ impl ProcessingData {
     fn get_result(&mut self) -> Option<Matrix2D> { self.result_img.take() }
 }
 
-pub struct ProcessingStep {
+pub struct ProcessingStep<'label> {
     hpack: group::Pack,
-    btn_process: menu::MenuButton,
-    btn_edit: button::Button,
-    btn_delete: button::Button,
-    btn_move_step: menu::MenuButton,
-    label_step_name: Frame,
+    btn_process: MyMenuButton<'label, message::Message>,
+    btn_edit: MyButton,
+    btn_delete: MyButton,
+    btn_move_step: MyMenuButton<'label, message::Message>,
+    label_step_name: MyLabel,
     frame_img: Frame,
     pub action: StepAction,
     image: Option<img::Matrix2D>,
@@ -685,70 +668,47 @@ pub struct ProcessingStep {
     sender: Sender<Message>
 }
 
-impl ProcessingStep {
+impl<'label> ProcessingStep<'label> {
     fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
         let name: String = action.filter_description();
 
-        let label = frame::Frame::default()
-            .with_size(proc_line.w, BTN_HEIGHT)
-            .with_label(&name);  
+        let label_step_name = MyLabel::new(&name);
 
         let (sender, _) = app::channel::<Message>();
 
         let mut hpack = group::Pack::default()
-            .with_size(proc_line.w, BTN_HEIGHT); 
+            .with_size(proc_line.w, label_step_name.h()); 
         hpack.set_type(PackType::Horizontal);
         hpack.set_spacing(PADDING);
 
         let step_num = proc_line.steps.len();
 
-        let mut btn_process = menu::MenuButton::default();
-        btn_process.set_label("Запустить");
-        let (w, h) = btn_process.measure_label();
-        btn_process.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
-        btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, sender, 
-            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
-        btn_process.add_emit("Этот шаг и все шаги ниже", Shortcut::None, MenuFlag::Normal, sender, 
-            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
-
-        let mut btn_edit = button::Button::default();
-        btn_edit.set_label("Изменить");
-        btn_edit.emit(sender, Message::Step(Step::EditStep { step_num }));
-        let (w, h) = btn_edit.measure_label();
-        btn_edit.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
-        let mut btn_delete = button::Button::default();
-        btn_delete.set_label("Удалить");
-        btn_delete.emit(sender, Message::Step(Step::DeleteStep { step_num }));
-        let (w, h) = btn_delete.measure_label();
-        btn_delete.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
-
-        let mut btn_move_step = menu::MenuButton::default();
-        btn_move_step.set_label("Переупорядочить");
-        let (w, h) = btn_move_step.measure_label();
-        btn_move_step.set_size(w + BTN_TEXT_PADDING + 30, h + BTN_TEXT_PADDING);
-        btn_move_step.add_emit("Сдвинуть вверх", Shortcut::None, MenuFlag::Normal, sender, 
-            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        btn_move_step.add_emit("Сдвинуть вниз", Shortcut::None, MenuFlag::Normal, sender, 
-            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Down } ));
+        let btn_process = MyMenuButton::new("Запустить");
+        let btn_edit = MyButton::with_label("Изменить");
+        let btn_delete = MyButton::with_label("Удалить");
+        let btn_move_step = MyMenuButton::new("Переупорядочить");
 
         hpack.end();
             
         let mut frame_img = frame::Frame::default()
-            .with_size(proc_line.w, proc_line.h - BTN_HEIGHT * 2);
+            .with_size(proc_line.w, proc_line.h - hpack.h() * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::ImageMask | Align::Center);    
         
-        ProcessingStep { 
+         let mut step = ProcessingStep { 
             hpack,
             btn_process, btn_edit, btn_delete, btn_move_step,
             frame_img, 
-            label_step_name: label,
+            label_step_name,
             action,
             image: None, 
             step_num,
             sender
-        }
+        };
+
+        step.update_btn_emits(step_num);
+
+        step
     }
 
     fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
@@ -764,27 +724,27 @@ impl ProcessingStep {
     }
 
     fn draw_self_on(&mut self, pack: &mut group::Pack) {
-        pack.add(&mut self.label_step_name);
-        pack.add(&mut self.hpack);
+        pack.add(self.label_step_name.widget());
+        pack.add(&self.hpack);
         self.hpack.begin();
-        self.hpack.add(&mut self.btn_process);
-        self.hpack.add(&mut self.btn_edit);
-        self.hpack.add(&mut self.btn_delete);
-        self.hpack.add(&mut self.btn_move_step);
+        self.hpack.add(self.btn_process.widget());
+        self.hpack.add(self.btn_edit.widget());
+        self.hpack.add(self.btn_delete.widget());
+        self.hpack.add(self.btn_move_step.widget());
         self.hpack.end();
-        pack.add(&mut self.frame_img);
+        pack.add(&self.frame_img);
     }
 
     fn remove_self_from(&mut self, pack: &mut group::Pack) {
-        pack.remove(&mut self.label_step_name);
+        pack.remove(self.label_step_name.widget());
         self.hpack.begin();
-        self.hpack.remove(&mut self.btn_process);
-        self.hpack.remove(&mut self.btn_edit);
-        self.hpack.remove(&mut self.btn_delete);
-        self.hpack.remove(&mut self.btn_move_step);
+        self.hpack.remove(self.btn_process.widget());
+        self.hpack.remove(self.btn_edit.widget());
+        self.hpack.remove(self.btn_delete.widget());
+        self.hpack.remove(self.btn_move_step.widget());
         self.hpack.end();
-        pack.remove(&mut self.hpack);
-        pack.remove(&mut self.frame_img);
+        pack.remove(&self.hpack);
+        pack.remove(&self.frame_img);
     }
     
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
@@ -797,37 +757,24 @@ impl ProcessingStep {
             None => String::new(),
         };
 
-        self.label_step_name.set_label(&format!("{} {}", &filter_description, &img_description));
+        self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
     }
 
-    fn set_step_num(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", Shortcut::None, MenuFlag::Normal, self.sender, 
-            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
-        self.btn_process.add_emit("Этот шаг и все шаги ниже", Shortcut::None, MenuFlag::Normal, self.sender, 
-            Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
-        self.btn_edit.emit(self.sender, Message::Step(Step::EditStep { step_num } ));
-        self.btn_delete.emit(self.sender, Message::Step(Step::DeleteStep { step_num }));
-        self.btn_move_step.add_emit("Сдвинуть вверх", Shortcut::None, MenuFlag::Normal, self.sender, 
-            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        self.btn_move_step.add_emit("Сдвинуть вниз", Shortcut::None, MenuFlag::Normal, self.sender, 
-            Message::Step(Step::MoveStep { step_num, direction: message::MoveStep::Down } ));
-        self.label_step_name.redraw_label();
-        self.frame_img.set_damage(true);
+    fn update_btn_emits(&mut self, step_num: usize) {
+        self.btn_process.add_emit("Только этот шаг", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
+        self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
+        self.btn_edit.update_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
+        self.btn_delete.update_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
+        self.btn_move_step.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
+        self.btn_move_step.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
         self.step_num = step_num;
     }
 
     fn set_buttons_active(&mut self, active: bool) {
-        if active {
-            self.btn_process.activate();
-            self.btn_edit.activate();
-            self.btn_delete.activate();
-            self.btn_move_step.activate();
-        } else {
-            self.btn_process.deactivate();
-            self.btn_edit.deactivate();
-            self.btn_delete.deactivate();
-            self.btn_move_step.deactivate();
-        }
+        self.btn_process.set_active(active);
+        self.btn_edit.set_active(active);
+        self.btn_delete.set_active(active);
+        self.btn_move_step.set_active(active);
     }
 
     fn get_data_copy(&self) -> Option<img::Matrix2D> {

@@ -14,6 +14,7 @@ mod img;
 mod step_editor;
 mod small_dlg;
 mod utils;
+mod my_component;
 
 fn main() -> result::Result<(), MyError> {
     my_app::create_app()?;
