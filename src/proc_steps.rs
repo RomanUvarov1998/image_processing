@@ -17,6 +17,7 @@ pub const PADDING: i32 = 3;
 pub const BTN_WIDTH: i32 = 100;
 pub const BTN_HEIGHT: i32 = 30;
 pub const BTN_TEXT_PADDING: i32 = 10;
+pub const IMG_PADDING: i32 = 10;
 
 #[derive(Clone)]
 pub enum StepAction {
@@ -222,10 +223,6 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.end();
     }
 
-    pub fn auto_resize(&self) {
-
-    }
-
     pub fn run(&mut self, app: app::App) -> result::Result<(), MyError> {
         while app.wait() {
             if let Some(msg) = self.receiver.recv() {
@@ -412,7 +409,7 @@ impl<'wind> ProcessingLine<'wind> {
         let init_image = img::Matrix2D::load(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
-        img_copy.scale(self.frame_img.w(), self.frame_img.h(), true, true);
+        img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
         self.frame_img.set_image(Some(img_copy.clone()));
         self.frame_img.redraw(); 
 
@@ -703,7 +700,7 @@ impl ProcessingStep {
         let mut frame_img = frame::Frame::default()
             .with_size(proc_line.w, proc_line.h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::Center);    
+        frame_img.set_align(Align::ImageMask | Align::Center);    
         
         ProcessingStep { 
             hpack,
@@ -820,7 +817,7 @@ impl ProcessingStep {
         self.set_buttons_active(true);
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
-        rgb_image.scale(self.frame_img.w(), self.frame_img.h(), true, true);
+        rgb_image.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
                   
         self.frame_img.set_image(Some(rgb_image));
         self.frame_img.redraw();
