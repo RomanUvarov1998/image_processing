@@ -127,6 +127,7 @@ impl Into<StepAction> for MedianFilter {
     }
 }
 
+
 #[derive(Clone)]
 pub struct HistogramLocalContrast {
     size: FilterWindowSize,

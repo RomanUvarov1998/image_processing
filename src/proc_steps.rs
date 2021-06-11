@@ -171,7 +171,7 @@ impl<'wind> ProcessingLine<'wind> {
         let sender_copy = sender.clone();
         let processing_data = Arc::new(Mutex::new(Option::<ProcessingData>::None));
         let processing_data_copy = processing_data.clone();
-        let processing_thread = thread::spawn(move || {
+        let processing_thread_handle = thread::spawn(move || {
             loop {
                 thread::park();
                 match processing_data_copy.try_lock() {
@@ -203,7 +203,7 @@ impl<'wind> ProcessingLine<'wind> {
             receiver,
             step_editor: StepEditor::new(),
             processing_data,
-            processing_thread,
+            processing_thread: processing_thread_handle,
             are_steps_chained: true,
             
             // graphical parts
