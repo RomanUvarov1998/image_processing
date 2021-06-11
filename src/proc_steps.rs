@@ -6,6 +6,7 @@ use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::menu::MenuFlag;
+use fltk::prelude::WidgetBase;
 use fltk::{app::{self, Receiver}, button, dialog, enums::{Align, FrameType, Shortcut}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::img::Matrix2D;
@@ -106,17 +107,18 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Экспорт/Сохранить результаты", Shortcut::None, menu::MenuFlag::Normal, sender, 
             Message::Project(Project::SaveResults));
         menu.end();
-        
-        let scroll_area = group::Scroll::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w, h - menu.h());
 
-        let scroll_pack = group::Pack::default()
+        let mut hor_pack = group::Pack::default()
             .with_pos(x, y + menu.h())
             .with_size(w, h - menu.h());
+        hor_pack.set_type(PackType::Horizontal);
             
+        let init_img_pack = group::Pack::default()
+            .with_pos(x, y + menu.h())
+            .with_size(w / 2, h - menu.h());
+
         frame::Frame::default()
-            .with_size(w, BTN_HEIGHT)
+            .with_size(w / 2, BTN_HEIGHT)
             .with_label("Исходное изображение");
 
         let mut btn_load_initial_img = button::Button::default()
@@ -129,12 +131,46 @@ impl<'wind> ProcessingLine<'wind> {
         }
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w, h - BTN_HEIGHT * 2);
+            .with_size(w / 2, h - BTN_HEIGHT * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
+        
+        init_img_pack.end();
+
+        let scroll_area = group::Scroll::default()
+            .with_pos(x, y + menu.h())
+            .with_size(w / 2, h - menu.h());
+
+        let scroll_pack = group::Pack::default()
+            .with_pos(x, y + menu.h())
+            .with_size(w / 2, h - menu.h());
 
         scroll_pack.end();
         scroll_area.end();
+
+        let mut hor_pack_copy = hor_pack.clone();
+        let mut init_img_pack_copy = init_img_pack.clone();
+        let mut scroll_area_copy = scroll_area.clone();
+        let mut scroll_pack_copy = scroll_pack.clone();
+        wind.handle(move |wind_parent, ev| {
+            match ev {
+                fltk::enums::Event::Fullscreen | fltk::enums::Event::Resize => {
+                    hor_pack_copy.set_size(wind_parent.w(), wind_parent.h());
+                    init_img_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+                    scroll_area_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+                    scroll_area_copy.set_pos(x + wind_parent.w() / 2, y);
+                    scroll_pack_copy.set_size(wind_parent.w() / 2, wind_parent.h());
+                    scroll_pack_copy.set_pos(x + wind_parent.w() / 2, y);
+                    wind_parent.redraw();
+                    return true;
+                },
+                _ => {},
+            };
+
+            return false;
+        });
+
+        hor_pack.end();
 
         wind.end();
 
@@ -186,8 +222,8 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.end();
     }
 
-    pub fn end(&self) {
-        self.scroll_pack.end();
+    pub fn auto_resize(&self) {
+
     }
 
     pub fn run(&mut self, app: app::App) -> result::Result<(), MyError> {

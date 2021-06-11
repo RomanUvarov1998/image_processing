@@ -17,7 +17,6 @@ pub fn create_app() -> result::Result<(), MyError> {
     wind.show();
     
     let mut steps_line = ProcessingLine::new(&mut wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
-    steps_line.end();
 
     steps_line.run(app)?;
 
