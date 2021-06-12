@@ -12,6 +12,7 @@ pub struct Matrix2D {
     pixels: Vec<f64>
 }
 
+#[allow(unused)]
 impl Matrix2D {
     pub fn empty_with_size(width: usize, height: usize) -> Self {
         let mut pixels = Vec::<f64>::new();
@@ -267,6 +268,7 @@ pub struct Matrix3D {
     color_depth: ColorDepth
 }
 
+#[allow(unused)]
 impl Matrix3D {
     pub fn empty_with_size(width: usize, height: usize, color_depth: ColorDepth) -> Self {
         let mut layers = Vec::<Matrix2D>::new();
@@ -391,6 +393,12 @@ impl Matrix3D {
         let mut result_img = self.clone();
 
         for layer_num in 0..result_img.layers.len() {
+            match self.color_depth {
+                ColorDepth::La8 => if layer_num == 1 { continue; },
+                ColorDepth::Rgba8 => if layer_num == 1 && layer_num == 3 { continue; },
+                ColorDepth::L8 | ColorDepth::Rgb8 => {}
+            }
+
             let progress_start = 100 * layer_num / self.d();
             let progress_step = 100 / self.d();
             let progress_cbk_copy = progress_cbk.clone();

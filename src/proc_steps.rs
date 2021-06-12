@@ -8,7 +8,7 @@ use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::filter::non_linear::HistogramEqualizer;
-use crate::img::Matrix2D;
+use crate::img::{Matrix3D};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
@@ -47,7 +47,7 @@ impl StepAction {
         }
     }
 
-    fn act<Cbk: Fn(usize)>(&mut self, init_img: &Matrix2D, progress_cbk: Cbk) -> Matrix2D{
+    fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Matrix3D, progress_cbk: Cbk) -> Matrix3D {
         match self {
             StepAction::LinearCustom(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
@@ -82,7 +82,7 @@ impl StepAction {
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
-    initial_img: Option<img::Matrix2D>,
+    initial_img: Option<img::Matrix3D>,
     steps: Vec<ProcessingStep<'wind>>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
@@ -437,7 +437,7 @@ impl<'wind> ProcessingLine<'wind> {
             _ => {}
         }        
 
-        let init_image = img::Matrix2D::load_as_grayed(path_buf)?;
+        let init_image = img::Matrix3D::load_as_rgb(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
         img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
@@ -641,12 +641,12 @@ impl<'wind> ProcessingLine<'wind> {
 struct ProcessingData {
     step_num: usize,
     step_action: StepAction,
-    init_img: Matrix2D,
-    result_img: Option<Matrix2D>,
+    init_img: Matrix3D,
+    result_img: Option<Matrix3D>,
 }
 
 impl ProcessingData {
-    fn new(step_num: usize, step_action: StepAction, init_img: Matrix2D) -> Self {
+    fn new(step_num: usize, step_action: StepAction, init_img: Matrix3D) -> Self {
         ProcessingData {
             step_num,
             step_action,
@@ -655,7 +655,7 @@ impl ProcessingData {
         }
     }
 
-    fn get_result(&mut self) -> Option<Matrix2D> { self.result_img.take() }
+    fn get_result(&mut self) -> Option<Matrix3D> { self.result_img.take() }
 }
 
 pub struct ProcessingStep<'label> {
@@ -667,7 +667,7 @@ pub struct ProcessingStep<'label> {
     label_step_name: MyLabel,
     frame_img: Frame,
     pub action: StepAction,
-    image: Option<img::Matrix2D>,
+    image: Option<img::Matrix3D>,
     step_num: usize,
     sender: Sender<Message>
 }
@@ -766,11 +766,11 @@ impl<'label> ProcessingStep<'label> {
         self.btn_move_step.set_active(active);
     }
 
-    fn get_data_copy(&self) -> Option<img::Matrix2D> {
+    fn get_data_copy(&self) -> Option<img::Matrix3D> {
         self.image.clone()
     }
  
-    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix2D) -> Result<(), MyError> {
+    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix3D) -> Result<(), MyError> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
 
