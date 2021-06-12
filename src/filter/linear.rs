@@ -1,5 +1,8 @@
+use std::time;
+
 use crate::{img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter, WordsIter}};
 use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{Filter, StringFromTo, WindowFilter}};
+
 
 #[derive(Clone)]
 pub struct LinearGaussian {
@@ -245,6 +248,7 @@ impl Into<StepAction> for LinearCustom {
     }
 }
 
+
 #[derive(Clone)]
 pub struct LinearMean {
     size: FilterWindowSize,
@@ -280,8 +284,68 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        super::filter_window(img, self, Self::process_window, progress_cbk)
+    fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
+        let mut prev_time = time::Instant::now();
+
+        const MS_DELAY: u128 = 100;
+        
+        // sum along rows
+        for row in 0..img.h() {
+            let mut row_sum = 0_f64;
+            for col in 0..img.w() {
+                let pos = PixelPos::new(row, col);
+                row_sum += img[pos];
+                img[pos] = row_sum;
+            }
+
+            if prev_time.elapsed().as_millis() > MS_DELAY {
+                prev_time = time::Instant::now();
+                progress_cbk(row * 100 / 3 / img.h());
+            }
+        }
+        
+        // sum along cols
+        for col in 0..img.w() {
+            let mut col_sum = 0_f64;
+            for row in 0..img.h() {
+                let pos = PixelPos::new(row, col);
+                col_sum += img[pos];
+                img[pos] = col_sum;
+            }
+
+            if prev_time.elapsed().as_millis() > MS_DELAY {
+                prev_time = time::Instant::now();
+                progress_cbk(33 + col * 100 / 3 / img.h());
+            }
+        }
+        
+        // filter
+        let img_ext = img.copy_with_extended_borders(
+            ExtendValue::Closest, 
+            self.h() / 2 + 1, self.w() / 2 + 1);
+        let one = PixelPos::new(1, 1);
+        let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
+
+        let left_top = win_half + one;
+        let right_bottom = left_top + PixelPos::new(img.h(), img.w());
+        let coeff = 1_f64 / (self.w() * self.h()) as f64;
+        
+        for ext_pos in img_ext.get_area_iter(left_top, right_bottom) {
+            let sum_top_left        = img_ext[ext_pos - win_half - one];
+            let sum_top_right       = img_ext[ext_pos - win_half.row_vec() + win_half.col_vec() - one.row_vec()];
+            let sum_bottom_left     = img_ext[ext_pos + win_half.row_vec() - win_half.col_vec() - one.col_vec()];
+            let sum_bottom_right    = img_ext[ext_pos + win_half];
+
+            let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
+            img[ext_pos - win_half - one] = result;
+
+            if prev_time.elapsed().as_millis() > MS_DELAY {
+                prev_time = time::Instant::now();
+                progress_cbk(66 + (ext_pos.row - win_half.row - 1) * 100 / 3 / img.h());
+            }
+        }
+
+        img
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
