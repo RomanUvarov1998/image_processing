@@ -1,10 +1,9 @@
-pub mod pixel_pos;
-
 use std::{ops::{Index, IndexMut}, path::PathBuf, result, time};
-use fltk::{image, prelude::ImageExt};
+use fltk::{enums::ColorDepth, image, prelude::ImageExt};
 use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
-
 use self::pixel_pos::PixelPos;
+
+pub mod pixel_pos;
 
 #[derive(Clone)]
 pub struct Matrix2D {
@@ -20,7 +19,7 @@ impl Matrix2D {
         Matrix2D { width, height, pixels }
     }
 
-    pub fn load(path: PathBuf) -> result::Result<Self, MyError> {
+    pub fn load_as_grayed(path: PathBuf) -> result::Result<Self, MyError> {
         let im = fltk::image::SharedImage::load(path)?;
         let values = im.to_rgb_data();
         let mut values_grey: Vec<f64>;
@@ -30,15 +29,15 @@ impl Matrix2D {
         const RGB_2_GRAY_BLUE: f64 = 0.114;
 
         match im.depth() {
-            fltk::enums::ColorDepth::L8 => values_grey = im.to_rgb_data().into_iter().map(|v| v as f64).collect(),
-            fltk::enums::ColorDepth::La8 => {
+            ColorDepth::L8 => values_grey = im.to_rgb_data().into_iter().map(|v| v as f64).collect(),
+            ColorDepth::La8 => {
                 assert_eq!(values.len() % 2, 0);
                 values_grey = Vec::<f64>::with_capacity(values.len() / 2);
                 for i in 0..values.len() {
                     if i % 2 == 0 { values_grey.push(values[i] as f64); }
                 }
             },
-            fltk::enums::ColorDepth::Rgb8 => {
+            ColorDepth::Rgb8 => {
                 assert_eq!(values.len() % 3, 0);
                 values_grey = Vec::<f64>::with_capacity(values.len() / 3);
                 for i in 0..values.len() {
@@ -51,7 +50,7 @@ impl Matrix2D {
                     }
                 }
             },
-            fltk::enums::ColorDepth::Rgba8 => {
+            ColorDepth::Rgba8 => {
                 assert_eq!(values.len() % 4, 0);
                 values_grey = Vec::<f64>::with_capacity(values.len() / 3);
                 for i in 0..values.len() {
@@ -68,7 +67,7 @@ impl Matrix2D {
 
         let im_grey = fltk::image::RgbImage::new(
             &values_grey.into_iter().map(|v| v as u8).collect::<Vec<u8>>(), 
-            im.w(), im.h(), fltk::enums::ColorDepth::L8)?;
+            im.w(), im.h(), ColorDepth::L8)?;
             
         let width = im.width() as usize;
         let height = im.height() as usize;
@@ -114,7 +113,7 @@ impl Matrix2D {
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
         let im_rgb = image::RgbImage::new(
             self.pixels.iter().map(|v| *v as u8).collect::<Vec<u8>>().as_slice(), 
-            self.width as i32, self.height as i32,  fltk::enums::ColorDepth::L8)?;
+            self.width as i32, self.height as i32,  ColorDepth::L8)?;
         Ok(im_rgb)
     }
 
@@ -258,6 +257,152 @@ impl IndexMut<PixelPos> for Matrix2D {
         &mut self.pixels[index.row * self.width + index.col]
     }
 }
+
+
+#[derive(Clone)]
+pub struct Matrix3D {
+    width: usize,
+    height: usize,
+    layers: Vec<Matrix2D>,
+    color_depth: ColorDepth
+}
+
+impl Matrix3D {
+    pub fn empty_with_size(width: usize, height: usize, color_depth: ColorDepth) -> Self {
+        let mut layers = Vec::<Matrix2D>::new();
+
+        let depth: usize = color_depth as u8 as usize;
+
+        for _ in 0..depth {
+            layers.push(Matrix2D::empty_with_size(width, height));
+        }
+        Matrix3D { width, height, layers, color_depth }
+    }
+
+    pub fn load_as_rgb(path: PathBuf) -> result::Result<Self, MyError> {
+        let im = fltk::image::SharedImage::load(path)?;
+
+        if im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
+        if im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
+        let width = im.w() as usize;
+        let height = im.h() as usize;
+        let color_depth = im.depth();
+        let all_pixels: Vec<f64> = im.to_rgb_data().into_iter().map(|v| v as f64).collect();
+
+        let layers_count = color_depth as u8 as usize;
+        assert_eq!(all_pixels.len() % layers_count, 0);
+        let mut layers = Vec::<Matrix2D>::new();
+        for _ in 0..layers_count {
+            let layer = Matrix2D::empty_with_size(width, height);
+            layers.push(layer);
+        }
+
+        for pixel_num in 0..all_pixels.len() {
+            let layer_num = pixel_num % layers_count;
+            let layer_pixel_num = pixel_num / layers_count;
+            layers[layer_num].pixels[layer_pixel_num] = all_pixels[pixel_num];
+        }
+
+        Ok(Matrix3D {  width, height, layers, color_depth } )
+    }
+
+    pub fn w(&self) -> usize { self.width }
+    pub fn h(&self) -> usize { self.height }
+    pub fn d(&self) -> usize { self.color_depth as u8 as usize }
+
+    pub fn max_col(&self) -> usize { self.width - 1 }
+    pub fn max_row(&self) -> usize { self.height - 1 }
+    pub fn max_layer(&self) -> usize { self.height - 1 }
+
+    pub fn get_description(&self) -> String {
+        format!("изображение {}x{}x{}", self.h(), self.w(), self.d())
+    }
+
+    pub fn layers<'own>(&'own self) -> &'own Vec<Matrix2D> { &self.layers }
+    pub fn layers_mut<'own>(&'own mut self) -> &'own mut Vec<Matrix2D> { &mut self.layers }
+
+    pub fn get_iterator(&self) -> ImgIterator {
+        ImgIterator::for_full_image(&self.layers[0])
+    }
+
+    pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
+        let mut all_pixels = Vec::<u8>::with_capacity(self.w() * self.h() * self.d());
+
+        let layer_length = self.w() * self.h(); 
+        for pix_num in 0..layer_length {
+            for layer in self.layers.iter() {
+                all_pixels.push(layer.pixels[pix_num] as u8);
+            }
+        }
+
+        let im_rgb = image::RgbImage::new(
+            all_pixels.as_slice(), 
+            self.width as i32, self.height as i32,  self.color_depth)?;
+
+        Ok(im_rgb)
+    }
+
+    pub fn try_save(&self, path: &str) -> Result<(), MyError> {
+        let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
+
+        for pos in self.get_iterator() {
+            let pixel = match self.color_depth {
+                ColorDepth::L8 => {
+                    let pix_val = self.layers[0][pos] as u8;
+                    bmp::Pixel::new(pix_val, pix_val, pix_val)
+                },
+                ColorDepth::La8 => {
+                    let pix_val = (self.layers[0][pos] * self.layers[1][pos]) as u8;
+                    bmp::Pixel::new(pix_val, pix_val, pix_val)
+                },
+                ColorDepth::Rgb8 => {
+                    let r = self.layers[0][pos] as u8;
+                    let g = self.layers[1][pos] as u8;
+                    let b = self.layers[2][pos] as u8;
+                    bmp::Pixel::new(r, g, b)
+                },
+                ColorDepth::Rgba8 => {                    
+                    let a: f64 = self.layers[3][pos];
+                    let r = (self.layers[0][pos] * a) as u8;
+                    let g = (self.layers[1][pos] * a) as u8;
+                    let b = (self.layers[2][pos] * a) as u8;
+                    bmp::Pixel::new(r, g, b)
+                },
+            };
+            img_to_save.set_pixel(pos.col as u32, pos.row as u32, pixel);
+        }
+
+        img_to_save.save(path)?;
+
+        Ok(())
+    }
+
+    pub fn copy_with_extended_borders(&self, with: ExtendValue, by_rows: usize, by_cols: usize) -> Self {
+        let mut layers_ext = Vec::<Matrix2D>::new();
+
+        for layer in self.layers().iter() {
+            layers_ext.push(layer.copy_with_extended_borders(with, by_rows, by_cols));
+        }
+
+        Matrix3D { width: self.w(), height: self.h(), layers: layers_ext, color_depth: self.color_depth }
+    }
+
+    pub fn processed_copy<T: Filter, Cbk: Fn(usize) + Clone>(&self, filter: &T, progress_cbk: Cbk) -> Self {
+        let mut result_img = self.clone();
+
+        for layer_num in 0..result_img.layers.len() {
+            let progress_start = 100 * layer_num / self.d();
+            let progress_step = 100 / self.d();
+            let progress_cbk_copy = progress_cbk.clone();
+            let cbk = move |pr| progress_cbk_copy(progress_start + pr * progress_step / 100);
+
+            result_img.layers[layer_num] = result_img.layers[layer_num].processed_copy(filter, cbk)
+        }
+
+        result_img
+    }
+}
+
 
 pub struct ImgIterator {
     top_left: PixelPos,

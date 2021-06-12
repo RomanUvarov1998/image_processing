@@ -437,7 +437,7 @@ impl<'wind> ProcessingLine<'wind> {
             _ => {}
         }        
 
-        let init_image = img::Matrix2D::load(path_buf)?;
+        let init_image = img::Matrix2D::load_as_grayed(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
         img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
