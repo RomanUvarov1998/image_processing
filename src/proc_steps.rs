@@ -5,14 +5,13 @@ use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
-use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self, PackType}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::img::Matrix2D;
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
-use crate::my_component::{MyButton, MyLabel, MyMenuBar, MyMenuButton, SizedWidget};
+use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
 
-pub const PADDING: i32 = 3;
 pub const IMG_PADDING: i32 = 10;
 
 #[derive(Clone)]
@@ -77,9 +76,9 @@ pub struct ProcessingLine<'wind> {
     // graphical parts
     wind_size_prev: (i32, i32),
     frame_img: frame::Frame,
-    main_horz_pack: group::Pack,
-    init_img_pack: group::Pack,
-    processing_pack: group::Pack,
+    main_row: MyRow,
+    init_img_col: MyColumn,
+    processing_col: MyColumn,
     scroll_area: group::Scroll,
     scroll_pack: group::Pack,    
 }
@@ -90,59 +89,47 @@ impl<'wind> ProcessingLine<'wind> {
 
         let (sender, receiver) = app::channel::<Message>();
 
-        let mut main_horz_pack = group::Pack::default()
-            .with_pos(x, y)
-            .with_size(w, h);
-        main_horz_pack.set_type(PackType::Horizontal);
+        let mut main_row = MyRow::new(w, h).with_pos(x, y);
             
-        let mut init_img_pack = group::Pack::default()
-            .with_pos(x, y)
-            .with_size(w / 2, h);
-        init_img_pack.set_type(PackType::Vertical);
+        let mut init_img_col = MyColumn::new(w / 2, h);
 
-        let mut menu = MyMenuBar::new(&init_img_pack);
+        let mut menu = MyMenuBar::new(wind_parent);
         menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
+        menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
+        menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
+        menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
+        menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
+        menu.add_emit("Добавить шаг/Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
+        menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
+        menu.add_emit("Добавить шаг/ яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
         menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
 
-        MyLabel::new("Исходное изображение");
-
-        let btn_load_initial_img = MyButton::new("Загрузить", sender, Message::Project(Project::LoadImage));
+        let lbl = MyLabel::new("Исходное изображение");
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w / 2, h - btn_load_initial_img.h() * 2);
+            .with_size(w / 2, h - lbl.h() - menu.h());
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
         
-        init_img_pack.end();
+        init_img_col.end();
 
-        let mut processing_pack = group::Pack::default()
-            .with_size(w / 2, h);
-        processing_pack.set_type(PackType::Vertical);
-
-        let mut btn_add_step = MyMenuButton::new("Добавить");
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
-        btn_add_step.add_emit("Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
-        btn_add_step.add_emit("Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
-        btn_add_step.add_emit("Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
-        btn_add_step.end();
+        let mut processing_col = MyColumn::new(w / 2, h - menu.h());
 
         let scroll_area = group::Scroll::default()
-            .with_pos(x, y + btn_add_step.h())
-            .with_size(w / 2, h - btn_add_step.h());
+            .with_pos(x, y + menu.h())
+            .with_size(w / 2, h - menu.h());
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x, y + btn_add_step.h())
-            .with_size(w / 2, h - btn_add_step.h());
+            .with_pos(x, y + menu.h())
+            .with_size(w / 2, h - menu.h());
 
         scroll_pack.end();
         scroll_area.end();
-        processing_pack.end();
+        processing_col.end();
 
-        main_horz_pack.end();
+        main_row.end();
 
         wind_parent.end();
 
@@ -187,9 +174,9 @@ impl<'wind> ProcessingLine<'wind> {
             // graphical parts
             wind_size_prev,
             frame_img,
-            main_horz_pack,
-            init_img_pack,
-            processing_pack,
+            main_row,
+            init_img_col,
+            processing_col,
             scroll_area,
             scroll_pack,
         }
@@ -365,11 +352,11 @@ impl<'wind> ProcessingLine<'wind> {
 
         if self.wind_size_prev.0 == ww && self.wind_size_prev.1 == wh { return Ok(()); }
         
-        self.main_horz_pack.set_size(ww, wh);
-        self.init_img_pack.set_size(ww / 2, wh);
+        self.main_row.widget_mut().set_size(ww, wh);
+        self.init_img_col.widget_mut().set_size(ww / 2, wh);
 
-        self.processing_pack.set_size(ww / 2, wh);
-        self.processing_pack.set_pos(self.x + ww / 2, self.y);
+        self.processing_col.widget_mut().set_size(ww / 2, wh);
+        self.processing_col.widget_mut().set_pos(self.x + ww / 2, self.y);
         self.scroll_area.set_size(ww / 2, wh);
         self.scroll_area.set_pos(self.x + ww / 2, self.y);
         self.scroll_pack.set_size(ww / 2, wh);
@@ -655,7 +642,7 @@ impl ProcessingData {
 }
 
 pub struct ProcessingStep<'label> {
-    hpack: group::Pack,
+    main_column: MyColumn,
     btn_process: MyMenuButton<'label, message::Message>,
     btn_edit: MyButton,
     btn_delete: MyButton,
@@ -672,14 +659,13 @@ impl<'label> ProcessingStep<'label> {
     fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
         let name: String = action.filter_description();
 
+        let mut main_column = MyColumn::new(proc_line.w, 100);
+
         let label_step_name = MyLabel::new(&name);
 
         let (sender, _) = app::channel::<Message>();
 
-        let mut hpack = group::Pack::default()
-            .with_size(proc_line.w, label_step_name.h()); 
-        hpack.set_type(PackType::Horizontal);
-        hpack.set_spacing(PADDING);
+        let mut btns_row = MyRow::new(proc_line.w, label_step_name.h()); 
 
         let step_num = proc_line.steps.len();
 
@@ -688,15 +674,17 @@ impl<'label> ProcessingStep<'label> {
         let btn_delete = MyButton::with_label("Удалить");
         let btn_move_step = MyMenuButton::new("Переупорядочить");
 
-        hpack.end();
+        btns_row.end();
             
         let mut frame_img = frame::Frame::default()
-            .with_size(proc_line.w, proc_line.h - hpack.h() * 2);
+            .with_size(proc_line.w, proc_line.h - btns_row.h() * 2);
         frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::ImageMask | Align::Center);    
+        frame_img.set_align(Align::ImageMask | Align::Center); 
+        
+        main_column.end();
         
          let mut step = ProcessingStep { 
-            hpack,
+            main_column,
             btn_process, btn_edit, btn_delete, btn_move_step,
             frame_img, 
             label_step_name,
@@ -724,27 +712,11 @@ impl<'label> ProcessingStep<'label> {
     }
 
     fn draw_self_on(&mut self, pack: &mut group::Pack) {
-        pack.add(self.label_step_name.widget());
-        pack.add(&self.hpack);
-        self.hpack.begin();
-        self.hpack.add(self.btn_process.widget());
-        self.hpack.add(self.btn_edit.widget());
-        self.hpack.add(self.btn_delete.widget());
-        self.hpack.add(self.btn_move_step.widget());
-        self.hpack.end();
-        pack.add(&self.frame_img);
+        pack.add(self.main_column.widget_mut());
     }
 
     fn remove_self_from(&mut self, pack: &mut group::Pack) {
-        pack.remove(self.label_step_name.widget());
-        self.hpack.begin();
-        self.hpack.remove(self.btn_process.widget());
-        self.hpack.remove(self.btn_edit.widget());
-        self.hpack.remove(self.btn_delete.widget());
-        self.hpack.remove(self.btn_move_step.widget());
-        self.hpack.end();
-        pack.remove(&self.hpack);
-        pack.remove(&self.frame_img);
+        pack.remove(self.main_column.widget_mut());
     }
     
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
@@ -763,8 +735,8 @@ impl<'label> ProcessingStep<'label> {
     fn update_btn_emits(&mut self, step_num: usize) {
         self.btn_process.add_emit("Только этот шаг", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
         self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
-        self.btn_edit.update_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
-        self.btn_delete.update_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
+        self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
+        self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
         self.btn_move_step.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
         self.btn_move_step.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
         self.step_num = step_num;
@@ -814,6 +786,8 @@ impl<'label> ProcessingStep<'label> {
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
+
+        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
                   
         self.frame_img.set_image(Some(rgb_image));
         self.frame_img.redraw();

@@ -1,5 +1,6 @@
-use fltk::{app::Sender, button, enums::Shortcut, frame, group, menu, prelude::{MenuExt, WidgetExt}};
+use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, prelude::{GroupExt, MenuExt, WidgetExt}};
 use crate::message::{Message};
+
 
 pub const TEXT_PADDING: i32 = 10;
 
@@ -14,6 +15,7 @@ pub struct MyButton {
     btn: button::Button,
 }
 
+#[allow(unused)]
 impl MyButton {
     pub fn new<'label, TMsg>(label: &'label str, sender: Sender<TMsg>, msg: TMsg) -> Self 
         where TMsg: 'static + Clone + Copy + Send + Sync
@@ -42,10 +44,6 @@ impl MyButton {
 
     pub fn widget<'inner>(&'inner self) -> &'inner button::Button { &self.btn }
 
-    pub fn update_emit<TMsg: 'static + Clone + Copy + Send + Sync>(&mut self, sender: Sender<TMsg>, msg: TMsg) {
-        self.btn.emit(sender, msg);
-    }
-
     pub fn set_active(&mut self, active: bool) {
         if active { 
             self.btn.activate(); 
@@ -61,10 +59,12 @@ impl SizedWidget for MyButton {
 }
 
 
+#[allow(unused)]
 pub struct MyLabel {
     label: frame::Frame,
 }
 
+#[allow(unused)]
 impl MyLabel {
     pub fn new<'text>(text: &'text str) -> Self {
         let mut label = frame::Frame::default();
@@ -90,14 +90,16 @@ impl SizedWidget for MyLabel {
 }
 
 
+#[allow(unused)]
 pub struct MyMenuBar {
     mb: menu::MenuBar
 }
 
+#[allow(unused)]
 impl MyMenuBar {
-    pub fn new(parent: &group::Pack) -> Self {
+    pub fn new<P: WidgetExt>(parent: &P) -> Self {
         MyMenuBar {
-            mb: menu::MenuBar::default().with_size(parent.w(), 35)
+            mb: menu::MenuBar::default().with_size(parent.w(), 30)
         }
     }
 
@@ -107,7 +109,9 @@ impl MyMenuBar {
         self.mb.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
     }
 
-    pub fn end(&mut self) { self.mb.end(); }
+    pub fn end(&mut self) { 
+        self.mb.end(); 
+    }
 }
 
 impl SizedWidget for MyMenuBar {
@@ -116,6 +120,7 @@ impl SizedWidget for MyMenuBar {
 }
 
 
+#[allow(unused)]
 pub struct MyMenuButton<'label, TMsg> 
     where TMsg: 'static + Clone + Copy + Send + Sync
 {
@@ -123,6 +128,7 @@ pub struct MyMenuButton<'label, TMsg>
     emmits: Vec<(&'label str, Sender<TMsg>, TMsg)>
 }
 
+#[allow(unused)]
 impl<'label> MyMenuButton<'label, Message> {
     pub fn new(label: &'label str) -> Self {
         let mut btn = menu::MenuButton::default();
@@ -143,8 +149,6 @@ impl<'label> MyMenuButton<'label, Message> {
         self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
     }
 
-    pub fn end(&mut self) { self.btn.end(); }
-
     pub fn widget<'inner>(&'inner self) -> &'inner menu::MenuButton { &self.btn }
 
     pub fn set_active(&mut self, active: bool) {
@@ -161,4 +165,75 @@ impl<'label, TMsg> SizedWidget for MyMenuButton<'label, TMsg>
 {
     fn w(&self) -> i32 { self.btn.w() }
     fn h(&self) -> i32 { self.btn.h() }
+}
+
+
+#[allow(unused)]
+pub struct MyColumn {
+    pack: group::Pack
+}
+
+#[allow(unused)]
+impl MyColumn {
+    pub fn new(w: i32, h: i32) -> Self {
+        let mut pack = group::Pack::default()
+            .with_size(w, h);
+        pack.set_type(PackType::Vertical);
+        const PADDING: i32 = 3;
+        pack.set_spacing(PADDING);
+
+        MyColumn { pack }
+    }
+
+    #[allow(unused)]
+    pub fn with_pos(mut self, x: i32, y: i32) -> Self {
+        self.pack.set_pos(x, y);
+        self
+    }
+
+    pub fn end(&mut self) { self.pack.end(); }
+
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
+        &mut self.pack 
+    }
+}
+
+impl SizedWidget for MyColumn {
+    fn w(&self) -> i32 { self.pack.w() }
+    fn h(&self) -> i32 { self.pack.h() }
+}
+
+
+#[allow(unused)]
+pub struct MyRow {
+    pack: group::Pack
+}
+
+#[allow(unused)]
+impl MyRow {
+    pub fn new(w: i32, h: i32) -> Self {
+        let mut pack = group::Pack::default()
+            .with_size(w, h);
+        pack.set_type(PackType::Horizontal);
+        const PADDING: i32 = 3;
+        pack.set_spacing(PADDING);
+
+        MyRow { pack }
+    }
+
+    pub fn with_pos(mut self, x: i32, y: i32) -> Self {
+        self.pack.set_pos(x, y);
+        self
+    }
+
+    pub fn end(&mut self) { self.pack.end(); }
+
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
+        &mut self.pack 
+    }
+}
+
+impl SizedWidget for MyRow {
+    fn w(&self) -> i32 { self.pack.w() }
+    fn h(&self) -> i32 { self.pack.h() }
 }
