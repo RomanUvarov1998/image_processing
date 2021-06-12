@@ -1,6 +1,6 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
+use crate::{filter::{filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramEqualizer, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -63,14 +63,7 @@ impl StepEditor {
 
         self.btn_save.emit(sender, StepEditMessage::TrySave);
 
-        let filter_settings: String = match &action {
-            StepAction::LinearCustom(filter) => filter.content_to_string(),
-            StepAction::LinearMean(filter) => filter.content_to_string(),
-            StepAction::LinearGaussian(filter) => filter.content_to_string(),
-            StepAction::MedianFilter(filter) => filter.content_to_string(),
-            StepAction::HistogramLocalContrast(filter) => filter.content_to_string(),
-            StepAction::CutBrightness(filter) => filter.content_to_string(),
-        };
+        let filter_settings: String = action.content_to_string();
         self.text_editor.buffer().unwrap().set_text(&filter_settings);
 
         // if window is closed by user, "Close" message helps exit the message loop
@@ -137,6 +130,13 @@ impl StepEditor {
                                 Err(err) => self.lbl_message.set_label(&err.get_message())
                             },
                             StepAction::CutBrightness(_) => match CutBrightness::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::HistogramEqualizer(_) => match HistogramEqualizer::try_from_string(&text) {
                                 Ok(filter) => {
                                     self.wind.hide();
                                     return Some(filter.into());

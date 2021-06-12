@@ -1,3 +1,5 @@
+use std::time;
+
 use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
@@ -375,5 +377,92 @@ impl StringFromTo for CutBrightness {
 impl Into<StepAction> for CutBrightness {
     fn into(self) -> StepAction {
         StepAction::CutBrightness(self)
+    }
+}
+
+
+#[derive(Clone)]
+pub struct HistogramEqualizer {
+
+}
+
+impl HistogramEqualizer {
+    
+}
+
+impl Filter for HistogramEqualizer {
+    fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> Matrix2D {
+        let mut prev_time = time::Instant::now();
+
+        const MS_DELAY: u128 = 100;
+        
+        let mut buffer = [0_f64; 256];
+        
+        // count histogram
+        for pos in img.get_iterator() {
+            let pix_value = img[pos] as u8 as usize;
+            buffer[pix_value] += 1.0;
+
+            if prev_time.elapsed().as_millis() > MS_DELAY {
+                prev_time = time::Instant::now();
+                progress_cbk(0 + pos.row * 100 / 4 / img.h());
+            }
+        }
+
+        // cumulate histogram
+        let mut sum = 0_f64;
+        for bin in buffer.iter_mut() {
+            sum += *bin;
+            *bin = sum;
+        }
+        
+        progress_cbk(50);
+
+        // equalize
+        let max_color_over_max_value = 255_f64 / buffer.last().unwrap();
+        for bin in buffer.iter_mut() {
+            *bin *= max_color_over_max_value;
+        }
+        
+        progress_cbk(75);
+
+        // apply coeff        
+        for pos in img.get_iterator() {
+            let pix_value = img[pos] as u8 as usize;
+            img[pos] = buffer[pix_value];
+
+            if prev_time.elapsed().as_millis() > MS_DELAY {
+                prev_time = time::Instant::now();
+                progress_cbk(75 + pos.row * 100 / 4 / img.h());
+            }
+        }
+
+        img
+    }
+
+    fn get_description(&self) -> String {
+        "Эквализация гистограммы".to_string()
+    }
+}
+
+impl StringFromTo for HistogramEqualizer {
+    fn try_from_string(_string: &str) -> Result<Self, MyError> where Self: Sized {
+        Ok(Self { })
+    }
+
+    fn content_to_string(&self) -> String {
+        "".to_string()
+    }
+}
+
+impl Default for HistogramEqualizer {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+impl Into<StepAction> for HistogramEqualizer {
+    fn into(self) -> StepAction {
+        StepAction::HistogramEqualizer(self)
     }
 }

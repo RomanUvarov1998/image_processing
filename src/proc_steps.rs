@@ -7,6 +7,7 @@ use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
+use crate::filter::non_linear::HistogramEqualizer;
 use crate::img::Matrix2D;
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
@@ -21,7 +22,8 @@ pub enum StepAction {
     LinearGaussian(LinearGaussian),
     MedianFilter(MedianFilter),
     HistogramLocalContrast(HistogramLocalContrast),
-    CutBrightness(CutBrightness)
+    CutBrightness(CutBrightness),
+    HistogramEqualizer(HistogramEqualizer),
 }
 
 impl StepAction {
@@ -33,6 +35,7 @@ impl StepAction {
             StepAction::MedianFilter(filter) => filter.get_description(),
             StepAction::HistogramLocalContrast(filter) => filter.get_description(),
             StepAction::CutBrightness(filter) => filter.get_description(),
+            StepAction::HistogramEqualizer(filter) => filter.get_description(),
         }
     }
 
@@ -58,6 +61,20 @@ impl StepAction {
                 init_img.processed_copy(filter, progress_cbk),
             StepAction::CutBrightness(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
+            StepAction::HistogramEqualizer(ref mut filter) => 
+                init_img.processed_copy(filter, progress_cbk),                
+        }
+    }
+
+    pub fn content_to_string(&self) -> String {
+        match self {            
+            StepAction::LinearCustom(ref filter) => filter.content_to_string(),
+            StepAction::LinearMean(ref filter) => filter.content_to_string(),
+            StepAction::LinearGaussian(ref filter) => filter.content_to_string(),
+            StepAction::MedianFilter(ref filter) => filter.content_to_string(),
+            StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
+            StepAction::CutBrightness(ref filter) => filter.content_to_string(),
+            StepAction::HistogramEqualizer(ref filter) => filter.content_to_string(),
         }
     }
 }
@@ -102,7 +119,8 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
         menu.add_emit("Добавить шаг/Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
         menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
-        menu.add_emit("Добавить шаг/ яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
+        menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
+        menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
         menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
 
@@ -253,6 +271,12 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             AddStep::AddStepCutBrightness => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, CutBrightness::default().into()) {
+                                    self.add(new_action);
+                                }
+                            },
+                            AddStep::AddStepHistogramEqualizer => {
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, 
+                                        HistogramEqualizer::default().into()) {
                                     self.add(new_action);
                                 }
                             },
@@ -483,14 +507,7 @@ impl<'wind> ProcessingLine<'wind> {
 
         // save all steps
         for step_num in 0..self.steps.len() {
-            let filter_content: String = match &self.steps[step_num].action {
-                StepAction::LinearCustom(ref filter) => filter.content_to_string(),
-                StepAction::LinearMean(ref filter) => filter.content_to_string(),
-                StepAction::LinearGaussian(ref filter) => filter.content_to_string(),
-                StepAction::MedianFilter(ref filter) => filter.content_to_string(),
-                StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
-                StepAction::CutBrightness(ref filter) => filter.content_to_string(),
-            };
+            let filter_content: String = self.steps[step_num].action.content_to_string();
 
             let mut file_path = path.clone();
             file_path.push_str(&format!("/{}.txt", step_num + 1));

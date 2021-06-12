@@ -24,6 +24,7 @@ pub enum AddStep {
     AddStepMed, 
     AddStepHistogramLocalContrast, 
     AddStepCutBrightness, 
+    AddStepHistogramEqualizer, 
 }
 
 #[derive(Debug, Copy, Clone)]
