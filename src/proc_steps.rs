@@ -7,7 +7,6 @@ use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
-use crate::filter::non_linear::HistogramEqualizer;
 use crate::img::{Matrix3D, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
@@ -23,7 +22,7 @@ pub enum StepAction {
     MedianFilter(MedianFilter),
     HistogramLocalContrast(HistogramLocalContrast),
     CutBrightness(CutBrightness),
-    HistogramEqualizer(HistogramEqualizer),
+    HistogramEqualizer,
     Rgb2Gray,
 }
 
@@ -36,7 +35,7 @@ impl StepAction {
             StepAction::MedianFilter(filter) => filter.get_description(),
             StepAction::HistogramLocalContrast(filter) => filter.get_description(),
             StepAction::CutBrightness(filter) => filter.get_description(),
-            StepAction::HistogramEqualizer(filter) => filter.get_description(),
+            StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
         }
     }
@@ -63,9 +62,9 @@ impl StepAction {
                 init_img.processed_copy(filter, progress_cbk),
             StepAction::CutBrightness(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
-            StepAction::HistogramEqualizer(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::Rgb2Gray => color_ops::rgb_to_gray(init_img.clone()),                
+            StepAction::HistogramEqualizer => 
+                color_ops::equalize_histogram(init_img.clone(), progress_cbk),
+            StepAction::Rgb2Gray => color_ops::rgb_to_gray(init_img.clone()),
         }
     }
 
@@ -77,7 +76,7 @@ impl StepAction {
             StepAction::MedianFilter(ref filter) => filter.content_to_string(),
             StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
             StepAction::CutBrightness(ref filter) => filter.content_to_string(),
-            StepAction::HistogramEqualizer(ref filter) => filter.content_to_string(),
+            StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
         }
     }
@@ -279,12 +278,7 @@ impl<'wind> ProcessingLine<'wind> {
                                     self.add(new_action);
                                 }
                             },
-                            AddStep::AddStepHistogramEqualizer => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, 
-                                        HistogramEqualizer::default().into()) {
-                                    self.add(new_action);
-                                }
-                            },
+                            AddStep::AddStepHistogramEqualizer => self.add(StepAction::HistogramEqualizer),
                             AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
                         };
                         self.parent_window.redraw();
