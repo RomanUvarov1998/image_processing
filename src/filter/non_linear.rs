@@ -1,4 +1,4 @@
-use crate::{img::{Matrix2D}, img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::{Img, ImgChannel, ImgLayer, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -88,8 +88,20 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        super::filter_window(img, self, MedianFilter::process_window, progress_cbk)
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk,
+            img.w() * img.h());
+
+        let mut result_img = Img::empty_size_of(&img);
+
+        for layer_num in 0..img.d() {
+            let layer = img.layer(layer_num);
+            let res_layer = result_img.layer_mut(layer_num);
+            super::filter_window(layer, res_layer, self, MedianFilter::process_window, &mut prog_prov)
+        }
+
+        result_img
     }
     
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
@@ -154,86 +166,98 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn filter<Cbk: Fn(usize)>(&self, img: Matrix2D, progress_cbk: Cbk) -> Matrix2D {
-        let mut pixel_buf = Vec::<f64>::new();
-        pixel_buf.resize(self.w() * self.h(), 0_f64);
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk,
+            1 + img.layers().len());
 
-        let fil_half_size = PixelPos::new(self.h() / 2, self.w() / 2);
+        let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
-        let ext_copy = img.copy_with_extended_borders(ExtendValue::Closest, 
-            fil_half_size.row, fil_half_size.col);
-        let mut hist_matrix = Matrix2D::empty_with_size(
-            img.w() + self.w(), img.h() + self.h());
-
-        progress_cbk(10);
-
-        for pos_im in img.get_area_iter(fil_half_size, 
-            fil_half_size + PixelPos::new(img.h(), img.w())) 
-        {
-            for pos_w in self.get_iterator() {
-                let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
-                let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
-                pixel_buf[buf_ind] = ext_copy[pix_pos];
-            }            
+        let ext_copy = img.copy_with_extended_borders(
+            ExtendValue::Closest, 
+            win_half.row, win_half.col);
             
-            hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
-        }
+        let ext_filtered = self.mean_filter.filter(&ext_copy, |_| {});
 
-        let img_filtered_ext = ext_copy.processed_copy(&self.mean_filter, |p| progress_cbk(10 + p / 100 * 30));
+        prog_prov.complete_action();
+        
+        let mut img_result = Img::empty_size_of(&img);
 
-        let mut c_mat = Matrix2D::empty_with_size(img_filtered_ext.w(), img_filtered_ext.h());
-        for pos in img_filtered_ext.get_iterator() {
-            let mut val = ext_copy[pos] - img_filtered_ext[pos];
-            val /= ext_copy[pos] + img_filtered_ext[pos] + f64::EPSILON;
-            c_mat[pos] = f64::abs(val)
-        }
-
-        progress_cbk(50);
-
-        for m_pos in hist_matrix.get_area_iter(fil_half_size, 
-            PixelPos::new(img.h(), img.w()) + fil_half_size) 
-        {
-            let mut max_value = hist_matrix[m_pos];
-            let mut min_value = hist_matrix[m_pos];
-
-            for w_pos in hist_matrix.get_area_iter(
-                m_pos - fil_half_size, 
-                m_pos + fil_half_size) 
-            {
-                let v = hist_matrix[w_pos];
-                if f64::abs(v) < f64::EPSILON { continue; }
-                if max_value < v { max_value = v; }
-                if min_value < v { min_value = v; }
+        for layer_num in 0..ext_copy.layers().len() {
+            let ext_layer = ext_copy.layer(layer_num);
+            match ext_layer.channel() {
+                ImgChannel::A => {
+                    img_result.layer_mut(layer_num).clone_from(ext_layer);
+                    continue;
+                },
+                _ => {}
             }
 
-            let mut c_power = (hist_matrix[m_pos] - min_value) 
-                / (max_value - min_value + f64::EPSILON);
-            
-            c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
-            
-            c_mat[m_pos] = c_mat[m_pos].powf(c_power);
+            //-------------------------------- create hist matrix ---------------------------------
+            let mut hist_matrix = Matrix2D::empty_size_of(ext_layer.matrix());
+
+            let mut pixel_buf = Vec::<f64>::new();
+            pixel_buf.resize(self.w() * self.h(), 0_f64);
+
+            for pos_im in ext_layer.get_area_iter(win_half, win_half + img.size_vec()) {
+                for pos_w in self.get_iterator() {
+                    let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
+                    let pix_pos: PixelPos = pos_im + pos_w - win_half;
+                    pixel_buf[buf_ind] = ext_layer[pix_pos];
+                }            
+                
+                hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
+            }
+
+            //-------------------------------- create C matrix ---------------------------------
+            let mut c_mat = ImgLayer::empty_size_of(ext_layer);
+
+            let ext_filtered_layer = ext_filtered.layer(layer_num);
+            for pos in ext_filtered_layer.get_iter() {
+                let mut val = ext_layer[pos] - ext_filtered_layer[pos];
+                val /= ext_layer[pos] + ext_filtered_layer[pos] + f64::EPSILON;
+                c_mat[pos] = f64::abs(val)
+            }
+    
+            for m_pos in hist_matrix.get_area_iter(win_half, img.size_vec() + win_half) {
+                let mut max_value = hist_matrix[m_pos];
+                let mut min_value = hist_matrix[m_pos];
+    
+                for w_pos in hist_matrix.get_area_iter(
+                    m_pos - win_half, 
+                    m_pos + win_half) 
+                {
+                    let v = hist_matrix[w_pos];
+                    if f64::abs(v) < f64::EPSILON { continue; }
+                    if max_value < v { max_value = v; }
+                    if min_value < v { min_value = v; }
+                }
+    
+                let mut c_power = (hist_matrix[m_pos] - min_value) 
+                    / (max_value - min_value + f64::EPSILON);
+                
+                c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
+                
+                c_mat[m_pos] = c_mat[m_pos].powf(c_power);
+            }
+    
+            //-------------------------------- create result ---------------------------------    
+            for pos in hist_matrix.get_area_iter(win_half, img.size_vec() + win_half) 
+            {
+                let mut val = if ext_layer[pos] > ext_filtered_layer[pos] {
+                    ext_filtered_layer[pos] * (1_f64 + c_mat[pos]) / (1_f64 - c_mat[pos])
+                } else {
+                    ext_filtered_layer[pos] * (1_f64 - c_mat[pos]) / (1_f64 + c_mat[pos])
+                };
+    
+                if val < 0_f64 { val = 0_f64; }
+                if val > 255_f64 { val = 255_f64; }
+    
+                img_result.layer_mut(layer_num)[pos - win_half] = val;
+            }
+
+            prog_prov.complete_action();
         }
-
-        progress_cbk(70);
-        
-        let mut img_result = Matrix2D::empty_with_size(img.w(), img.h());
-
-        for pos in hist_matrix.get_area_iter(fil_half_size, 
-            PixelPos::new(img.h(), img.w()) + fil_half_size) 
-        {
-            let mut val = if ext_copy[pos] > img_filtered_ext[pos] {
-                img_filtered_ext[pos] * (1_f64 + c_mat[pos]) / (1_f64 - c_mat[pos])
-            } else {
-                img_filtered_ext[pos] * (1_f64 - c_mat[pos]) / (1_f64 + c_mat[pos])
-            };
-
-            if val < 0_f64 { val = 0_f64; }
-            if val > 255_f64 { val = 255_f64; }
-
-            img_result[pos - fil_half_size] = val;
-        }
-
-        progress_cbk(100);
 
         img_result
     }
@@ -331,19 +355,31 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        for pos in img.get_progress_iter(progress_cbk) {
-            let pix_val = img[pos] as u8;
-            let before_min = pix_val < self.cut_range.min;
-            let after_max = pix_val > self.cut_range.max;
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk,
+            img.layers().len());
 
-            let result = pix_val * (!before_min) as u8 * (!after_max) as u8
-                + self.replace_with.value * before_min as u8 * after_max as u8;
+        let mut result_img = Img::empty_size_of(&img);
 
-            img[pos] = result as f64;
+        for layer_num in 0..img.d() {
+            let layer = img.layer(layer_num);
+            let res_layer = result_img.layer_mut(layer_num);
+            for pos in layer.get_iter() {
+                let pix_val = layer[pos] as u8;
+                let before_min = pix_val < self.cut_range.min;
+                let after_max = pix_val > self.cut_range.max;
+    
+                let result = pix_val * (!before_min) as u8 * (!after_max) as u8
+                    + self.replace_with.value * before_min as u8 * after_max as u8;
+    
+                res_layer[pos] = result as f64;
+            }
+
+            prog_prov.complete_action();
         }
         
-        img
+        result_img
     }
 
     fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }

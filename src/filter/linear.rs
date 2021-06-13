@@ -1,6 +1,4 @@
-use std::time;
-
-use crate::{img::pixel_pos::PixelPos, my_err::MyError, proc_steps::StepAction, utils::{LinesIter, WordsIter}};
+use crate::{img::{Img, ImgChannel, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter, WordsIter}};
 use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 
@@ -41,8 +39,25 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        super::filter_window(img, self, LinearGaussian::process_window, progress_cbk)
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk, 
+            img.layers().len() * (img.h() * img.w()));
+
+        let mut result_img = img.clone();
+
+        'out: for layer_num in 0..img.d() {
+            let layer = img.layer(layer_num);
+
+            if layer.channel() == ImgChannel::A {
+                continue 'out;
+            }
+
+            let res_layer = result_img.layer_mut(layer_num);
+            super::filter_window(layer, res_layer, self, LinearGaussian::process_window, &mut prog_prov);
+        }
+
+        result_img
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
@@ -159,8 +174,25 @@ impl WindowFilter for LinearCustom {
 }
 
 impl Filter for LinearCustom {
-    fn filter<Cbk: Fn(usize)>(&self, img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        super::filter_window(img, self, LinearCustom::process_window, progress_cbk)
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk, 
+            img.layers().len() * (img.h() * img.w()));
+
+        let mut result_img = img.clone();
+
+        'out: for layer_num in 0..img.d() {
+            let layer = img.layer(layer_num);
+
+            if layer.channel() == ImgChannel::A {
+                continue 'out;
+            }
+
+            let res_layer = result_img.layer_mut(layer_num);
+            super::filter_window(layer, res_layer, self, LinearCustom::process_window, &mut prog_prov)
+        }
+
+        result_img
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
@@ -236,10 +268,10 @@ impl StringFromTo for LinearCustom {
 }
 
 impl Default for LinearCustom {
-fn default() -> Self {
-    let coeffs = vec![1_f64];
-    LinearCustom::with_coeffs(coeffs, 1, 1, ExtendValue::Closest, NormalizeOption::Normalized)
-}
+    fn default() -> Self {
+        let coeffs = vec![1_f64];
+        LinearCustom::with_coeffs(coeffs, 1, 1, ExtendValue::Closest, NormalizeOption::Normalized)
+    }
 }
 
 impl Into<StepAction> for LinearCustom {
@@ -284,68 +316,71 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn filter<Cbk: Fn(usize)>(&self, mut img: crate::img::Matrix2D, progress_cbk: Cbk) -> crate::img::Matrix2D {
-        let mut prev_time = time::Instant::now();
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
+        let mut prog_prov = ProgressProvider::new(
+            progress_cbk, 
+            img.layers().len() * (img.h() + img.w() + img.h() * img.w()));
 
-        const MS_DELAY: u128 = 100;
-        
-        // sum along rows
-        for row in 0..img.h() {
-            let mut row_sum = 0_f64;
-            for col in 0..img.w() {
-                let pos = PixelPos::new(row, col);
-                row_sum += img[pos];
-                img[pos] = row_sum;
+        let mut result_img = img.clone();
+
+        'out: for layer_num in 0..img.d() {
+            let layer = img.layer(layer_num);
+
+            if layer.channel() == ImgChannel::A {
+                continue 'out;
             }
 
-            if prev_time.elapsed().as_millis() > MS_DELAY {
-                prev_time = time::Instant::now();
-                progress_cbk(row * 100 / 3 / img.h());
-            }
-        }
-        
-        // sum along cols
-        for col in 0..img.w() {
-            let mut col_sum = 0_f64;
+            let res_layer = result_img.layer_mut(layer_num);
+
+            // sum along rows
             for row in 0..img.h() {
-                let pos = PixelPos::new(row, col);
-                col_sum += img[pos];
-                img[pos] = col_sum;
-            }
+                let mut row_sum = 0_f64;
+                for col in 0..img.w() {
+                    let pos = PixelPos::new(row, col);
+                    row_sum += res_layer[pos];
+                    res_layer[pos] = row_sum;
+                }
 
-            if prev_time.elapsed().as_millis() > MS_DELAY {
-                prev_time = time::Instant::now();
-                progress_cbk(33 + col * 100 / 3 / img.h());
+                prog_prov.complete_action();
+            }
+            
+            // sum along cols
+            for col in 0..img.w() {
+                let mut col_sum = 0_f64;
+                for row in 0..img.h() {
+                    let pos = PixelPos::new(row, col);
+                    col_sum += res_layer[pos];
+                    res_layer[pos] = col_sum;
+                }
+
+                prog_prov.complete_action();
+            }
+            
+            // filter
+            let layer_ext = res_layer.matrix().copy_with_extended_borders(
+                ExtendValue::Closest, 
+                self.h() / 2 + 1, self.w() / 2 + 1);
+            let one = PixelPos::new(1, 1);
+            let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
+
+            let left_top = win_half + one;
+            let right_bottom = left_top + img.size_vec();
+            let coeff = 1_f64 / (self.w() * self.h()) as f64;
+            
+            for ext_pos in layer_ext.get_area_iter(left_top, right_bottom) {
+                let sum_top_left        = layer_ext[ext_pos - win_half - one];
+                let sum_top_right       = layer_ext[ext_pos - win_half.row_vec() + win_half.col_vec() - one.row_vec()];
+                let sum_bottom_left     = layer_ext[ext_pos + win_half.row_vec() - win_half.col_vec() - one.col_vec()];
+                let sum_bottom_right    = layer_ext[ext_pos + win_half];
+
+                let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
+                res_layer[ext_pos - win_half - one] = result;
+
+                prog_prov.complete_action();
             }
         }
-        
-        // filter
-        let img_ext = img.copy_with_extended_borders(
-            ExtendValue::Closest, 
-            self.h() / 2 + 1, self.w() / 2 + 1);
-        let one = PixelPos::new(1, 1);
-        let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
-        let left_top = win_half + one;
-        let right_bottom = left_top + PixelPos::new(img.h(), img.w());
-        let coeff = 1_f64 / (self.w() * self.h()) as f64;
-        
-        for ext_pos in img_ext.get_area_iter(left_top, right_bottom) {
-            let sum_top_left        = img_ext[ext_pos - win_half - one];
-            let sum_top_right       = img_ext[ext_pos - win_half.row_vec() + win_half.col_vec() - one.row_vec()];
-            let sum_bottom_left     = img_ext[ext_pos + win_half.row_vec() - win_half.col_vec() - one.col_vec()];
-            let sum_bottom_right    = img_ext[ext_pos + win_half];
-
-            let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
-            img[ext_pos - win_half - one] = result;
-
-            if prev_time.elapsed().as_millis() > MS_DELAY {
-                prev_time = time::Instant::now();
-                progress_cbk(66 + (ext_pos.row - win_half.row - 1) * 100 / 3 / img.h());
-            }
-        }
-
-        img
+        result_img.clone()
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }

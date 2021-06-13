@@ -1,4 +1,4 @@
-use std::{ops::{Index, IndexMut}, path::PathBuf, result, time};
+use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{enums::ColorDepth, image, prelude::ImageExt};
 use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
 use self::pixel_pos::PixelPos;
@@ -6,11 +6,85 @@ use self::pixel_pos::PixelPos;
 pub mod pixel_pos;
 pub mod color_ops;
 
+pub const PIXEL_VALUES_COUNT: usize = 256_usize;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ImgChannel { L, R, G, B, A }
+
+impl PartialEq for ImgChannel {
+    fn eq(&self, other: &Self) -> bool {
+        *self as u8 == *other as u8
+    }
+}
+
+
+#[derive(Clone)]
+pub struct ImgLayer {
+    layer: Matrix2D,
+    channel: ImgChannel,
+}
+
+impl ImgLayer {
+    pub fn new(layer: Matrix2D, channel: ImgChannel) -> Self {
+        ImgLayer{
+            layer,
+            channel
+        }
+    }
+    
+    pub fn empty_size_of(other: &ImgLayer) -> Self {      
+        ImgLayer { layer: Matrix2D::empty_size_of(other.matrix()), channel: other.channel() }
+    }
+
+    pub fn channel(&self) -> ImgChannel { self.channel }
+
+    pub fn w(&self) -> usize { self.layer.w() }
+    pub fn h(&self) -> usize { self.layer.h() }
+
+    pub fn matrix(&self) -> &Matrix2D { &self.layer }
+
+    pub fn matrix_mut(&mut self) -> &mut Matrix2D { &mut self.layer }
+
+    pub fn get_iter(&self) -> LayerIterator {
+        LayerIterator::for_full_image(self.matrix())
+    }
+
+    pub fn get_area_iter(&self, from: PixelPos, to_excluded: PixelPos) -> ImgIterator {
+        ImgIterator::for_rect_area( from, to_excluded)
+    }
+
+}
+
+impl Index<usize> for ImgLayer {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.layer.pixels[index]
+    }
+}
+
+impl Index<PixelPos> for ImgLayer {
+    type Output = f64;
+
+    fn index(&self, index: PixelPos) -> &Self::Output {
+        &self.layer[index]
+    }
+}
+
+impl IndexMut<PixelPos> for ImgLayer {
+    fn index_mut(&mut self, index: PixelPos) -> &mut Self::Output {
+        &mut self.layer[index]
+    }
+}
+
+
+
 #[derive(Clone)]
 pub struct Matrix2D {
     width: usize,
     height: usize,
-    pixels: Vec<f64>
+    pixels: Vec<f64>,
 }
 
 #[allow(unused)]
@@ -21,69 +95,16 @@ impl Matrix2D {
         Matrix2D { width, height, pixels }
     }
 
-    pub fn load_as_grayed(path: PathBuf) -> result::Result<Self, MyError> {
-        let im = fltk::image::SharedImage::load(path)?;
-        let values = im.to_rgb_data();
-        let mut values_grey: Vec<f64>;
-
-        const RGB_2_GRAY_RED: f64 = 0.299;
-        const RGB_2_GRAY_GREEN: f64 = 0.587;
-        const RGB_2_GRAY_BLUE: f64 = 0.114;
-
-        match im.depth() {
-            ColorDepth::L8 => values_grey = im.to_rgb_data().into_iter().map(|v| v as f64).collect(),
-            ColorDepth::La8 => {
-                assert_eq!(values.len() % 2, 0);
-                values_grey = Vec::<f64>::with_capacity(values.len() / 2);
-                for i in 0..values.len() {
-                    if i % 2 == 0 { values_grey.push(values[i] as f64); }
-                }
-            },
-            ColorDepth::Rgb8 => {
-                assert_eq!(values.len() % 3, 0);
-                values_grey = Vec::<f64>::with_capacity(values.len() / 3);
-                for i in 0..values.len() {
-                    if i % 3 == 0 { 
-                        let grey: f64 = 
-                            values[i] as f64 * RGB_2_GRAY_RED + 
-                            values[i + 1] as f64 * RGB_2_GRAY_GREEN + 
-                            values[i + 2] as f64 * RGB_2_GRAY_BLUE;
-                        values_grey.push(grey); 
-                    }
-                }
-            },
-            ColorDepth::Rgba8 => {
-                assert_eq!(values.len() % 4, 0);
-                values_grey = Vec::<f64>::with_capacity(values.len() / 3);
-                for i in 0..values.len() {
-                    if i % 4 == 0 { 
-                        let grey: f64 = 
-                        values[i] as f64 * RGB_2_GRAY_RED + 
-                        values[i + 1] as f64 * RGB_2_GRAY_GREEN + 
-                        values[i + 2] as f64 * RGB_2_GRAY_BLUE;
-                        values_grey.push(grey); 
-                    }
-                }
-            }
-        }
-
-        let im_grey = fltk::image::RgbImage::new(
-            &values_grey.into_iter().map(|v| v as u8).collect::<Vec<u8>>(), 
-            im.w(), im.h(), ColorDepth::L8)?;
-            
-        let width = im.width() as usize;
-        let height = im.height() as usize;
-        let pixels = im_grey.to_rgb_data().into_iter().map(|v| v as f64).collect();
-
-        Ok(Matrix2D {
-            pixels,
-            width,
-            height
-        })
+    pub fn empty_size_of(other: &Matrix2D) -> Self {
+        let mut pixels = Vec::<f64>::new();
+        pixels.resize(other.w() * other.h(), 0_f64);        
+        Matrix2D { width: other.w(), height: other.h(), pixels }
     }
 
     pub fn w(&self) -> usize { self.width }
     pub fn h(&self) -> usize { self.height }
+
+    pub fn size_vec(&self) -> PixelPos { PixelPos::new(self.h(), self.w()) }
 
     pub fn max_col(&self) -> usize { self.width - 1 }
     pub fn max_row(&self) -> usize { self.height - 1 }
@@ -96,20 +117,22 @@ impl Matrix2D {
         pos.col <= self.max_col() && pos.row <= self.max_row()
     }
 
-    pub fn get_iterator(&self) -> ImgIterator {
-        ImgIterator::for_full_image(self)
+    pub fn get_iter(&self) -> LayerIterator {
+        LayerIterator::for_full_image(self)
     }
 
     pub fn get_area_iter(&self, from: PixelPos, to_excluded: PixelPos) -> ImgIterator {
         ImgIterator::for_rect_area( from, to_excluded)
     }
 
-    pub fn get_progress_iter<Cbk: Fn(usize)>(&self, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
-        ProgressIterator::<Cbk>::for_full_image(self, progress_cbk)
-    }
+    pub fn scalar_transform<Tr: Fn(f64) -> f64>(&self, tr: Tr) -> Self {
+        let mut transformed = Self::empty_size_of(self);
 
-    pub fn get_progress_iter_area<Cbk: Fn(usize)>(&self, from: PixelPos, to_excluded: PixelPos, progress_cbk: Cbk) -> ProgressIterator<Cbk> {
-        ProgressIterator::<Cbk>::for_rect_area(from,to_excluded, progress_cbk)
+        for pos in self.get_iter() {
+            transformed[pos] = tr(self[pos]);
+        }
+
+        transformed
     }
 
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
@@ -122,7 +145,7 @@ impl Matrix2D {
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {
         let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
 
-        for pos in self.get_iterator() {
+        for pos in self.get_iter() {
             let pix = bmp::Pixel::new(self[pos] as u8, self[pos] as u8, self[pos] as u8);
             img_to_save.set_pixel(pos.col as u32, pos.row as u32, pix);
         }
@@ -228,11 +251,6 @@ impl Matrix2D {
         img
     }
 
-    pub fn processed_copy<T: Filter, Cbk: Fn(usize)>(&self, filter: &T, progress_cbk: Cbk) -> Self {
-        let result_img = self.clone();
-        filter.filter(result_img, progress_cbk)
-    }
-
     fn set_rect(&mut self, tl: PixelPos, br: PixelPos, value: f64) -> () {
         for pos in self.get_area_iter(tl, br) {
             self[pos] = value;
@@ -262,24 +280,64 @@ impl IndexMut<PixelPos> for Matrix2D {
 
 
 #[derive(Clone)]
-pub struct Matrix3D {
+pub struct Img {
     width: usize,
     height: usize,
-    layers: Vec<Matrix2D>,
+    layers: Vec<ImgLayer>,
     color_depth: ColorDepth
 }
 
 #[allow(unused)]
-impl Matrix3D {
+impl Img {
     pub fn empty_with_size(width: usize, height: usize, color_depth: ColorDepth) -> Self {
-        let mut layers = Vec::<Matrix2D>::new();
+        let mut layers = Vec::<ImgLayer>::new();
 
-        let depth: usize = color_depth as u8 as usize;
-
-        for _ in 0..depth {
-            layers.push(Matrix2D::empty_with_size(width, height));
+        match color_depth {
+            ColorDepth::L8 => {
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::L));
+            },
+            ColorDepth::La8 => {
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::L));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::A));
+            },
+            ColorDepth::Rgb8 => {
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::R));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::G));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::B));
+            },
+            ColorDepth::Rgba8 => {
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::R));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::G));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::B));
+                layers.push(ImgLayer::new(
+                    Matrix2D::empty_with_size(width, height), 
+                    ImgChannel::A));
+            },
         }
-        Matrix3D { width, height, layers, color_depth }
+        
+        Img { width, height, layers, color_depth }
+    }
+
+    pub fn empty_size_of(other: &Img) -> Self {
+        Self::empty_with_size(other.width, other.height, other.color_depth)
     }
 
     pub fn load_as_rgb(path: PathBuf) -> result::Result<Self, MyError> {
@@ -294,24 +352,23 @@ impl Matrix3D {
 
         let layers_count = color_depth as u8 as usize;
         assert_eq!(all_pixels.len() % layers_count, 0);
-        let mut layers = Vec::<Matrix2D>::new();
-        for _ in 0..layers_count {
-            let layer = Matrix2D::empty_with_size(width, height);
-            layers.push(layer);
-        }
+
+        let mut img = Img::empty_with_size(width, height, color_depth);
 
         for pixel_num in 0..all_pixels.len() {
             let layer_num = pixel_num % layers_count;
             let layer_pixel_num = pixel_num / layers_count;
-            layers[layer_num].pixels[layer_pixel_num] = all_pixels[pixel_num];
+            img.layer_mut(layer_num).matrix_mut().pixels[layer_pixel_num] = all_pixels[pixel_num];
         }
 
-        Ok(Matrix3D {  width, height, layers, color_depth } )
+        Ok(img)
     }
 
     pub fn w(&self) -> usize { self.width }
     pub fn h(&self) -> usize { self.height }
     pub fn d(&self) -> usize { self.color_depth as u8 as usize }
+
+    pub fn size_vec(&self) -> PixelPos { PixelPos::new(self.h(), self.w()) }
 
     pub fn max_col(&self) -> usize { self.width - 1 }
     pub fn max_row(&self) -> usize { self.height - 1 }
@@ -321,11 +378,17 @@ impl Matrix3D {
         format!("изображение {}x{}x{}", self.h(), self.w(), self.d())
     }
 
-    pub fn layers<'own>(&'own self) -> &'own Vec<Matrix2D> { &self.layers }
-    pub fn layers_mut<'own>(&'own mut self) -> &'own mut Vec<Matrix2D> { &mut self.layers }
+    pub fn layers<'own>(&'own self) -> &'own Vec<ImgLayer> { &self.layers }
+    pub fn layers_mut<'own>(&'own mut self) -> &'own mut Vec<ImgLayer> { &mut self.layers }
+    pub fn layer_mut<'own>(&'own mut self, ind: usize) -> &'own mut ImgLayer { &mut self.layers[ind] }
+    pub fn layer<'own>(&'own self, ind: usize) -> &'own ImgLayer { &self.layers[ind] }
 
-    pub fn get_iterator(&self) -> ImgIterator {
-        ImgIterator::for_full_image(&self.layers[0])
+    pub fn get_pixels_iter(&self) -> ImgIterator {
+        ImgIterator::for_full_image(self)
+    }
+
+    pub fn get_layers_iter<'own>(&'own self) -> LayersIterator<'own> {
+        LayersIterator::new(self)
     }
 
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
@@ -333,8 +396,8 @@ impl Matrix3D {
 
         let layer_length = self.w() * self.h(); 
         for pix_num in 0..layer_length {
-            for layer in self.layers.iter() {
-                all_pixels.push(layer.pixels[pix_num] as u8);
+            for layer in self.get_layers_iter() {
+                all_pixels.push(layer[pix_num] as u8);
             }
         }
 
@@ -348,7 +411,7 @@ impl Matrix3D {
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {
         let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
 
-        for pos in self.get_iterator() {
+        for pos in self.get_pixels_iter() {
             let pixel = match self.color_depth {
                 ColorDepth::L8 => {
                     let pix_val = self.layers[0][pos] as u8;
@@ -381,36 +444,82 @@ impl Matrix3D {
     }
 
     pub fn copy_with_extended_borders(&self, with: ExtendValue, by_rows: usize, by_cols: usize) -> Self {
-        let mut layers_ext = Vec::<Matrix2D>::new();
+        let mut layers_ext = Vec::<ImgLayer>::new();
 
         for layer in self.layers().iter() {
-            layers_ext.push(layer.copy_with_extended_borders(with, by_rows, by_cols));
+            let ext_layer = layer.matrix().copy_with_extended_borders(with, by_rows, by_cols);
+            layers_ext.push(ImgLayer::new(ext_layer, layer.channel));
         }
 
-        Matrix3D { width: self.w(), height: self.h(), layers: layers_ext, color_depth: self.color_depth }
+        Img { width: self.w(), height: self.h(), layers: layers_ext, color_depth: self.color_depth }
     }
 
     pub fn processed_copy<T: Filter, Cbk: Fn(usize) + Clone>(&self, filter: &T, progress_cbk: Cbk) -> Self {
-        let mut result_img = self.clone();
-
-        for layer_num in 0..result_img.layers.len() {
-            match self.color_depth {
-                ColorDepth::La8 => if layer_num == 1 { continue; },
-                ColorDepth::Rgba8 => if layer_num == 1 && layer_num == 3 { continue; },
-                ColorDepth::L8 | ColorDepth::Rgb8 => {}
-            }
-
-            let progress_start = 100 * layer_num / self.d();
-            let progress_step = 100 / self.d();
-            let progress_cbk_copy = progress_cbk.clone();
-            let cbk = move |pr| progress_cbk_copy(progress_start + pr * progress_step / 100);
-
-            result_img.layers[layer_num] = result_img.layers[layer_num].processed_copy(filter, cbk)
-        }
-
-        result_img
+        filter.filter(self, progress_cbk)
     }
 }
+
+
+pub struct LayerIterator {
+    top_left: PixelPos,
+    bottom_right_excluded: PixelPos,
+    cur_pos: PixelPos
+}
+
+#[allow(unused)]
+impl LayerIterator {
+    pub fn for_full_image(layer: &Matrix2D) -> Self {
+        LayerIterator {
+            top_left: PixelPos::new(0, 0),
+            bottom_right_excluded: PixelPos::new(layer.h(), layer.w()),
+            cur_pos: PixelPos::new(0, 0),
+        }
+    }
+
+    pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos) -> Self {
+        assert!(top_left.row < bottom_right_excluded.row);
+        assert!(top_left.col < bottom_right_excluded.col);
+
+        LayerIterator {
+            top_left,
+            bottom_right_excluded,
+            cur_pos: top_left,
+        }
+    }
+
+    pub fn fits(&self, pos: PixelPos) -> bool {
+        let mut val = 
+            self.top_left.col <= pos.col && pos.col < self.bottom_right_excluded.col 
+            && self.top_left.row <= pos.row && pos.row < self.bottom_right_excluded.row;
+        if val == false {
+            val = true;
+        }
+        val
+    }
+}
+
+impl Iterator for LayerIterator {
+    type Item = PixelPos;
+
+    fn next(&mut self) -> Option<PixelPos> {
+        let curr = self.cur_pos;
+
+        assert!(self.fits(self.cur_pos));
+
+        if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
+            self.cur_pos.col += 1;
+            return Some(curr);
+        } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
+            self.cur_pos.col = self.top_left.col;
+            self.cur_pos.row += 1;
+            return Some(curr);
+        } else {
+            self.cur_pos = self.top_left;
+            return None;
+        }        
+    }
+}
+
 
 
 pub struct ImgIterator {
@@ -420,7 +529,7 @@ pub struct ImgIterator {
 }
 
 impl ImgIterator {
-    pub fn for_full_image(img: &Matrix2D) -> Self {
+    pub fn for_full_image(img: &Img) -> Self {
         ImgIterator {
             top_left: PixelPos::new(0, 0),
             bottom_right_excluded: PixelPos::new(img.h(), img.w()),
@@ -472,62 +581,33 @@ impl Iterator for ImgIterator {
     }
 }
 
-pub struct ProgressIterator<Cbk: Fn(usize)> {
-    top_left: PixelPos,
-    bottom_right_excluded: PixelPos,
-    cur_pos: PixelPos,
-    progress_cbk: Cbk,
-    prev_time: time::Instant
+
+pub struct LayersIterator<'own> {
+    img: &'own Img,
+    curr_layer_num: usize
 }
 
-impl<Cbk: Fn(usize)> ProgressIterator<Cbk> {
-    pub fn for_full_image(img: &Matrix2D, progress_cbk: Cbk) -> Self {
-        ProgressIterator::<Cbk> {
-            top_left: PixelPos::new(0, 0),
-            bottom_right_excluded: PixelPos::new(img.h(), img.w()),
-            cur_pos: PixelPos::new(0, 0),
-            progress_cbk,
-            prev_time: time::Instant::now()
-        }
-    }
-
-    pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos, progress_cbk: Cbk) -> Self {
-        assert!(top_left.row < bottom_right_excluded.row);
-        assert!(top_left.col < bottom_right_excluded.col);
-
-        ProgressIterator::<Cbk>{
-            top_left,
-            bottom_right_excluded,
-            cur_pos: top_left,
-            progress_cbk,
-            prev_time: time::Instant::now()
+impl<'own> LayersIterator<'own> {
+    pub fn new(img: &'own Img) -> Self {
+        LayersIterator {
+            img,
+            curr_layer_num: 0
         }
     }
 }
 
-impl<Cbk: Fn(usize)> Iterator for ProgressIterator<Cbk> {
-    type Item = PixelPos;
+impl<'own> Iterator for LayersIterator<'own> {
+    type Item = &'own ImgLayer;
 
-    fn next(&mut self) -> Option<PixelPos> {
-        let curr = self.cur_pos;
+    fn next(&mut self) -> Option<&'own ImgLayer> {
+        let curr_num = self.curr_layer_num;
 
-        const MS_DELAY: u128 = 100;
-
-        if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
-            self.cur_pos.col += 1;
-            return Some(curr);
-        } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
-            self.cur_pos.col = self.top_left.col;
-            self.cur_pos.row += 1;
-
-            if self.prev_time.elapsed().as_millis() > MS_DELAY {
-                self.prev_time = time::Instant::now();
-                (self.progress_cbk)(curr.row * 100 / (self.bottom_right_excluded.row - self.top_left.row));
-            }
-
-            return Some(curr);
+        if self.curr_layer_num < self.img.layers().len() {
+            self.curr_layer_num += 1;
+            let layer = self.img.layer(curr_num);
+            return Some(layer);
         } else {
-            self.cur_pos = self.top_left;
+            self.curr_layer_num = 0;
             return None;
         }        
     }

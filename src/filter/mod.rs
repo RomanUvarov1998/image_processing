@@ -1,9 +1,10 @@
 pub mod filter_trait;
+pub mod utils;
 pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
 
-use crate::{img::{Matrix2D, pixel_pos::PixelPos}};
+use crate::{img::{ImgLayer, pixel_pos::PixelPos}, progress_provider::ProgressProvider};
 
 use self::filter_trait::WindowFilter;
 
@@ -42,7 +43,13 @@ impl Iterator for FilterIterator {
 }
 
 
-fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T, buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, progress_cbk: Cbk) -> Matrix2D {
+fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(
+    init: &ImgLayer, 
+    res: &mut ImgLayer, 
+    filter: &T, 
+    buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, 
+    prog_prov: &mut ProgressProvider<Cbk>) 
+{
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
 
@@ -51,18 +58,14 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T,
 
     let fil_half_size = PixelPos::new(filter.h() / 2, filter.w() / 2);
 
-    let img_extended = img.copy_with_extended_borders(
+    let img_extended = init.matrix().copy_with_extended_borders(
         filter.get_extend_value(), 
         fil_half_size.row, 
         fil_half_size.col);
 
-    // let mut prev_row = 0_usize;
-    // let mut prev_percents = 0_usize;
-
-    for pos_im in img_extended.get_progress_iter_area(
+    for pos_im in img_extended.get_area_iter(
         fil_half_size, 
-        PixelPos::new(img.h(), img.w()) + fil_half_size,
-        progress_cbk)
+        PixelPos::new(init.h(), init.w()) + fil_half_size)
     {
         for pos_w in filter.get_iterator() {            
             let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
@@ -72,18 +75,9 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(mut img: Matrix2D, filter: &T,
 
         let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[..]);
         
-        img[pos_im - fil_half_size] = filter_result;
+        res[pos_im - fil_half_size] = filter_result;
 
-        // if prev_row < pos_im.row {
-        //     let cur_percents = pos_im.row * 100 / img.h();
-        //     if prev_percents < cur_percents {
-        //         prev_percents = cur_percents;
-        //         prev_row = pos_im.row;
-        //         progress_cbk(cur_percents);
-        //     }
-        // }
+        prog_prov.complete_action();
     }
-
-    img
 }
 

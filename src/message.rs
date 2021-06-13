@@ -1,3 +1,5 @@
+use crate::img::ImgChannel;
+
 #[derive(Debug, Copy, Clone)]
 pub enum Processing {
     StepIsStarted { step_num: usize, do_chaining: bool },
@@ -26,6 +28,8 @@ pub enum AddStep {
     AddStepCutBrightness, 
     AddStepHistogramEqualizer, 
     AddStepRgb2Gray, 
+    AddStepNeutralizeChannel(ImgChannel), 
+    AddStepExtractChannel(ImgChannel), 
 }
 
 #[derive(Debug, Copy, Clone)]

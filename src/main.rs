@@ -10,6 +10,7 @@ mod proc_steps;
 
 mod my_app;
 mod message;
+mod progress_provider;
 mod img;
 mod step_editor;
 mod small_dlg;

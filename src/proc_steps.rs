@@ -7,7 +7,7 @@ use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
-use crate::img::{Matrix3D, color_ops};
+use crate::img::{Img, ImgChannel, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
@@ -24,6 +24,8 @@ pub enum StepAction {
     CutBrightness(CutBrightness),
     HistogramEqualizer,
     Rgb2Gray,
+    NeutralizeChannel(ImgChannel),
+    ExtractChannel(ImgChannel),
 }
 
 impl StepAction {
@@ -37,6 +39,8 @@ impl StepAction {
             StepAction::CutBrightness(filter) => filter.get_description(),
             StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
+            StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
+            StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
         }
     }
 
@@ -48,7 +52,7 @@ impl StepAction {
         }
     }
 
-    fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Matrix3D, progress_cbk: Cbk) -> Matrix3D {
+    fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Img, progress_cbk: Cbk) -> Img {
         match self {
             StepAction::LinearCustom(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
@@ -63,8 +67,10 @@ impl StepAction {
             StepAction::CutBrightness(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
             StepAction::HistogramEqualizer => 
-                color_ops::equalize_histogram(init_img.clone(), progress_cbk),
-            StepAction::Rgb2Gray => color_ops::rgb_to_gray(init_img.clone()),
+                color_ops::equalize_histogram(&init_img, progress_cbk),
+            StepAction::Rgb2Gray => color_ops::rgb_to_gray(&init_img),
+            StepAction::NeutralizeChannel(ch) => color_ops::neutralize_channel(&init_img, *ch),
+            StepAction::ExtractChannel(ch) => color_ops::extract_channel(&init_img, *ch),
         }
     }
 
@@ -78,6 +84,8 @@ impl StepAction {
             StepAction::CutBrightness(ref filter) => filter.content_to_string(),
             StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
+            StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
+            StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
         }
     }
 }
@@ -85,7 +93,7 @@ impl StepAction {
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
-    initial_img: Option<img::Matrix3D>,
+    initial_img: Option<img::Img>,
     steps: Vec<ProcessingStep<'wind>>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
@@ -125,6 +133,19 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
         menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
         menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
+
+        menu.add_emit("Добавить шаг/Убрать канал/R", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::R)));
+        menu.add_emit("Добавить шаг/Убрать канал/G", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::G)));
+        menu.add_emit("Добавить шаг/Убрать канал/B", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::B)));
+        menu.add_emit("Добавить шаг/Убрать канал/L", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::L)));
+        menu.add_emit("Добавить шаг/Убрать канал/A", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::A)));
+
+        menu.add_emit("Добавить шаг/Выделить канал/R", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::R)));
+        menu.add_emit("Добавить шаг/Выделить канал/G", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::G)));
+        menu.add_emit("Добавить шаг/Выделить канал/B", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::B)));
+        menu.add_emit("Добавить шаг/Выделить канал/L", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::L)));
+        menu.add_emit("Добавить шаг/Выделить канал/A", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::A)));
+
         menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
 
@@ -280,6 +301,8 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             AddStep::AddStepHistogramEqualizer => self.add(StepAction::HistogramEqualizer),
                             AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
+                            AddStep::AddStepNeutralizeChannel(ch) => self.add(StepAction::NeutralizeChannel(ch)),
+                            AddStep::AddStepExtractChannel(ch) => self.add(StepAction::ExtractChannel(ch)),
                         };
                         self.parent_window.redraw();
                     },
@@ -437,7 +460,7 @@ impl<'wind> ProcessingLine<'wind> {
             _ => {}
         }        
 
-        let init_image = img::Matrix3D::load_as_rgb(path_buf)?;
+        let init_image = img::Img::load_as_rgb(path_buf)?;
 
         let mut img_copy = init_image.get_drawable_copy()?;
         img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
@@ -641,12 +664,12 @@ impl<'wind> ProcessingLine<'wind> {
 struct ProcessingData {
     step_num: usize,
     step_action: StepAction,
-    init_img: Matrix3D,
-    result_img: Option<Matrix3D>,
+    init_img: Img,
+    result_img: Option<Img>,
 }
 
 impl ProcessingData {
-    fn new(step_num: usize, step_action: StepAction, init_img: Matrix3D) -> Self {
+    fn new(step_num: usize, step_action: StepAction, init_img: Img) -> Self {
         ProcessingData {
             step_num,
             step_action,
@@ -655,7 +678,7 @@ impl ProcessingData {
         }
     }
 
-    fn get_result(&mut self) -> Option<Matrix3D> { self.result_img.take() }
+    fn get_result(&mut self) -> Option<Img> { self.result_img.take() }
 }
 
 pub struct ProcessingStep<'label> {
@@ -667,7 +690,7 @@ pub struct ProcessingStep<'label> {
     label_step_name: MyLabel,
     frame_img: Frame,
     pub action: StepAction,
-    image: Option<img::Matrix3D>,
+    image: Option<img::Img>,
     step_num: usize,
     sender: Sender<Message>
 }
@@ -766,11 +789,11 @@ impl<'label> ProcessingStep<'label> {
         self.btn_move_step.set_active(active);
     }
 
-    fn get_data_copy(&self) -> Option<img::Matrix3D> {
+    fn get_data_copy(&self) -> Option<img::Img> {
         self.image.clone()
     }
  
-    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Matrix3D) -> Result<(), MyError> {
+    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Img) -> Result<(), MyError> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
 
