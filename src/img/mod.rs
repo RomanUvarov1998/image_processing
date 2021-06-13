@@ -4,6 +4,7 @@ use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::
 use self::pixel_pos::PixelPos;
 
 pub mod pixel_pos;
+pub mod color_ops;
 
 #[derive(Clone)]
 pub struct Matrix2D {

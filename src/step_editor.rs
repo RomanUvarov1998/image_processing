@@ -143,6 +143,7 @@ impl StepEditor {
                                 },
                                 Err(err) => self.lbl_message.set_label(&err.get_message())
                             },
+                            StepAction::Rgb2Gray => { return Some(StepAction::Rgb2Gray); },
                         };
                     },
                     StepEditMessage::Exit => {

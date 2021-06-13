@@ -8,7 +8,7 @@ use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::filter::filter_trait::{Filter, StringFromTo};
 use crate::filter::non_linear::HistogramEqualizer;
-use crate::img::{Matrix3D};
+use crate::img::{Matrix3D, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
@@ -24,6 +24,7 @@ pub enum StepAction {
     HistogramLocalContrast(HistogramLocalContrast),
     CutBrightness(CutBrightness),
     HistogramEqualizer(HistogramEqualizer),
+    Rgb2Gray,
 }
 
 impl StepAction {
@@ -36,6 +37,7 @@ impl StepAction {
             StepAction::HistogramLocalContrast(filter) => filter.get_description(),
             StepAction::CutBrightness(filter) => filter.get_description(),
             StepAction::HistogramEqualizer(filter) => filter.get_description(),
+            StepAction::Rgb2Gray => "RGB => Gray".to_string(),
         }
     }
 
@@ -62,7 +64,8 @@ impl StepAction {
             StepAction::CutBrightness(ref mut filter) => 
                 init_img.processed_copy(filter, progress_cbk),
             StepAction::HistogramEqualizer(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),                
+                init_img.processed_copy(filter, progress_cbk),
+            StepAction::Rgb2Gray => color_ops::rgb_to_gray(init_img.clone()),                
         }
     }
 
@@ -75,6 +78,7 @@ impl StepAction {
             StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
             StepAction::CutBrightness(ref filter) => filter.content_to_string(),
             StepAction::HistogramEqualizer(ref filter) => filter.content_to_string(),
+            StepAction::Rgb2Gray => "RGB => Gray".to_string(),
         }
     }
 }
@@ -114,6 +118,7 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
         menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
+        menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
         menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
         menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
         menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
@@ -280,6 +285,7 @@ impl<'wind> ProcessingLine<'wind> {
                                     self.add(new_action);
                                 }
                             },
+                            AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
                         };
                         self.parent_window.redraw();
                     },
