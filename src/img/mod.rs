@@ -1,6 +1,6 @@
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{enums::ColorDepth, image, prelude::ImageExt};
-use crate::{filter::{filter_option::ExtendValue, filter_trait::Filter}, my_err::MyError};
+use crate::{filter::{filter_option::ExtendValue}, my_err::MyError};
 use self::pixel_pos::PixelPos;
 
 pub mod pixel_pos;
@@ -452,10 +452,6 @@ impl Img {
         }
 
         Img { width: self.w(), height: self.h(), layers: layers_ext, color_depth: self.color_depth }
-    }
-
-    pub fn processed_copy<T: Filter, Cbk: Fn(usize) + Clone>(&self, filter: &T, progress_cbk: Cbk) -> Self {
-        filter.filter(self, progress_cbk)
     }
 }
 

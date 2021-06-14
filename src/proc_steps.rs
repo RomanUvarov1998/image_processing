@@ -54,20 +54,13 @@ impl StepAction {
 
     fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Img, progress_cbk: Cbk) -> Img {
         match self {
-            StepAction::LinearCustom(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::LinearMean(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::LinearGaussian(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::MedianFilter(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::HistogramLocalContrast(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::CutBrightness(ref mut filter) => 
-                init_img.processed_copy(filter, progress_cbk),
-            StepAction::HistogramEqualizer => 
-                color_ops::equalize_histogram(&init_img, progress_cbk),
+            StepAction::LinearCustom(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::LinearMean(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::LinearGaussian(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::MedianFilter(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::HistogramLocalContrast(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::CutBrightness(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::HistogramEqualizer => color_ops::equalize_histogram(&init_img, progress_cbk),
             StepAction::Rgb2Gray => color_ops::rgb_to_gray(&init_img),
             StepAction::NeutralizeChannel(ch) => color_ops::neutralize_channel(&init_img, *ch),
             StepAction::ExtractChannel(ch) => color_ops::extract_channel(&init_img, *ch),
