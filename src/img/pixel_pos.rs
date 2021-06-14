@@ -8,8 +8,15 @@ impl PixelPos {
         PixelPos { row, col }
     }
 
+    pub fn one() -> Self {
+        PixelPos { col: 1, row: 1 }
+    }
+
     pub fn row_vec(&self) -> Self { PixelPos::new(self.row, 0) }
     pub fn col_vec(&self) -> Self { PixelPos::new(0, self.col) }
+
+    pub fn with_row(&self, row: usize) -> Self { PixelPos::new(row, self.col) }
+    pub fn with_col(&self, col: usize) -> Self { PixelPos::new(self.row, col) }
 }
 
 impl Default for PixelPos {

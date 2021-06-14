@@ -112,7 +112,7 @@ impl StringFromTo for NormalizeOption {
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum ExtendValue {
     Closest,
     Given(f64)

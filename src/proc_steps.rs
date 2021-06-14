@@ -6,8 +6,9 @@ use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
-use crate::filter::filter_trait::{Filter, StringFromTo};
-use crate::img::{Img, ImgChannel, color_ops};
+use crate::filter::filter_option::ExtendValue;
+use crate::filter::filter_trait::{OneLayerFilter, StringFromTo};
+use crate::img::{Img, ImgChannel, color_ops, img_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
@@ -26,6 +27,7 @@ pub enum StepAction {
     Rgb2Gray,
     NeutralizeChannel(ImgChannel),
     ExtractChannel(ImgChannel),
+    Extend { with: ExtendValue, by_rows: usize, by_cols: usize },
 }
 
 impl StepAction {
@@ -41,6 +43,8 @@ impl StepAction {
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
             StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
             StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
+            StepAction::Extend { with, by_rows, by_cols } => format!("Расширить на {} строк, {} столбцов, через {:?}", 
+                by_rows, by_cols, with),
         }
     }
 
@@ -54,16 +58,18 @@ impl StepAction {
 
     fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Img, progress_cbk: Cbk) -> Img {
         match self {
-            StepAction::LinearCustom(ref mut filter) => filter.filter(init_img, progress_cbk),
-            StepAction::LinearMean(ref mut filter) => filter.filter(init_img, progress_cbk),
-            StepAction::LinearGaussian(ref mut filter) => filter.filter(init_img, progress_cbk),
-            StepAction::MedianFilter(ref mut filter) => filter.filter(init_img, progress_cbk),
-            StepAction::HistogramLocalContrast(ref mut filter) => filter.filter(init_img, progress_cbk),
-            StepAction::CutBrightness(ref mut filter) => filter.filter(init_img, progress_cbk),
+            StepAction::LinearCustom(ref filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::LinearMean(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::LinearGaussian(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::MedianFilter(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::HistogramLocalContrast(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::CutBrightness(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
             StepAction::HistogramEqualizer => color_ops::equalize_histogram(&init_img, progress_cbk),
             StepAction::Rgb2Gray => color_ops::rgb_to_gray(&init_img),
             StepAction::NeutralizeChannel(ch) => color_ops::neutralize_channel(&init_img, *ch),
             StepAction::ExtractChannel(ch) => color_ops::extract_channel(&init_img, *ch),
+            StepAction::Extend { with, by_rows, by_cols } => 
+                img_ops::copy_with_extended_borders(&init_img, *with, *by_rows, *by_cols, *by_rows, *by_cols),
         }
     }
 
@@ -79,6 +85,8 @@ impl StepAction {
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
             StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
             StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
+            StepAction::Extend { with, by_rows, by_cols } => format!("Расширить на {} строк, {} столбцов, через {:?}", 
+                by_rows, by_cols, with),
         }
     }
 }
@@ -99,6 +107,7 @@ pub struct ProcessingLine<'wind> {
     frame_img: frame::Frame,
     main_row: MyRow,
     init_img_col: MyColumn,
+    lbl_init_img: MyLabel,
     processing_col: MyColumn,
     scroll_area: group::Scroll,
     scroll_pack: group::Pack,    
@@ -118,7 +127,11 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
         menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
+
         menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
+
+        menu.add_emit("Добавить шаг/Расширить", sender, Message::AddStep(AddStep::AddStepExtend));
+
         menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
         menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
         menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
@@ -142,10 +155,10 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
 
-        let lbl = MyLabel::new("Исходное изображение");
+        let lbl_init_img = MyLabel::new("Исходное изображение");
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w / 2, h - lbl.h() - menu.h());
+            .with_size(w / 2, h - lbl_init_img.h() - menu.h());
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
         
@@ -212,6 +225,7 @@ impl<'wind> ProcessingLine<'wind> {
             frame_img,
             main_row,
             init_img_col,
+            lbl_init_img,
             processing_col,
             scroll_area,
             scroll_pack,
@@ -296,6 +310,8 @@ impl<'wind> ProcessingLine<'wind> {
                             AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
                             AddStep::AddStepNeutralizeChannel(ch) => self.add(StepAction::NeutralizeChannel(ch)),
                             AddStep::AddStepExtractChannel(ch) => self.add(StepAction::ExtractChannel(ch)),
+                            AddStep::AddStepExtend => self.add(StepAction::Extend { 
+                                with: ExtendValue::Closest, by_rows: 100, by_cols: 100 } ),
                         };
                         self.parent_window.redraw();
                     },
@@ -459,6 +475,8 @@ impl<'wind> ProcessingLine<'wind> {
         img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
         self.frame_img.set_image(Some(img_copy.clone()));
         self.frame_img.redraw(); 
+
+        self.lbl_init_img.set_text(&init_image.get_description());
 
         self.initial_img = Some(init_image);
 

@@ -136,10 +136,7 @@ impl StepEditor {
                                 },
                                 Err(err) => self.lbl_message.set_label(&err.get_message())
                             },
-                            StepAction::HistogramEqualizer => { return Some(StepAction::HistogramEqualizer); },
-                            StepAction::Rgb2Gray => { return Some(StepAction::Rgb2Gray); },
-                            StepAction::NeutralizeChannel(ch) => { return Some(StepAction::NeutralizeChannel(*ch)); },
-                            StepAction::ExtractChannel(ch) => { return Some(StepAction::ExtractChannel(*ch)); },
+                            _ => { return Some(action); },
                         };
                     },
                     StepEditMessage::Exit => {

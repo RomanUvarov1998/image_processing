@@ -58,7 +58,11 @@ pub fn equalize_histogram<Cbk: Fn(usize)>(img: &Img, progress_cbk: Cbk) -> Img {
 
     let mut img_res = img.clone();
     
-    for layer in img_res.layers_mut() {
+    'out: for layer in img_res.layers_mut() {
+        if layer.channel() == ImgChannel::A {
+            continue 'out;
+        }
+
         // count histogram
         count_histogram(layer.matrix(), &mut buffer);
 

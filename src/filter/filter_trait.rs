@@ -1,4 +1,4 @@
-use crate::{filter::FilterIterator, img::Img, my_err::MyError, proc_steps::StepAction};
+use crate::{filter::FilterIterator, img::{Img, Matrix2D}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
@@ -6,12 +6,13 @@ pub trait StringFromTo {
     fn content_to_string(&self) -> String;
 }
 
-pub trait Filter : Default + Clone + StringFromTo + Into<StepAction> {
-    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img;
+pub trait OneLayerFilter : Default + Clone + StringFromTo + Into<StepAction> {
+    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D;
     fn get_description(&self) -> String;
+    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk>;
 }
 
-pub trait WindowFilter : Filter {
+pub trait WindowFilter : OneLayerFilter {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64;
     fn w(&self) -> usize;
     fn h(&self) -> usize;

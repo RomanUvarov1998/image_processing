@@ -30,6 +30,7 @@ pub enum AddStep {
     AddStepRgb2Gray, 
     AddStepNeutralizeChannel(ImgChannel), 
     AddStepExtractChannel(ImgChannel), 
+    AddStepExtend, 
 }
 
 #[derive(Debug, Copy, Clone)]

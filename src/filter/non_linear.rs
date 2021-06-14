@@ -1,5 +1,5 @@
-use crate::{img::{Matrix2D}, img::{Img, ImgChannel, ImgLayer, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter}};
-use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
+use crate::{img::{Matrix2D}, img::{Img, img_ops, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter}};
+use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{OneLayerFilter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
 #[derive(Clone)]
@@ -87,24 +87,20 @@ impl WindowFilter for MedianFilter {
     }
 }
 
-impl Filter for MedianFilter {
-    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
-        let mut prog_prov = ProgressProvider::new(
-            progress_cbk,
-            img.w() * img.h());
-
-        let mut result_img = Img::empty_size_of(&img);
-
-        for layer_num in 0..img.d() {
-            let layer = img.layer(layer_num);
-            let res_layer = result_img.layer_mut(layer_num);
-            super::filter_window(layer, res_layer, self, MedianFilter::process_window, &mut prog_prov)
-        }
-
-        result_img
+impl OneLayerFilter for MedianFilter {
+    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
+        super::filter_window(
+            mat, 
+            self, 
+            MedianFilter::process_window, 
+            prog_prov)
     }
     
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+
+    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
+        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+    }
 }
 
 impl StringFromTo for MedianFilter {
@@ -165,104 +161,93 @@ impl HistogramLocalContrast {
     pub fn h(&self) -> usize { self.size.height }
 }
 
-impl Filter for HistogramLocalContrast {
-    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
-        let mut prog_prov = ProgressProvider::new(
-            progress_cbk,
-            1 + img.layers().len());
-
+impl OneLayerFilter for HistogramLocalContrast {
+    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
-        let ext_copy = img.copy_with_extended_borders(
+        let mat_ext = img_ops::extend_matrix(
+            mat,
             ExtendValue::Closest, 
-            win_half.row, win_half.col);
+            win_half.row, win_half.col, win_half.row, win_half.col);
             
-        let ext_filtered = self.mean_filter.filter(&ext_copy, |_| {});
+        let mat_ext_filtered = self.mean_filter.filter(&mat_ext, prog_prov);
 
         prog_prov.complete_action();
-        
-        let mut img_result = Img::empty_size_of(&img);
 
-        for layer_num in 0..ext_copy.layers().len() {
-            let ext_layer = ext_copy.layer(layer_num);
-            match ext_layer.channel() {
-                ImgChannel::A => {
-                    img_result.layer_mut(layer_num).clone_from(ext_layer);
-                    continue;
-                },
-                _ => {}
-            }
+        //-------------------------------- create hist matrix ---------------------------------
+        let mut mat_hist = Matrix2D::empty_size_of(&mat_ext);
 
-            //-------------------------------- create hist matrix ---------------------------------
-            let mut hist_matrix = Matrix2D::empty_size_of(ext_layer.matrix());
+        let mut pixel_buf = Vec::<f64>::new();
+        pixel_buf.resize(self.w() * self.h(), 0_f64);
 
-            let mut pixel_buf = Vec::<f64>::new();
-            pixel_buf.resize(self.w() * self.h(), 0_f64);
-
-            for pos_im in ext_layer.get_area_iter(win_half, win_half + img.size_vec()) {
-                for pos_w in self.get_iterator() {
-                    let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
-                    let pix_pos: PixelPos = pos_im + pos_w - win_half;
-                    pixel_buf[buf_ind] = ext_layer[pix_pos];
-                }            
-                
-                hist_matrix[pos_im] = self.process_window(&mut pixel_buf[..]);
-            }
-
-            //-------------------------------- create C matrix ---------------------------------
-            let mut c_mat = ImgLayer::empty_size_of(ext_layer);
-
-            let ext_filtered_layer = ext_filtered.layer(layer_num);
-            for pos in ext_filtered_layer.get_iter() {
-                let mut val = ext_layer[pos] - ext_filtered_layer[pos];
-                val /= ext_layer[pos] + ext_filtered_layer[pos] + f64::EPSILON;
-                c_mat[pos] = f64::abs(val)
-            }
-    
-            for m_pos in hist_matrix.get_area_iter(win_half, img.size_vec() + win_half) {
-                let mut max_value = hist_matrix[m_pos];
-                let mut min_value = hist_matrix[m_pos];
-    
-                for w_pos in hist_matrix.get_area_iter(
-                    m_pos - win_half, 
-                    m_pos + win_half) 
-                {
-                    let v = hist_matrix[w_pos];
-                    if f64::abs(v) < f64::EPSILON { continue; }
-                    if max_value < v { max_value = v; }
-                    if min_value < v { min_value = v; }
-                }
-    
-                let mut c_power = (hist_matrix[m_pos] - min_value) 
-                    / (max_value - min_value + f64::EPSILON);
-                
-                c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
-                
-                c_mat[m_pos] = c_mat[m_pos].powf(c_power);
-            }
-    
-            //-------------------------------- create result ---------------------------------    
-            for pos in hist_matrix.get_area_iter(win_half, img.size_vec() + win_half) 
-            {
-                let mut val = if ext_layer[pos] > ext_filtered_layer[pos] {
-                    ext_filtered_layer[pos] * (1_f64 + c_mat[pos]) / (1_f64 - c_mat[pos])
-                } else {
-                    ext_filtered_layer[pos] * (1_f64 - c_mat[pos]) / (1_f64 + c_mat[pos])
-                };
-    
-                if val < 0_f64 { val = 0_f64; }
-                if val > 255_f64 { val = 255_f64; }
-    
-                img_result.layer_mut(layer_num)[pos - win_half] = val;
-            }
-
-            prog_prov.complete_action();
+        for pos_im in mat_ext.get_area_iter(win_half, win_half + mat.size_vec()) {
+            for pos_w in self.get_iterator() {
+                let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
+                let pix_pos: PixelPos = pos_im + pos_w - win_half;
+                pixel_buf[buf_ind] = mat_ext[pix_pos];
+            }            
+            
+            mat_hist[pos_im] = self.process_window(&mut pixel_buf[..]);
         }
 
-        img_result
+        //-------------------------------- create C matrix ---------------------------------
+        let mut mat_c = Matrix2D::empty_size_of(&mat_ext);
+
+        for pos in mat_ext_filtered.get_iter() {
+            let mut val = mat_ext[pos] - mat_ext_filtered[pos];
+            val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
+            mat_c[pos] = f64::abs(val)
+        }
+
+        for m_pos in mat_hist.get_area_iter(win_half, mat.size_vec() + win_half) {
+            let mut max_value = mat_hist[m_pos];
+            let mut min_value = mat_hist[m_pos];
+
+            for w_pos in mat_hist.get_area_iter(
+                m_pos - win_half, 
+                m_pos + win_half) 
+            {
+                let v = mat_hist[w_pos];
+                if f64::abs(v) < f64::EPSILON { continue; }
+                if max_value < v { max_value = v; }
+                if min_value < v { min_value = v; }
+            }
+
+            let mut c_power = (mat_hist[m_pos] - min_value) 
+                / (max_value - min_value + f64::EPSILON);
+            
+            c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
+            
+            mat_c[m_pos] = mat_c[m_pos].powf(c_power);
+        }
+
+        //-------------------------------- create result ---------------------------------         
+        let mut mat_res = Matrix2D::empty_size_of(&mat);   
+
+        for pos in mat_hist.get_area_iter(win_half, mat.size_vec() + win_half) 
+        {
+            let mut val = if mat_ext[pos] > mat_ext_filtered[pos] {
+                mat_ext_filtered[pos] * (1_f64 + mat_c[pos]) / (1_f64 - mat_c[pos])
+            } else {
+                mat_ext_filtered[pos] * (1_f64 - mat_c[pos]) / (1_f64 + mat_c[pos])
+            };
+
+            if val < 0_f64 { val = 0_f64; }
+            if val > 255_f64 { val = 255_f64; }
+
+            mat_res[pos - win_half] = val;
+        }
+
+        prog_prov.complete_action();
+
+        mat_res
     }
     
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+
+    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
+        ProgressProvider::new(progress_cbk, img.d() * (img.w() * img.h()))
+    }
 }
 
 impl WindowFilter for HistogramLocalContrast {
@@ -354,35 +339,31 @@ impl CutBrightness {
     }
 }
 
-impl Filter for CutBrightness {
-    fn filter<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> Img {
-        let mut prog_prov = ProgressProvider::new(
-            progress_cbk,
-            img.layers().len());
+impl OneLayerFilter for CutBrightness {
+    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
+        let mut mat_res = Matrix2D::empty_size_of(&mat);
 
-        let mut result_img = Img::empty_size_of(&img);
+        for pos in mat.get_iter() {
+            let pix_val = mat[pos] as u8;
+            let before_min = pix_val < self.cut_range.min;
+            let after_max = pix_val > self.cut_range.max;
 
-        for layer_num in 0..img.d() {
-            let layer = img.layer(layer_num);
-            let res_layer = result_img.layer_mut(layer_num);
-            for pos in layer.get_iter() {
-                let pix_val = layer[pos] as u8;
-                let before_min = pix_val < self.cut_range.min;
-                let after_max = pix_val > self.cut_range.max;
-    
-                let result = pix_val * (!before_min) as u8 * (!after_max) as u8
-                    + self.replace_with.value * before_min as u8 * after_max as u8;
-    
-                res_layer[pos] = result as f64;
-            }
+            let result = pix_val * (!before_min) as u8 * (!after_max) as u8
+                + self.replace_with.value * before_min as u8 * after_max as u8;
+
+                mat_res[pos] = result as f64;
 
             prog_prov.complete_action();
         }
         
-        result_img
+        mat_res
     }
 
     fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
+
+    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
+        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+    }
 }
 
 impl Default for CutBrightness {

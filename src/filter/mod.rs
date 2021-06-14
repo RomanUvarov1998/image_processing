@@ -4,7 +4,7 @@ pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
 
-use crate::{img::{ImgLayer, pixel_pos::PixelPos}, progress_provider::ProgressProvider};
+use crate::{img::{Matrix2D, img_ops, pixel_pos::PixelPos}, progress_provider::ProgressProvider};
 
 use self::filter_trait::WindowFilter;
 
@@ -44,33 +44,32 @@ impl Iterator for FilterIterator {
 
 
 fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(
-    init: &ImgLayer, 
-    res: &mut ImgLayer, 
+    init: &Matrix2D,      
     filter: &T, 
     buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, 
     prog_prov: &mut ProgressProvider<Cbk>) 
+    -> Matrix2D
 {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
+
+    let mut res = Matrix2D::empty_size_of(init);
 
     let mut pixel_buf = Vec::<f64>::new();
     pixel_buf.resize(filter.w() * filter.h(), 0_f64);
 
     let fil_half_size = PixelPos::new(filter.h() / 2, filter.w() / 2);
 
-    let img_extended = init.matrix().copy_with_extended_borders(
-        filter.get_extend_value(), 
-        fil_half_size.row, 
-        fil_half_size.col);
+    let layer_ext = img_ops::extend_matrix_for_window_filter(init, filter);
 
-    for pos_im in img_extended.get_area_iter(
+    for pos_im in layer_ext.get_area_iter(
         fil_half_size, 
         PixelPos::new(init.h(), init.w()) + fil_half_size)
     {
         for pos_w in filter.get_iterator() {            
             let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
             let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
-            pixel_buf[buf_ind] = img_extended[pix_pos];
+            pixel_buf[buf_ind] = layer_ext[pix_pos];
         }
 
         let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[..]);
@@ -79,5 +78,7 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(
 
         prog_prov.complete_action();
     }
+
+    res
 }
 
