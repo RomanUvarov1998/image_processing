@@ -17,6 +17,6 @@ pub trait WindowFilter : OneLayerFilter {
     fn w(&self) -> usize;
     fn h(&self) -> usize;
     fn get_extend_value(&self) -> ExtendValue;
-    fn get_iterator(&self) -> FilterIterator;
+    fn get_iter(&self) -> FilterIterator;
 }
 

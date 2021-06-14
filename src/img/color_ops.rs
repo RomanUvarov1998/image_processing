@@ -49,8 +49,16 @@ pub fn rgb_to_gray(img: &Img) -> Img {
 }
 
 pub fn equalize_histogram<Cbk: Fn(usize)>(img: &Img, progress_cbk: Cbk) -> Img {
+    let pixels_per_layer = img.h() * img.w();
+    let layers_count = match img.color_depth() {
+        ColorDepth::L8 => img.d(),
+        ColorDepth::La8 => img.d() - 1,
+        ColorDepth::Rgb8 => img.d(),
+        ColorDepth::Rgba8 => img.d() - 1,
+    };
+
     let mut prog_prov = ProgressProvider::new(progress_cbk,
-        img.layers().len() * (super::PIXEL_VALUES_COUNT + img.h() + img.h() * img.w()));
+        layers_count * (super::PIXEL_VALUES_COUNT * 2 + pixels_per_layer));
     
     prog_prov.start();
 
@@ -84,7 +92,7 @@ pub fn equalize_histogram<Cbk: Fn(usize)>(img: &Img, progress_cbk: Cbk) -> Img {
         }
 
         // apply coeff        
-        for pos in layer.matrix().get_iter() {
+        for pos in layer.matrix().get_pixels_iter() {
             let pix_value = layer[pos] as u8 as usize;
             layer[pos] = buffer[pix_value];
 

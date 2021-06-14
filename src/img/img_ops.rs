@@ -68,7 +68,7 @@ pub fn extend_matrix(mat_init: &Matrix2D, with: ExtendValue,
         let br_excluded = tl + rect_top;
         match with {
             ExtendValue::Closest => {
-                for pos in mat_ext.get_area_iter(tl, br_excluded) {
+                for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
                     mat_ext[pos] = mat_init[pos.with_row(0) - margin_left];
                 }  
             },
@@ -91,7 +91,7 @@ pub fn extend_matrix(mat_init: &Matrix2D, with: ExtendValue,
         let br_excluded = tl + rect_left;
         match with {
             ExtendValue::Closest => {
-                for pos in mat_ext.get_area_iter(tl, br_excluded) {
+                for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
                     mat_ext[pos] = mat_init[pos.with_col(0) - margin_top];
                 }
             },
@@ -101,7 +101,7 @@ pub fn extend_matrix(mat_init: &Matrix2D, with: ExtendValue,
     // middle middle     
     let tl = margin_left + margin_top;
     let br_excluded = tl + mat_size;               
-    for pos in mat_ext.get_area_iter(tl, br_excluded) {
+    for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
         mat_ext[pos] = mat_init[pos - tl];
     }    
     // middle right
@@ -110,7 +110,7 @@ pub fn extend_matrix(mat_init: &Matrix2D, with: ExtendValue,
         let br_excluded = tl + rect_right;
         match with {
             ExtendValue::Closest => {          
-                for pos in mat_ext.get_area_iter(tl, br_excluded) {
+                for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
                     mat_ext[pos] = mat_init[pos.with_col(mat_init.w() - 1) - margin_top];
                 } 
             },
@@ -134,7 +134,7 @@ pub fn extend_matrix(mat_init: &Matrix2D, with: ExtendValue,
         let br_excluded = tl + rect_bottom;
         match with {
             ExtendValue::Closest => {   
-                for pos in mat_ext.get_area_iter(tl, br_excluded) {
+                for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
                     mat_ext[pos] = mat_init[pos.with_row(mat_init.h() - 1) - margin_left];
                 } 
             },

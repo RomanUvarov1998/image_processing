@@ -52,14 +52,24 @@ impl OneLayerFilter for LinearGaussian {
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+        let pixels_per_layer = img.h() * img.w();
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        ProgressProvider::new(
+            progress_cbk, 
+            layers_count * pixels_per_layer)
     }
 }
 
 impl WindowFilter for LinearGaussian {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut sum = 0_f64;
-        for pos in self.get_iterator() {
+        for pos in self.get_iter() {
             sum += window_buffer[pos.row * self.w() + pos.col] * self.coeffs[pos.row * self.w() + pos.col];
         }
         sum
@@ -73,7 +83,7 @@ impl WindowFilter for LinearGaussian {
         self.extend_value
     }
 
-    fn get_iterator(&self) -> FilterIterator {
+    fn get_iter(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
             height: self.h(),
@@ -141,7 +151,7 @@ impl WindowFilter for LinearCustom {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut sum: f64 = 0_f64;
 
-        for pos in self.get_iterator() {
+        for pos in self.get_iter() {
             let ind = pos.row * self.width + pos.col;
             sum += window_buffer[ind] * self.arr[ind];
         }
@@ -157,7 +167,7 @@ impl WindowFilter for LinearCustom {
         self.extend_value
     }
 
-    fn get_iterator(&self) -> FilterIterator {
+    fn get_iter(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
             height: self.h(),
@@ -178,7 +188,17 @@ impl OneLayerFilter for LinearCustom {
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+        let pixels_per_layer = img.h() * img.w();
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        ProgressProvider::new(
+            progress_cbk, 
+            layers_count * pixels_per_layer)
     }
 }
 
@@ -290,7 +310,7 @@ impl WindowFilter for LinearMean {
 
     fn get_extend_value(&self) -> ExtendValue { self.extend_value }
 
-    fn get_iterator(&self) -> FilterIterator {
+    fn get_iter(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
             height: self.h(),
@@ -344,7 +364,7 @@ impl OneLayerFilter for LinearMean {
 
         let coeff = 1_f64 / (self.w() * self.h()) as f64;
         
-        for pos in mat_res.get_iter() {
+        for pos in mat_res.get_pixels_iter() {
             let ext_pos = pos + one + win_half;
 
             let sum_top_left        = mat_sum_ext[ext_pos - win_half - one];
@@ -364,8 +384,8 @@ impl OneLayerFilter for LinearMean {
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let row_sums = img.w() + 2;
-        let col_sums = img.h() + 2;
+        let row_sums = img.w() + 1;
+        let col_sums = img.h() + 1;
         let diffs = img.h() * img.w();
         let layers_count = match img.color_depth() {
             ColorDepth::L8 => img.d(),

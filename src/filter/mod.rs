@@ -62,11 +62,11 @@ fn filter_window<T: WindowFilter, Cbk: Fn(usize)>(
 
     let layer_ext = img_ops::extend_matrix_for_window_filter(init, filter);
 
-    for pos_im in layer_ext.get_area_iter(
+    for pos_im in layer_ext.get_pixels_area_iter(
         fil_half_size, 
         PixelPos::new(init.h(), init.w()) + fil_half_size)
     {
-        for pos_w in filter.get_iterator() {            
+        for pos_w in filter.get_iter() {            
             let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
             let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
             pixel_buf[buf_ind] = layer_ext[pix_pos];

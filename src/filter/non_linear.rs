@@ -1,3 +1,5 @@
+use fltk::enums::ColorDepth;
+
 use crate::{img::{Matrix2D}, img::{Img, img_ops, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{OneLayerFilter, StringFromTo, WindowFilter}, linear::LinearMean};
 
@@ -78,7 +80,7 @@ impl WindowFilter for MedianFilter {
         self.extend_value
     }
 
-    fn get_iterator(&self) -> FilterIterator {
+    fn get_iter(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
             height: self.h(),
@@ -99,7 +101,17 @@ impl OneLayerFilter for MedianFilter {
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+        let pixels_per_layer = img.h() * img.w();
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        ProgressProvider::new(
+            progress_cbk, 
+            layers_count * pixels_per_layer)
     }
 }
 
@@ -169,10 +181,8 @@ impl OneLayerFilter for HistogramLocalContrast {
             mat,
             ExtendValue::Closest, 
             win_half.row, win_half.col, win_half.row, win_half.col);
-            
+        
         let mat_ext_filtered = self.mean_filter.filter(&mat_ext, prog_prov);
-
-        prog_prov.complete_action();
 
         //-------------------------------- create hist matrix ---------------------------------
         let mut mat_hist = Matrix2D::empty_size_of(&mat_ext);
@@ -180,30 +190,34 @@ impl OneLayerFilter for HistogramLocalContrast {
         let mut pixel_buf = Vec::<f64>::new();
         pixel_buf.resize(self.w() * self.h(), 0_f64);
 
-        for pos_im in mat_ext.get_area_iter(win_half, win_half + mat.size_vec()) {
-            for pos_w in self.get_iterator() {
+        for pos_im in mat_ext.get_pixels_area_iter(win_half, win_half + mat.size_vec()) {
+            for pos_w in self.get_iter() {
                 let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
                 let pix_pos: PixelPos = pos_im + pos_w - win_half;
                 pixel_buf[buf_ind] = mat_ext[pix_pos];
             }            
             
             mat_hist[pos_im] = self.process_window(&mut pixel_buf[..]);
+
+            prog_prov.complete_action();
         }
 
         //-------------------------------- create C matrix ---------------------------------
         let mut mat_c = Matrix2D::empty_size_of(&mat_ext);
 
-        for pos in mat_ext_filtered.get_iter() {
+        for pos in mat_ext_filtered.get_pixels_iter() {
             let mut val = mat_ext[pos] - mat_ext_filtered[pos];
             val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
-            mat_c[pos] = f64::abs(val)
+            mat_c[pos] = f64::abs(val);
+
+            prog_prov.complete_action();
         }
 
-        for m_pos in mat_hist.get_area_iter(win_half, mat.size_vec() + win_half) {
+        for m_pos in mat_hist.get_pixels_area_iter(win_half, win_half + mat.size_vec()) {
             let mut max_value = mat_hist[m_pos];
             let mut min_value = mat_hist[m_pos];
 
-            for w_pos in mat_hist.get_area_iter(
+            for w_pos in mat_hist.get_pixels_area_iter(
                 m_pos - win_half, 
                 m_pos + win_half) 
             {
@@ -219,12 +233,14 @@ impl OneLayerFilter for HistogramLocalContrast {
             c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
             
             mat_c[m_pos] = mat_c[m_pos].powf(c_power);
+
+            prog_prov.complete_action();
         }
 
         //-------------------------------- create result ---------------------------------         
         let mut mat_res = Matrix2D::empty_size_of(&mat);   
 
-        for pos in mat_hist.get_area_iter(win_half, mat.size_vec() + win_half) 
+        for pos in mat_hist.get_pixels_area_iter(win_half, win_half + mat.size_vec()) 
         {
             let mut val = if mat_ext[pos] > mat_ext_filtered[pos] {
                 mat_ext_filtered[pos] * (1_f64 + mat_c[pos]) / (1_f64 - mat_c[pos])
@@ -236,9 +252,9 @@ impl OneLayerFilter for HistogramLocalContrast {
             if val > 255_f64 { val = 255_f64; }
 
             mat_res[pos - win_half] = val;
-        }
 
-        prog_prov.complete_action();
+            prog_prov.complete_action();
+        }
 
         mat_res
     }
@@ -246,7 +262,30 @@ impl OneLayerFilter for HistogramLocalContrast {
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        ProgressProvider::new(progress_cbk, img.d() * (img.w() * img.h()))
+        let fil_size_half = self.w() / 2;
+        let mean_filter = 
+            img.h() + fil_size_half * 2 + 1
+            + img.w() + fil_size_half * 2 + 1
+            + (img.h() + 2) * (img.w() + 2);
+
+        let count_hists = (img.h() + 0) * (img.w() + 0);
+
+        let count_c = (img.h() + 2) * (img.w() + 2);
+        let count_c_power = (img.h() + 0) * (img.w() + 0);
+        let write_res = (img.h() + 0) * (img.w() + 0);
+
+        let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
+
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        ProgressProvider::new(
+            progress_cbk, 
+            layers_count * per_layer)
     }
 }
 
@@ -282,7 +321,7 @@ impl WindowFilter for HistogramLocalContrast {
         self.ext_value
     }
 
-    fn get_iterator(&self) -> FilterIterator {
+    fn get_iter(&self) -> FilterIterator {
         FilterIterator {
             width: self.w(),
             height: self.h(),
@@ -343,7 +382,7 @@ impl OneLayerFilter for CutBrightness {
     fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
         let mut mat_res = Matrix2D::empty_size_of(&mat);
 
-        for pos in mat.get_iter() {
+        for pos in mat.get_pixels_iter() {
             let pix_val = mat[pos] as u8;
             let before_min = pix_val < self.cut_range.min;
             let after_max = pix_val > self.cut_range.max;
@@ -362,7 +401,17 @@ impl OneLayerFilter for CutBrightness {
     fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
 
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        ProgressProvider::new(progress_cbk, img.d() * img.w() * img.h())
+        let pixels_per_layer = img.h() * img.w();
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        ProgressProvider::new(
+            progress_cbk, 
+            layers_count * pixels_per_layer)
     }
 }
 

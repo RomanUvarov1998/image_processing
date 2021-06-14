@@ -43,8 +43,8 @@ impl ImgLayer {
 
     pub fn matrix_mut(&mut self) -> &mut Matrix2D { &mut self.layer }
 
-    pub fn get_iter(&self) -> LayerIterator {
-        LayerIterator::for_full_image(self.matrix())
+    pub fn get_iter(&self) -> PixelsIterator {
+        PixelsIterator::for_full_image(self.matrix())
     }
 }
 
@@ -109,22 +109,22 @@ impl Matrix2D {
         pos.col <= self.max_col() && pos.row <= self.max_row()
     }
 
-    pub fn get_iter(&self) -> LayerIterator {
-        LayerIterator::for_full_image(self)
+    pub fn get_pixels_iter(&self) -> PixelsIterator {
+        PixelsIterator::for_full_image(self)
     }
 
-    pub fn get_area_iter(&self, tl: PixelPos, br_excluded: PixelPos) -> ImgIterator {
+    pub fn get_pixels_area_iter(&self, tl: PixelPos, br_excluded: PixelPos) -> PixelsIterator {
         assert!(self.fits(tl));
         assert!(br_excluded.row > 0);
         assert!(br_excluded.col > 0);
         assert!(self.fits(br_excluded - PixelPos::one()));
-        ImgIterator::for_rect_area( tl, br_excluded)
+        PixelsIterator::for_rect_area( tl, br_excluded)
     }
 
     pub fn scalar_transform<Tr: Fn(f64) -> f64>(&self, tr: Tr) -> Self {
         let mut transformed = Self::empty_size_of(self);
 
-        for pos in self.get_iter() {
+        for pos in self.get_pixels_iter() {
             transformed[pos] = tr(self[pos]);
         }
 
@@ -141,7 +141,7 @@ impl Matrix2D {
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {
         let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
 
-        for pos in self.get_iter() {
+        for pos in self.get_pixels_iter() {
             let pix = bmp::Pixel::new(self[pos] as u8, self[pos] as u8, self[pos] as u8);
             img_to_save.set_pixel(pos.col as u32, pos.row as u32, pix);
         }
@@ -152,7 +152,7 @@ impl Matrix2D {
     }
 
     fn set_rect(&mut self, tl: PixelPos, br_excluded: PixelPos, value: f64) -> () {
-        for pos in self.get_area_iter(tl, br_excluded) {
+        for pos in self.get_pixels_area_iter(tl, br_excluded) {
             self[pos] = value;
         }
     }
@@ -190,6 +190,7 @@ pub struct Img {
 #[allow(unused)]
 impl Img {
     pub fn new(width: usize, height: usize, layers: Vec<ImgLayer>, color_depth: ColorDepth) -> Self {
+        assert!(layers.len() > 0);
         Img { width, height, layers, color_depth }
     }
 
@@ -277,7 +278,7 @@ impl Img {
 
     pub fn max_col(&self) -> usize { self.width - 1 }
     pub fn max_row(&self) -> usize { self.height - 1 }
-    pub fn max_layer(&self) -> usize { self.height - 1 }
+    pub fn max_layer(&self) -> usize { self.d() - 1 }
 
     pub fn get_description(&self) -> String {
         format!("изображение {}x{}x{}", self.h(), self.w(), self.d())
@@ -308,8 +309,8 @@ impl Img {
     pub fn layer_mut<'own>(&'own mut self, ind: usize) -> &'own mut ImgLayer { &mut self.layers[ind] }
     pub fn layer<'own>(&'own self, ind: usize) -> &'own ImgLayer { &self.layers[ind] }
 
-    pub fn get_pixels_iter(&self) -> ImgIterator {
-        ImgIterator::for_full_image(self)
+    pub fn get_pixels_iter(&self) -> PixelsIterator {
+        PixelsIterator::for_full_image(self.layer(0).matrix())
     }
 
     pub fn get_layers_iter<'own>(&'own self) -> LayersIterator<'own> {
@@ -370,16 +371,15 @@ impl Img {
 }
 
 
-pub struct LayerIterator {
+pub struct PixelsIterator {
     top_left: PixelPos,
     bottom_right_excluded: PixelPos,
-    cur_pos: PixelPos
+    cur_pos: PixelPos,
 }
 
-#[allow(unused)]
-impl LayerIterator {
+impl PixelsIterator {
     pub fn for_full_image(layer: &Matrix2D) -> Self {
-        LayerIterator {
+        PixelsIterator {
             top_left: PixelPos::new(0, 0),
             bottom_right_excluded: PixelPos::new(layer.h(), layer.w()),
             cur_pos: PixelPos::new(0, 0),
@@ -390,7 +390,7 @@ impl LayerIterator {
         assert!(top_left.row < bottom_right_excluded.row);
         assert!(top_left.col < bottom_right_excluded.col);
 
-        LayerIterator {
+        PixelsIterator {
             top_left,
             bottom_right_excluded,
             cur_pos: top_left,
@@ -398,96 +398,31 @@ impl LayerIterator {
     }
 
     pub fn fits(&self, pos: PixelPos) -> bool {
-        let mut val = 
+        let val = 
             self.top_left.col <= pos.col && pos.col < self.bottom_right_excluded.col 
             && self.top_left.row <= pos.row && pos.row < self.bottom_right_excluded.row;
-        if val == false {
-            val = true;
-        }
         val
     }
 }
 
-impl Iterator for LayerIterator {
+impl Iterator for PixelsIterator {
     type Item = PixelPos;
 
     fn next(&mut self) -> Option<PixelPos> {
         let curr = self.cur_pos;
 
-        assert!(self.fits(self.cur_pos));
+        self.cur_pos.col += 1;
 
-        if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
-            self.cur_pos.col += 1;
-            return Some(curr);
-        } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
+        if self.cur_pos.col >= self.bottom_right_excluded.col {
             self.cur_pos.col = self.top_left.col;
             self.cur_pos.row += 1;
-            return Some(curr);
+        }
+
+        return if self.fits(curr) {
+            Some(curr)
         } else {
-            self.cur_pos = self.top_left;
-            return None;
-        }        
-    }
-}
-
-
-
-pub struct ImgIterator {
-    top_left: PixelPos,
-    bottom_right_excluded: PixelPos,
-    cur_pos: PixelPos
-}
-
-impl ImgIterator {
-    pub fn for_full_image(img: &Img) -> Self {
-        ImgIterator {
-            top_left: PixelPos::new(0, 0),
-            bottom_right_excluded: PixelPos::new(img.h(), img.w()),
-            cur_pos: PixelPos::new(0, 0),
-        }
-    }
-
-    pub fn for_rect_area(top_left: PixelPos, bottom_right_excluded: PixelPos) -> Self {
-        assert!(top_left.row < bottom_right_excluded.row);
-        assert!(top_left.col < bottom_right_excluded.col);
-
-        ImgIterator {
-            top_left,
-            bottom_right_excluded,
-            cur_pos: top_left,
-        }
-    }
-
-    pub fn fits(&self, pos: PixelPos) -> bool {
-        let mut val = 
-            self.top_left.col <= pos.col && pos.col < self.bottom_right_excluded.col 
-            && self.top_left.row <= pos.row && pos.row < self.bottom_right_excluded.row;
-        if val == false {
-            val = true;
-        }
-        val
-    }
-}
-
-impl Iterator for ImgIterator {
-    type Item = PixelPos;
-
-    fn next(&mut self) -> Option<PixelPos> {
-        let curr = self.cur_pos;
-
-        assert!(self.fits(self.cur_pos));
-
-        if self.cur_pos.col < self.bottom_right_excluded.col - 1 {
-            self.cur_pos.col += 1;
-            return Some(curr);
-        } else if self.cur_pos.row < self.bottom_right_excluded.row - 1 {
-            self.cur_pos.col = self.top_left.col;
-            self.cur_pos.row += 1;
-            return Some(curr);
-        } else {
-            self.cur_pos = self.top_left;
-            return None;
-        }        
+            None
+        };
     }
 }
 
