@@ -704,7 +704,7 @@ pub struct ProcessingStep<'label> {
     btn_move_step: MyMenuButton<'label, message::Message>,
     label_step_name: MyLabel,
     img_presenter: MyImgPresenter,
-    pub action: StepAction,
+    action: StepAction,
     step_num: usize,
     sender: Sender<Message>
 }
