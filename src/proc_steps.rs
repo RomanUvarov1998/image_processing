@@ -5,15 +5,13 @@ use std::{thread};
 use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
-use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
+use fltk::{app::{self, Receiver}, dialog, group::{self}, prelude::{GroupExt, WidgetExt}, window};
 use crate::filter::channel::{ExtractChannel, NeutralizeChannel};
 use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
 use crate::img::{Img, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
-use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
+use crate::my_component::{ImgPresenterContent, MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, step_editor::StepEditor};
-
-pub const IMG_PADDING: i32 = 10;
 
 #[derive(Clone)]
 pub enum StepAction {
@@ -87,7 +85,6 @@ impl StepAction {
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
-    initial_img: Option<img::Img>,
     steps: Vec<ProcessingStep<'wind>>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
@@ -97,7 +94,7 @@ pub struct ProcessingLine<'wind> {
     are_steps_chained: bool,
     // graphical parts
     wind_size_prev: (i32, i32),
-    frame_img: frame::Frame,
+    img_presenter: MyImgPresenter,
     main_row: MyRow,
     init_img_col: MyColumn,
     main_menu: MyMenuBar,
@@ -141,10 +138,8 @@ impl<'wind> ProcessingLine<'wind> {
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
             
-        let mut frame_img = frame::Frame::default()
-            .with_size(w / 2, h - lbl_init_img.h() - main_menu.h());
-        frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::Center);   
+        let img_presenter = MyImgPresenter::new(
+            w / 2, h - lbl_init_img.h() - main_menu.h());
         
         init_img_col.end();
 
@@ -195,7 +190,6 @@ impl<'wind> ProcessingLine<'wind> {
 
         ProcessingLine {
             parent_window: wind_parent,
-            initial_img: None,
             steps: Vec::<ProcessingStep>::new(),
             x, y, w, h,
             receiver,
@@ -206,7 +200,7 @@ impl<'wind> ProcessingLine<'wind> {
             
             // graphical parts
             wind_size_prev,
-            frame_img,
+            img_presenter,
             main_row,
             init_img_col,
             main_menu,
@@ -437,11 +431,7 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.set_size(ww / 2, wh);
         self.scroll_pack.set_pos(self.x + ww / 2, self.y);
 
-        if let Some(img) = &self.initial_img {
-            let mut rgb_copy = img.get_drawable_copy()?;
-            rgb_copy.scale(ww / 2 - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
-            self.frame_img.set_image(Some(rgb_copy));
-        }
+        self.img_presenter.resize(ww / 2, self.img_presenter.h())?;
 
         for step in self.steps.iter_mut() {
             step.auto_resize(ww / 2)?;
@@ -469,7 +459,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn try_load_initial_img(&mut self) -> result::Result<(), MyError> {
-        if self.initial_img.is_some() {
+        if self.img_presenter.has_image() {
             if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 Self::clear_steps_results(&mut self.steps[..]);
             } else {
@@ -488,14 +478,9 @@ impl<'wind> ProcessingLine<'wind> {
 
         let init_image = img::Img::load_as_rgb(path_buf)?;
 
-        let mut img_copy = init_image.get_drawable_copy()?;
-        img_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
-        self.frame_img.set_image(Some(img_copy.clone()));
-        self.frame_img.redraw(); 
-
         self.lbl_init_img.set_text(&init_image.get_description());
 
-        self.initial_img = Some(init_image);
+        self.img_presenter.set_image(init_image)?;
 
         Ok(())
     }
@@ -504,8 +489,8 @@ impl<'wind> ProcessingLine<'wind> {
         assert!(self.steps.len() > step_num);
 
         if step_num == 0 {
-            match self.initial_img {
-                Some(ref img) => {
+            match self.img_presenter.image() {
+                Some(img) => {
                     let img_copy = img.clone();
                     self.steps[step_num].start_processing(self.processing_data.clone(), img_copy)?;
                 },
@@ -650,7 +635,7 @@ impl<'wind> ProcessingLine<'wind> {
         }
 
         // check if all steps have images
-        let all_steps_have_image = self.steps.iter().all(|s| s.image.is_some());
+        let all_steps_have_image = self.steps.iter().all(|s| s.img_presenter.has_image());
         if !all_steps_have_image {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
         }
@@ -684,7 +669,7 @@ impl<'wind> ProcessingLine<'wind> {
             let mut file_path = path.clone();
             file_path.push_str(&format!("/{}.bmp", step_num + 1));
 
-            self.steps[step_num].image.as_ref().unwrap().try_save(&file_path)?;
+            self.steps[step_num].img_presenter.image().unwrap().try_save(&file_path)?;
         }
 
         Ok(())
@@ -718,9 +703,8 @@ pub struct ProcessingStep<'label> {
     btn_delete: MyButton,
     btn_move_step: MyMenuButton<'label, message::Message>,
     label_step_name: MyLabel,
-    frame_img: Frame,
+    img_presenter: MyImgPresenter,
     pub action: StepAction,
-    image: Option<img::Img>,
     step_num: usize,
     sender: Sender<Message>
 }
@@ -746,20 +730,17 @@ impl<'label> ProcessingStep<'label> {
 
         btns_row.end();
             
-        let mut frame_img = frame::Frame::default()
-            .with_size(proc_line.w, proc_line.h - btns_row.h() * 2);
-        frame_img.set_frame(FrameType::EmbossedFrame);
-        frame_img.set_align(Align::ImageMask | Align::Center); 
+        let img_presenter = MyImgPresenter::new(
+            proc_line.w, proc_line.h - btns_row.h() * 2);
         
         main_column.end();
         
          let mut step = ProcessingStep { 
             main_column,
             btn_process, btn_edit, btn_delete, btn_move_step,
-            frame_img, 
+            img_presenter, 
             label_step_name,
             action,
-            image: None, 
             step_num,
             sender
         };
@@ -770,15 +751,7 @@ impl<'label> ProcessingStep<'label> {
     }
 
     fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
-        self.frame_img.set_size(new_width, self.frame_img.h());
-
-        if let Some(img) = &self.image {
-            let mut rgb_copy = img.get_drawable_copy()?;
-            rgb_copy.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
-            self.frame_img.set_image(Some(rgb_copy));
-        }
-
-        Ok(())
+        self.img_presenter.resize(new_width, self.img_presenter.h())
     }
 
     fn draw_self_on(&mut self, pack: &mut group::Pack) {
@@ -790,14 +763,8 @@ impl<'label> ProcessingStep<'label> {
     }
     
     fn clear_result(&mut self) {
-        self.frame_img.set_label("");
-
+        self.img_presenter.set_state(ImgPresenterContent::EmptyNoProcessing);
         self.label_step_name.set_text("");
-                  
-        self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
-        self.frame_img.redraw();
-
-        self.image = None;
     }
 
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
@@ -805,8 +772,8 @@ impl<'label> ProcessingStep<'label> {
         
         let filter_description: String = self.action.filter_description();
 
-        let img_description: String = match self.image {
-            Some(ref img) => img.get_description(),
+        let img_description: String = match self.img_presenter.image() {
+            Some(img) => img.get_description(),
             None => String::new(),
         };
 
@@ -833,26 +800,26 @@ impl<'label> ProcessingStep<'label> {
     }
 
     fn get_data_copy(&self) -> Option<img::Img> {
-        self.image.clone()
+        match self.img_presenter.image() {
+            Some(img_ref) => Some(img_ref.clone()),
+            None => None,
+        }
     }
  
     fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Img) -> Result<(), MyError> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
 
-        self.frame_img.set_image(Option::<RgbImage>::None); 
+        self.img_presenter.set_state(ImgPresenterContent::Progress { percents: 0 }); 
 
         Ok(())
     }
 
-    fn display_progress(&mut self, progress_percents: usize) {
-        self.frame_img.set_label(&format!("{}%", progress_percents));
-        self.frame_img.redraw_label();
+    fn display_progress(&mut self, percents: usize) {
+        self.img_presenter.set_state(ImgPresenterContent::Progress { percents }); 
     }
 
     fn display_result(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>) -> Result<(), MyError>  {
-        self.frame_img.set_label("");
-
         let pd_locked = processing_data.lock().unwrap().take();
         drop(processing_data);
         let result_img = match pd_locked {
@@ -865,12 +832,7 @@ impl<'label> ProcessingStep<'label> {
 
         self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
                         
-        let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
-        rgb_image.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
-        self.frame_img.set_image(Some(rgb_image));
-        self.frame_img.redraw();
-
-        self.image = Some(result_img);
+        self.img_presenter.set_image(result_img)?;
 
         Ok(())
     }

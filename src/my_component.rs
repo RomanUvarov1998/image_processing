@@ -1,5 +1,5 @@
-use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, prelude::{GroupExt, MenuExt, WidgetExt}};
-use crate::message::{Message};
+use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}};
+use crate::{img::Img, message::{Message}, my_err::MyError};
 
 
 pub const TEXT_PADDING: i32 = 10;
@@ -174,6 +174,107 @@ impl<'label, TMsg> SizedWidget for MyMenuButton<'label, TMsg>
     fn w(&self) -> i32 { self.btn.w() }
     fn h(&self) -> i32 { self.btn.h() }
 }
+
+
+pub enum ImgPresenterContent {
+    EmptyNoProcessing,
+    Progress { percents: usize },
+}
+
+pub struct MyImgPresenter {
+    frame_img: frame::Frame,
+    img_drawable_processable: Option<Img>,
+    w: i32, h: i32
+}
+
+impl MyImgPresenter {
+    pub fn new(w: i32, h: i32) -> Self {
+        let mut frame_img = frame::Frame::default()
+            .with_size(w, h);
+        frame_img.set_frame(fltk::enums::FrameType::EmbossedFrame);
+        frame_img.set_align(fltk::enums::Align::Center); 
+
+        MyImgPresenter {
+            frame_img,
+            img_drawable_processable: None,
+            w, h
+        }
+    }
+
+    pub fn set_state(&mut self, state: ImgPresenterContent) {
+        match state {
+            ImgPresenterContent::EmptyNoProcessing => {
+                self.img_drawable_processable = None;
+                self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
+                self.frame_img.set_label("");
+                self.frame_img.redraw_label();
+                self.frame_img.redraw(); 
+            },
+            ImgPresenterContent::Progress { percents } => {
+                if let Some(_) = self.img_drawable_processable {
+                    self.img_drawable_processable = None;
+                }
+                if let Some(_) = self.frame_img.image() {
+                    self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
+                    self.frame_img.redraw(); 
+                }
+                self.frame_img.set_label(&format!("{}%", percents));
+                self.frame_img.redraw_label();
+            },
+        }
+    }
+
+    pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
+        self.frame_img.set_label("");
+        self.frame_img.redraw_label();
+        self.set_scaled_img(img, self.w(), self.h())?;
+        self.frame_img.redraw(); 
+
+        Ok(())
+    }
+
+    pub fn has_image(&self) -> bool { self.img_drawable_processable.is_some() }
+
+    pub fn image<'own>(&'own self) -> Option<&'own Img> {
+        match &self.img_drawable_processable {
+            Some(ref processable) => Some(processable),
+            None => None,
+        }
+    }
+
+    pub fn resize(&mut self, new_w: i32, new_h: i32) -> Result<(), MyError> {
+        if self.has_image() {
+            self.set_scaled_img(self.image().unwrap().clone(), new_w, new_h)?;
+            self.frame_img.set_size(new_w, new_h);
+            self.frame_img.redraw(); 
+        }
+
+        Ok(())
+    }
+    
+    fn set_scaled_img(&mut self, img: Img, w: i32, h: i32) -> Result<(), MyError> {
+        pub const IMG_PADDING: i32 = 10;
+
+        let mut scaled_drawable = img.get_drawable_copy()?;
+        
+        self.img_drawable_processable = Some(img);
+
+        scaled_drawable.scale(w - IMG_PADDING, h - IMG_PADDING, 
+            true, true);
+
+        self.frame_img.set_image(Some(scaled_drawable));
+
+        Ok(())
+    }
+}
+
+impl SizedWidget for MyImgPresenter {
+    fn w(&self) -> i32 { self.w }
+
+    fn h(&self) -> i32 { self.h }
+}
+
+
 
 
 #[allow(unused)]
