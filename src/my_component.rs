@@ -1,4 +1,4 @@
-use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}};
+use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, misc, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}};
 use crate::{img::Img, message::{Message}, my_err::MyError};
 
 
@@ -79,6 +79,10 @@ impl MyLabel {
     pub fn set_text<'text>(&mut self, text: &'text str) {
         self.label.set_label(text);
         self.label.redraw_label();
+    }
+
+    pub fn set_width(&mut self, new_w: i32) {
+        self.label.set_size(new_w, self.label.h());
     }
 
     pub fn widget<'inner>(&'inner self) -> &'inner frame::Frame { &self.label }
@@ -176,58 +180,42 @@ impl<'label, TMsg> SizedWidget for MyMenuButton<'label, TMsg>
 }
 
 
-pub enum ImgPresenterContent {
-    EmptyNoProcessing,
-    Progress { percents: usize },
-}
 
 pub struct MyImgPresenter {
     frame_img: frame::Frame,
     img_drawable_processable: Option<Img>,
-    w: i32, h: i32
 }
 
 impl MyImgPresenter {
     pub fn new(w: i32, h: i32) -> Self {
         let mut frame_img = frame::Frame::default()
             .with_size(w, h);
-        frame_img.set_frame(fltk::enums::FrameType::EmbossedFrame);
-        frame_img.set_align(fltk::enums::Align::Center); 
+
+        use fltk::enums::{FrameType, Align};
+
+        frame_img.set_frame(FrameType::EmbossedBox);
+        frame_img.set_align(Align::Center); 
 
         MyImgPresenter {
             frame_img,
             img_drawable_processable: None,
-            w, h
         }
     }
 
-    pub fn set_state(&mut self, state: ImgPresenterContent) {
-        match state {
-            ImgPresenterContent::EmptyNoProcessing => {
-                self.img_drawable_processable = None;
-                self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
-                self.frame_img.set_label("");
-                self.frame_img.redraw_label();
-                self.frame_img.redraw(); 
-            },
-            ImgPresenterContent::Progress { percents } => {
-                if let Some(_) = self.img_drawable_processable {
-                    self.img_drawable_processable = None;
-                }
-                if let Some(_) = self.frame_img.image() {
-                    self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
-                    self.frame_img.redraw(); 
-                }
-                self.frame_img.set_label(&format!("{}%", percents));
-                self.frame_img.redraw_label();
-            },
+    pub fn clear_image(&mut self) {
+        if let Some(_) = self.img_drawable_processable {
+            self.img_drawable_processable = None;
+            self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
+            self.frame_img.set_label("");
+            self.frame_img.redraw_label();
+            self.frame_img.redraw(); 
         }
     }
 
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
         self.frame_img.set_label("");
         self.frame_img.redraw_label();
-        self.set_scaled_img(img, self.w(), self.h())?;
+        self.set_scaled_img(img, self.frame_img.w(), self.frame_img.h())?;
         self.frame_img.redraw(); 
 
         Ok(())
@@ -242,10 +230,10 @@ impl MyImgPresenter {
         }
     }
 
-    pub fn resize(&mut self, new_w: i32, new_h: i32) -> Result<(), MyError> {
+    pub fn set_width(&mut self, new_w: i32) -> Result<(), MyError> {
         if self.has_image() {
-            self.set_scaled_img(self.image().unwrap().clone(), new_w, new_h)?;
-            self.frame_img.set_size(new_w, new_h);
+            self.set_scaled_img(self.image().unwrap().clone(), new_w, self.frame_img.h())?;
+            self.frame_img.set_size(new_w, self.frame_img.h());
             self.frame_img.redraw(); 
         }
 
@@ -269,12 +257,10 @@ impl MyImgPresenter {
 }
 
 impl SizedWidget for MyImgPresenter {
-    fn w(&self) -> i32 { self.w }
+    fn w(&self) -> i32 { self.frame_img.w() }
 
-    fn h(&self) -> i32 { self.h }
+    fn h(&self) -> i32 { self.frame_img.h() }
 }
-
-
 
 
 #[allow(unused)]
@@ -345,4 +331,36 @@ impl MyRow {
 impl SizedWidget for MyRow {
     fn w(&self) -> i32 { self.pack.w() }
     fn h(&self) -> i32 { self.pack.h() }
+}
+
+
+pub struct MyProgressBar {
+    bar: misc::Progress
+}
+
+impl MyProgressBar {
+    pub fn new(w: i32, h: i32) -> Self {
+        let mut bar = misc::Progress::default()
+            .with_size(w, h);
+        bar.set_minimum(0_f64);
+        bar.set_maximum(100_f64);
+
+        MyProgressBar { bar }
+    }
+
+    pub fn set_width(&mut self, new_w: i32) {
+        self.bar.set_size(new_w, self.bar.h());
+    }
+
+    pub fn reset(&mut self) {
+        self.set_value(0);
+    }
+
+    pub fn set_value(&mut self, progress_percents: usize) {
+        self.bar.set_value(progress_percents as f64);
+        self.bar.set_label(&format!("{}%", progress_percents));
+    }
+
+    pub fn show(&mut self) { self.bar.show(); }
+    pub fn hide(&mut self) { self.bar.hide(); }
 }

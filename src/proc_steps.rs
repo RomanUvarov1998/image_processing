@@ -10,7 +10,7 @@ use crate::filter::channel::{ExtractChannel, NeutralizeChannel};
 use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
 use crate::img::{Img, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
-use crate::my_component::{ImgPresenterContent, MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
+use crate::my_component::{MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyMenuButton, MyProgressBar, MyRow, SizedWidget};
 use crate::utils;
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, step_editor::StepEditor};
 
@@ -183,7 +183,7 @@ impl<'wind> ProcessingLine<'wind> {
 
         let scroll_pack = group::Pack::default()
             .with_pos(x, y + main_menu.h())
-            .with_size(w / 2, h - main_menu.h());
+            .with_size(w / 2 - PADDING, h - main_menu.h());
 
         scroll_pack.end();
         scroll_area.end();
@@ -460,10 +460,10 @@ impl<'wind> ProcessingLine<'wind> {
         self.processing_col.widget_mut().set_pos(self.x + ww / 2, self.y);
         self.scroll_area.set_size(ww / 2, wh);
         self.scroll_area.set_pos(self.x + ww / 2, self.y);
-        self.scroll_pack.set_size(ww / 2, wh);
+        self.scroll_pack.set_size(ww / 2 - PADDING, wh);
         self.scroll_pack.set_pos(self.x + ww / 2, self.y);
 
-        self.img_presenter.resize(ww / 2, self.img_presenter.h())?;
+        self.img_presenter.set_width(ww / 2)?;
 
         for step in self.steps.iter_mut() {
             step.auto_resize(ww / 2)?;
@@ -776,11 +776,14 @@ pub struct ProcessingStep<'label> {
     btn_delete: MyButton,
     btn_move_step: MyMenuButton<'label, message::Message>,
     label_step_name: MyLabel,
+    prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
     action: StepAction,
     step_num: usize,
     sender: Sender<Message>
 }
+
+const PADDING: i32 = 20;
 
 impl<'label> ProcessingStep<'label> {
     fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
@@ -802,17 +805,21 @@ impl<'label> ProcessingStep<'label> {
         let btn_move_step = MyMenuButton::new("Переупорядочить");
 
         btns_row.end();
+
+        let mut prog_bar = MyProgressBar::new(proc_line.w - PADDING, 30);
+        prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            proc_line.w, proc_line.h - btns_row.h() * 2);
+            proc_line.w - PADDING, proc_line.h - btns_row.h() * 2);
         
         main_column.end();
         
          let mut step = ProcessingStep { 
             main_column,
             btn_process, btn_edit, btn_delete, btn_move_step,
-            img_presenter, 
             label_step_name,
+            prog_bar,
+            img_presenter, 
             action,
             step_num,
             sender
@@ -824,7 +831,9 @@ impl<'label> ProcessingStep<'label> {
     }
 
     fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
-        self.img_presenter.resize(new_width, self.img_presenter.h())
+        self.label_step_name.set_width(new_width);
+        self.prog_bar.set_width(new_width);
+        self.img_presenter.set_width(new_width)
     }
 
     fn draw_self_on(&mut self, pack: &mut group::Pack) {
@@ -836,8 +845,7 @@ impl<'label> ProcessingStep<'label> {
     }
     
     fn clear_result(&mut self) {
-        self.img_presenter.set_state(ImgPresenterContent::EmptyNoProcessing);
-        self.label_step_name.set_text("");
+        self.img_presenter.clear_image();
     }
 
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
@@ -885,13 +893,16 @@ impl<'label> ProcessingStep<'label> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
 
-        self.img_presenter.set_state(ImgPresenterContent::Progress { percents: 0 }); 
+        self.prog_bar.show();
+        self.prog_bar.reset();
+        self.img_presenter.clear_image(); 
 
         Ok(())
     }
 
     fn display_progress(&mut self, percents: usize) {
-        self.img_presenter.set_state(ImgPresenterContent::Progress { percents }); 
+        self.prog_bar.set_value(percents);
+        self.img_presenter.clear_image(); 
     }
 
     fn display_result(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>) -> Result<(), MyError>  {
@@ -904,6 +915,8 @@ impl<'label> ProcessingStep<'label> {
             },
             None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
         };
+
+        self.prog_bar.hide();
 
         self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
                         
