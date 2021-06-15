@@ -11,7 +11,7 @@ use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
 use crate::img::{Img, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
-use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
+use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, step_editor::StepEditor};
 
 pub const IMG_PADDING: i32 = 10;
 
@@ -182,7 +182,7 @@ impl<'wind> ProcessingLine<'wind> {
 
                             pd.result_img = Some(pd.step_action.act(&pd.init_img, progress_cbk));
 
-                            sender_copy.send(Message::Processing(Processing::StepIsComplete { step_num: pd.step_num }));
+                            sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num: pd.step_num }));
                         },
                         None => { }
                     },
@@ -232,28 +232,28 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::Project(msg) => {
                         match msg {
                             Project::LoadImage => {
-                                match self.try_load() {
+                                match self.try_load_initial_img() {
                                     Ok(_) => {}
-                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                    Err(err) => show_err_msg(&self.parent_window, &err.to_string())
                                 };
                                 self.parent_window.redraw();
                             },
                             Project::SaveProject => {
                                 match self.try_save_project() {
-                                    Ok(_) => info_msg(&self.parent_window, "Проект успешно сохранен"),
-                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                    Ok(_) => show_info_msg(&self.parent_window, "Проект успешно сохранен"),
+                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
                                 }
                             },
                             Project::LoadProject => {
                                 match self.try_load_project() {
-                                    Ok(_) => info_msg(&self.parent_window, "Проект успешно загружен"),
-                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                    Ok(_) => show_info_msg(&self.parent_window, "Проект успешно загружен"),
+                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
                                 }
                             },
                             Project::SaveResults => {
                                 match self.try_save_results() {
-                                    Ok(_) => info_msg(&self.parent_window, "Результаты успешно сохранены"),
-                                    Err(err) => err_msg(&self.parent_window, &err.get_message()),
+                                    Ok(_) => show_info_msg(&self.parent_window, "Результаты успешно сохранены"),
+                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
                                 }
                             }
                         };
@@ -359,65 +359,30 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::Processing(msg) => {
                         match msg {
                             Processing::StepsChainIsStarted { step_num, do_until_end } => {
-                                println!("StepsChainIsStarted");
+                                self.set_all_controls_active(false);
 
-                                // deactivate all controls
-                                for step in self.steps.iter_mut() {
-                                    step.set_buttons_active(false);
-                                }
-                                self.main_menu.set_active(false);
-
-                                // delete all previous results
-                                if do_until_end {
-                                    for step in self.steps.iter_mut() {
-                                        step.clear_result();
-                                    }
-                                }
-
-                                println!("StepIsStarted {}, do_chaining {}", step_num, do_until_end);
+                                Self::clear_steps_results(&mut self.steps[step_num..]);
 
                                 self.are_steps_chained = do_until_end;
                                 match self.try_start_step(step_num) {
                                     Ok(_) => {}
-                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
-                                };
-                            },
-                            Processing::StepIsStarted { step_num, do_chaining } => {
-                                println!("StepIsStarted {}, do_chaining {}", step_num, do_chaining);
-
-                                self.are_steps_chained = do_chaining;
-                                match self.try_start_step(step_num) {
-                                    Ok(_) => {}
-                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                    Err(err) => {
+                                        show_err_msg(&self.parent_window, &err.to_string());
+                                        self.set_all_controls_active(true);
+                                    }
                                 };
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
-                                println!("StepProgress {}, {}%", step_num, cur_percents);
-
                                 self.steps[step_num].display_progress(cur_percents);
                             },
-                            Processing::StepIsComplete { step_num } => {
-                                println!("StepIsComplete {}", step_num);
-
-                                match self.steps[step_num].display_result(self.processing_data.clone()) {
-                                    Ok(_) => { 
-                                        if self.are_steps_chained && step_num < self.steps.len() - 1 {
-                                            match self.try_start_step(step_num + 1) {
-                                                Ok(_) => {}
-                                                Err(err) => err_msg(&self.parent_window, &err.to_string())
-                                            };
-                                        } else {
-                                            println!("StepsChainIsCompleted");
-            
-                                            // activate all controls
-                                            for step in self.steps.iter_mut() {
-                                                step.set_buttons_active(true);
-                                            }
-                                            self.main_menu.set_active(true);
-                                        }
-                                    }
-                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
-                                };
+                            Processing::StepIsCompleted { step_num } => {
+                                match self.on_step_completed(step_num) {
+                                    Ok(_) => {},
+                                    Err(err) => {
+                                        show_err_msg(&self.parent_window, &err.to_string());
+                                        self.set_all_controls_active(true);
+                                    },
+                                }
                             },
                         };
                         self.parent_window.redraw();
@@ -428,6 +393,31 @@ impl<'wind> ProcessingLine<'wind> {
             self.auto_resize()?;
         }
     
+        Ok(())
+    }
+
+    fn set_all_controls_active(&mut self, active: bool) {
+        for step in self.steps.iter_mut() {
+            step.set_buttons_active(active);
+        }
+        self.main_menu.set_active(active);
+    }
+
+    fn clear_steps_results(steps: &mut [ProcessingStep]) {
+        for step in steps.iter_mut() {
+            step.clear_result();
+        }
+    }
+
+    fn on_step_completed(&mut self, step_num: usize) -> result::Result<(), MyError> {
+        self.steps[step_num].display_result(self.processing_data.clone())?;
+
+        if self.are_steps_chained && step_num < self.steps.len() - 1 {
+            self.try_start_step(step_num + 1)?;
+        } else {
+            self.set_all_controls_active(true);
+        }
+        
         Ok(())
     }
 
@@ -478,12 +468,10 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.top_window().unwrap().set_damage(true);
     }
 
-    fn try_load(&mut self) -> result::Result<(), MyError> {
+    fn try_load_initial_img(&mut self) -> result::Result<(), MyError> {
         if self.initial_img.is_some() {
-            if small_dlg::confirm(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
-                for step_num in 0..self.steps.len() {
-                    self.steps[step_num].frame_img.set_image(Option::<RgbImage>::None);
-                }
+            if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
+                Self::clear_steps_results(&mut self.steps[..]);
             } else {
                 return Ok(());
             }
@@ -590,7 +578,7 @@ impl<'wind> ProcessingLine<'wind> {
     
     fn try_load_project(&mut self) -> result::Result<(), MyError> {
         todo!();
-        if self.steps.len() > 0 && confirm(self.parent_window,
+        if self.steps.len() > 0 && confirm_with_dlg(self.parent_window,
              "Есть несохраненный проект. Открыть вместо него?") 
         {
             while self.steps.len() > 0 {
@@ -639,7 +627,7 @@ impl<'wind> ProcessingLine<'wind> {
             } 
             else 
             {
-                if !confirm(self.parent_window, "Не удалось прочитать фильтр из файла. Оставить загруженное?
+                if !confirm_with_dlg(self.parent_window, "Не удалось прочитать фильтр из файла. Оставить загруженное?
                     Да - оставить, Нет - удалить.")
                 {
                     while self.steps.len() > 0 {
