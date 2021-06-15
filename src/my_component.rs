@@ -344,6 +344,7 @@ impl MyProgressBar {
             .with_size(w, h);
         bar.set_minimum(0_f64);
         bar.set_maximum(100_f64);
+        bar.set_selection_color(fltk::enums::Color::Green);
 
         MyProgressBar { bar }
     }
