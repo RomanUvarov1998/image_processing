@@ -3,6 +3,7 @@ pub mod utils;
 pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
+pub mod channel;
 
 use crate::{img::{Matrix2D, img_ops, pixel_pos::PixelPos}, progress_provider::ProgressProvider};
 

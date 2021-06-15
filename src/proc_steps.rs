@@ -6,9 +6,9 @@ use std::{fs::{self, File}, io::{Read, Write}, result};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::app::{App, Sender};
 use fltk::{app::{self, Receiver}, dialog, enums::{Align, FrameType}, frame::{self, Frame}, group::{self}, image::RgbImage, prelude::{GroupExt, ImageExt, WidgetExt}, window};
-use crate::filter::filter_option::ExtendValue;
-use crate::filter::filter_trait::{OneLayerFilter, StringFromTo};
-use crate::img::{Img, ImgChannel, color_ops, img_ops};
+use crate::filter::channel::{ExtractChannel, NeutralizeChannel};
+use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
+use crate::img::{Img, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{MyButton, MyColumn, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm, err_msg, info_msg}, step_editor::StepEditor};
@@ -25,9 +25,8 @@ pub enum StepAction {
     CutBrightness(CutBrightness),
     HistogramEqualizer,
     Rgb2Gray,
-    NeutralizeChannel(ImgChannel),
-    ExtractChannel(ImgChannel),
-    Extend { with: ExtendValue, by_rows: usize, by_cols: usize },
+    NeutralizeChannel(NeutralizeChannel),
+    ExtractChannel(ExtractChannel),
 }
 
 impl StepAction {
@@ -41,10 +40,8 @@ impl StepAction {
             StepAction::CutBrightness(filter) => filter.get_description(),
             StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
-            StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
-            StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
-            StepAction::Extend { with, by_rows, by_cols } => format!("Расширить на {} строк, {} столбцов, через {:?}", 
-                by_rows, by_cols, with),
+            StepAction::NeutralizeChannel(filter) => filter.get_description(),
+            StepAction::ExtractChannel(filter) => filter.get_description(),
         }
     }
 
@@ -59,17 +56,15 @@ impl StepAction {
     fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Img, progress_cbk: Cbk) -> Img {
         match self {
             StepAction::LinearCustom(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::LinearMean(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::LinearGaussian(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::MedianFilter(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::HistogramLocalContrast(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::CutBrightness(ref mut filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::LinearMean(ref filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::LinearGaussian(ref filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::MedianFilter(ref filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::HistogramLocalContrast(ref filter) => init_img.process_by_layer(filter, progress_cbk),
+            StepAction::CutBrightness(ref filter) => init_img.process_by_layer(filter, progress_cbk),
             StepAction::HistogramEqualizer => color_ops::equalize_histogram(&init_img, progress_cbk),
             StepAction::Rgb2Gray => color_ops::rgb_to_gray(&init_img),
-            StepAction::NeutralizeChannel(ch) => color_ops::neutralize_channel(&init_img, *ch),
-            StepAction::ExtractChannel(ch) => color_ops::extract_channel(&init_img, *ch),
-            StepAction::Extend { with, by_rows, by_cols } => 
-                img_ops::copy_with_extended_borders(&init_img, *with, *by_rows, *by_cols, *by_rows, *by_cols),
+            StepAction::NeutralizeChannel(filter) => init_img.process_all_layers(filter, progress_cbk),
+            StepAction::ExtractChannel(filter) => init_img.process_all_layers(filter, progress_cbk),
         }
     }
 
@@ -83,10 +78,8 @@ impl StepAction {
             StepAction::CutBrightness(ref filter) => filter.content_to_string(),
             StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
-            StepAction::NeutralizeChannel(ch) => format!("Убирание канала {:?}", ch),
-            StepAction::ExtractChannel(ch) => format!("Выделение канала {:?}", ch),
-            StepAction::Extend { with, by_rows, by_cols } => format!("Расширить на {} строк, {} столбцов, через {:?}", 
-                by_rows, by_cols, with),
+            StepAction::NeutralizeChannel(filter) => filter.content_to_string(),
+            StepAction::ExtractChannel(filter) => filter.content_to_string(),
         }
     }
 }
@@ -130,8 +123,6 @@ impl<'wind> ProcessingLine<'wind> {
 
         menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
 
-        menu.add_emit("Добавить шаг/Расширить", sender, Message::AddStep(AddStep::AddStepExtend));
-
         menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
         menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
         menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
@@ -140,17 +131,9 @@ impl<'wind> ProcessingLine<'wind> {
         menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
         menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
 
-        menu.add_emit("Добавить шаг/Убрать канал/R", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::R)));
-        menu.add_emit("Добавить шаг/Убрать канал/G", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::G)));
-        menu.add_emit("Добавить шаг/Убрать канал/B", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::B)));
-        menu.add_emit("Добавить шаг/Убрать канал/L", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::L)));
-        menu.add_emit("Добавить шаг/Убрать канал/A", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel(ImgChannel::A)));
+        menu.add_emit("Добавить шаг/Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
 
-        menu.add_emit("Добавить шаг/Выделить канал/R", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::R)));
-        menu.add_emit("Добавить шаг/Выделить канал/G", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::G)));
-        menu.add_emit("Добавить шаг/Выделить канал/B", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::B)));
-        menu.add_emit("Добавить шаг/Выделить канал/L", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::L)));
-        menu.add_emit("Добавить шаг/Выделить канал/A", sender, Message::AddStep(AddStep::AddStepExtractChannel(ImgChannel::A)));
+        menu.add_emit("Добавить шаг/Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
 
         menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         menu.end();
@@ -308,10 +291,16 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             AddStep::AddStepHistogramEqualizer => self.add(StepAction::HistogramEqualizer),
                             AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
-                            AddStep::AddStepNeutralizeChannel(ch) => self.add(StepAction::NeutralizeChannel(ch)),
-                            AddStep::AddStepExtractChannel(ch) => self.add(StepAction::ExtractChannel(ch)),
-                            AddStep::AddStepExtend => self.add(StepAction::Extend { 
-                                with: ExtendValue::Closest, by_rows: 100, by_cols: 100 } ),
+                            AddStep::AddStepNeutralizeChannel => {
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, NeutralizeChannel::default().into()) {
+                                    self.add(new_action);
+                                }
+                            },
+                            AddStep::AddStepExtractChannel => {
+                                if let Some(new_action) = self.step_editor.add_with_dlg(app, ExtractChannel::default().into()) {
+                                    self.add(new_action);
+                                }
+                            },
                         };
                         self.parent_window.redraw();
                     },
@@ -510,6 +499,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn try_save_project(&self) -> result::Result<(), MyError> {
+        todo!();
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
@@ -559,6 +549,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
     
     fn try_load_project(&mut self) -> result::Result<(), MyError> {
+        todo!();
         if self.steps.len() > 0 && confirm(self.parent_window,
              "Есть несохраненный проект. Открыть вместо него?") 
         {

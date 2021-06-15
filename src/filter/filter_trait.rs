@@ -12,6 +12,12 @@ pub trait OneLayerFilter : Default + Clone + StringFromTo + Into<StepAction> {
     fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk>;
 }
 
+pub trait ImgFilter : Default + Clone + StringFromTo + Into<StepAction> {
+    fn filter<Cbk: Fn(usize)>(&self, img: &Img, prog_prov: &mut ProgressProvider<Cbk>) -> Img;
+    fn get_description(&self) -> String;
+    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk>;
+}
+
 pub trait WindowFilter : OneLayerFilter {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64;
     fn w(&self) -> usize;

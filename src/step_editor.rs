@@ -1,6 +1,6 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
+use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -136,7 +136,24 @@ impl StepEditor {
                                 },
                                 Err(err) => self.lbl_message.set_label(&err.get_message())
                             },
-                            _ => { return Some(action); },
+                            StepAction::NeutralizeChannel(_) => match NeutralizeChannel::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            StepAction::ExtractChannel(_) => match ExtractChannel::try_from_string(&text) {
+                                Ok(filter) => {
+                                    self.wind.hide();
+                                    return Some(filter.into());
+                                },
+                                Err(err) => self.lbl_message.set_label(&err.get_message())
+                            },
+                            _ => { 
+                                self.wind.hide();
+                                return Some(action); 
+                            },
                         };
                     },
                     StepEditMessage::Exit => {

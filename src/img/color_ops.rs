@@ -102,28 +102,3 @@ pub fn equalize_histogram<Cbk: Fn(usize)>(img: &Img, progress_cbk: Cbk) -> Img {
 
     img_res
 }
-
-pub fn neutralize_channel(img: &Img, channel: ImgChannel) -> Img {
-    let mut img_res = img.clone();
-
-    if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == channel) {
-        for pos in layer.get_iter() {
-            layer[pos] = 0_f64;
-        }
-    }
-    
-    img_res
-}
-
-pub fn extract_channel(img: &Img, channel: ImgChannel) -> Img {
-    let mut img_res = img.clone();
-
-    for layer in img_res.layers_mut() {
-        if layer.channel() == channel || layer.channel() == ImgChannel::A { continue; }
-        for pos in layer.get_iter() {
-            layer[pos] = 0_f64;
-        }
-    }
-    
-    img_res
-}

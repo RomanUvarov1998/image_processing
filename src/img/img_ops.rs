@@ -1,6 +1,7 @@
 use crate::{filter::{filter_option::ExtendValue, filter_trait::WindowFilter}, img::pixel_pos::PixelPos};
 use super::{Img, ImgChannel, ImgLayer, Matrix2D};
 
+#[allow(unused)]
 pub fn copy_with_extended_borders(img: &Img, with: ExtendValue, left: usize, top: usize, right: usize, bottom: usize) -> Img {
     let mut ext_layers = Vec::<ImgLayer>::with_capacity(img.d());
 
