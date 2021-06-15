@@ -6,7 +6,7 @@ pub const WIN_WIDTH: i32 = 640;
 pub const WIN_HEIGHT: i32 = 480;
 
 pub fn create_app() -> result::Result<(), MyError> {
-    let app = app::App::default();
+    let app = app::App::default().with_scheme(app::Scheme::Plastic);
     let mut wind = window::Window::default()
         .with_size(WIN_WIDTH, WIN_HEIGHT)
         .center_screen()
