@@ -364,3 +364,9 @@ impl MyProgressBar {
     pub fn show(&mut self) { self.bar.show(); }
     pub fn hide(&mut self) { self.bar.hide(); }
 }
+
+impl SizedWidget for MyProgressBar {
+    fn w(&self) -> i32 { self.bar.w() }
+
+    fn h(&self) -> i32 { self.bar.h() }
+}
