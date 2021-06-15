@@ -143,10 +143,6 @@ impl Matrix2D {
     pub fn max_col(&self) -> usize { self.width - 1 }
     pub fn max_row(&self) -> usize { self.height - 1 }
 
-    pub fn get_description(&self) -> String {
-        format!("изображение {}x{}", self.h(), self.w())
-    }
-
     pub fn fits(&self, pos: PixelPos) -> bool {
         pos.col <= self.max_col() && pos.row <= self.max_row()
     }
@@ -323,7 +319,7 @@ impl Img {
     pub fn max_layer(&self) -> usize { self.d() - 1 }
 
     pub fn get_description(&self) -> String {
-        format!("изображение {}x{}x{}", self.h(), self.w(), self.d())
+        format!("Изображение {} (строк) x {} (столбцов) x {} (каналов)", self.h(), self.w(), self.d())
     }
 
     pub fn process_by_layer<F: OneLayerFilter, Cbk: Fn(usize)>(&self, filter: &F, progress_cbk: Cbk) -> Img {
