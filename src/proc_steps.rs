@@ -11,6 +11,7 @@ use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
 use crate::img::{Img, color_ops};
 use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
 use crate::my_component::{ImgPresenterContent, MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyMenuButton, MyRow, SizedWidget};
+use crate::utils;
 use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, step_editor::StepEditor};
 
 #[derive(Clone)]
@@ -78,6 +79,37 @@ impl StepAction {
             StepAction::Rgb2Gray => "RGB => Gray".to_string(),
             StepAction::NeutralizeChannel(filter) => filter.content_to_string(),
             StepAction::ExtractChannel(filter) => filter.content_to_string(),
+        }
+    }
+
+    pub fn get_save_name(&self) -> String {
+        match self {
+            StepAction::LinearCustom(_) => "LinearCustom".to_string(),
+            StepAction::LinearMean(_) => "LinearMean".to_string(),
+            StepAction::LinearGaussian(_) => "LinearGaussian".to_string(),
+            StepAction::MedianFilter(_) => "MedianFilter".to_string(),
+            StepAction::HistogramLocalContrast(_) => "HistogramLocalContrast".to_string(),
+            StepAction::CutBrightness(_) => "CutBrightness".to_string(),
+            StepAction::HistogramEqualizer => "HistogramEqualizer".to_string(),
+            StepAction::Rgb2Gray => "Rgb2Gray".to_string(),
+            StepAction::NeutralizeChannel(_) => "NeutralizeChannel".to_string(),
+            StepAction::ExtractChannel(_) => "ExtractChannel".to_string(),
+        }
+    }
+
+    pub fn from_save_name_and_string(save_name: &str, content: &str) -> Result<Self, MyError> {
+        match save_name {
+            "LinearCustom" => Ok(LinearCustom::try_from_string(content)?.into()),
+            "LinearMean" => Ok(LinearMean::try_from_string(content)?.into()),
+            "LinearGaussian" => Ok(LinearGaussian::try_from_string(content)?.into()),
+            "MedianFilter" => Ok(MedianFilter::try_from_string(content)?.into()),
+            "HistogramLocalContrast" => Ok(HistogramLocalContrast::try_from_string(content)?.into()),
+            "CutBrightness" => Ok(CutBrightness::try_from_string(content)?.into()),
+            "HistogramEqualizer" => Ok(StepAction::HistogramEqualizer),
+            "Rgb2Gray" => Ok(StepAction::Rgb2Gray),
+            "NeutralizeChannel" => Ok(NeutralizeChannel::try_from_string(content)?.into()),
+            "ExtractChannel" => Ok(ExtractChannel::try_from_string(content)?.into()),
+            _ => Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)))
         }
     }
 }
@@ -512,7 +544,6 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn try_save_project(&self) -> result::Result<(), MyError> {
-        todo!();
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
@@ -522,8 +553,11 @@ impl<'wind> ProcessingLine<'wind> {
         let mut chooser = dialog::FileChooser::new(
             ".","*", dialog::FileChooserType::Directory, 
             "Выберите папку для сохранения");
+
         chooser.show();
+
         while chooser.shown() { app::wait(); }
+
         if chooser.value(1).is_none() {
             return Ok(());
         }
@@ -531,23 +565,25 @@ impl<'wind> ProcessingLine<'wind> {
         let mut path = chooser.directory().unwrap();       
 
         // create project folder
-        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("Project %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
+        let current_datetime_formatter: DelayedFormat<StrftimeItems> = 
+            Local::now().format("Project %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
         let dir_name = format!("{}", current_datetime_formatter);
 
         path.push_str("/");
         path.push_str(&dir_name);
         
-        match fs::create_dir(&path) {
-            Ok(_) => {},
-            Err(err) => { return Err(MyError::new(err.to_string())); },
-        };
+        if let Err(err) = fs::create_dir(&path) {
+            return Err(MyError::new(err.to_string()));
+        }
 
         // save all steps
         for step_num in 0..self.steps.len() {
-            let filter_content: String = self.steps[step_num].action.content_to_string();
+            let step = &self.steps[step_num];
+
+            let filter_content: String = step.action.content_to_string();
 
             let mut file_path = path.clone();
-            file_path.push_str(&format!("/{}.txt", step_num + 1));
+            file_path.push_str(&format!("/{}.{}.txt", step_num, step.action().get_save_name()));
 
             let mut file = match File::create(file_path) {
                 Ok(f) => f,
@@ -562,7 +598,6 @@ impl<'wind> ProcessingLine<'wind> {
     }
     
     fn try_load_project(&mut self) -> result::Result<(), MyError> {
-        todo!();
         if self.steps.len() > 0 && confirm_with_dlg(self.parent_window,
              "Есть несохраненный проект. Открыть вместо него?") 
         {
@@ -583,46 +618,84 @@ impl<'wind> ProcessingLine<'wind> {
         
         let dir_path = chooser.directory().unwrap();    
 
-        let mut step_num = 0;
-        loop {
-            let file_path_str = format!("{}/{}.txt", &dir_path, step_num + 1);
+        let files_iter = fs::read_dir(&dir_path)?;
+        let files_count = files_iter.count();
+
+        if files_count == 0 { 
+            return Err(MyError::new("Выбранная папка пуста, в ней не найдено ни одного файла".to_string())); 
+        }
+
+        let mut files_names = Vec::<Option<String>>::new();
+        files_names.resize(files_count, None);
+        
+        for dir_entry in fs::read_dir(&dir_path)? {
+            let file_path = dir_entry?.path();
+
+            let file_name = file_path.file_name().unwrap();
+
+            let mut name_parts_iter = utils::WordsIter::new(
+                file_name.to_str().unwrap(), ".");
+
+            let action_num = match name_parts_iter.next().parse::<usize>() {
+                Ok(step_num) => step_num,
+                Err(err) => { return Err(MyError::new(err.to_string())); },
+            };
+
+            let action_name = name_parts_iter.next();
+            files_names[action_num] = Some(action_name.to_string());
+        }
+
+        if !files_names.iter().all(|f_name| f_name.is_some()) {
+            return Err(MyError::new("В проекте отсутствуют некоторые шаги преобразования".to_string())); 
+        }
+
+        for file_num in 0..files_names.len() {
+            let step_name = files_names[file_num].clone().unwrap();
+
+            let file_name = format!("{}.{}.txt", file_num, step_name);
+
+            let file_path_str = format!("{}/{}", &dir_path, file_name);
+
             let file_path = PathBuf::from(file_path_str);
 
-            if !file_path.exists() { 
-                break; 
-            }
-
-            let mut file = match File::open(file_path) {
+            let mut file = match File::open(&file_path) {
                 Ok(f) => f,
-                Err(err) => { return Err(MyError::new(err.to_string())); }
+                Err(err) => {
+                    let question = format!(
+                        "Ошибка при открытии файла '{}': '{}'. Оставить загруженное? Да - оставить, Нет - удалить.", 
+                        &file_name, err.to_string());
+
+                    if !confirm_with_dlg(self.parent_window, &question) {
+                        while self.steps.len() > 0 {
+                            self.delete_step(0);
+                        }
+                    } 
+
+                    return Ok(());
+                },
             };
 
             let mut content = String::new();
             file.read_to_string(&mut content)?;
 
-            if let Some(step_action) = {
-                if let Ok(filter) = LinearCustom::try_from_string(&content) { Some(filter.into()) } 
-                else if let Ok(filter) = LinearMean::try_from_string(&content) { Some(filter.into()) } 
-                else if let Ok(filter) = LinearGaussian::try_from_string(&content) { Some(filter.into()) } 
-                else if let Ok(filter) = LinearMean::try_from_string(&content) { Some(filter.into()) } 
-                else if let Ok(filter) = HistogramLocalContrast::try_from_string(&content) { Some(filter.into()) } 
-                else { None }
-            } {
-                self.add(step_action);
-            } 
-            else 
-            {
-                if !confirm_with_dlg(self.parent_window, "Не удалось прочитать фильтр из файла. Оставить загруженное?
-                    Да - оставить, Нет - удалить.")
-                {
-                    while self.steps.len() > 0 {
-                        self.delete_step(0);
-                    }
-                } 
-                return Ok(());
-            }
+            let step_action = match StepAction::from_save_name_and_string(&step_name, &content) {
+                Ok(sa) => sa,
+                Err(err) => { 
+                    let question = format!(
+                        "Ошибка при чтении файла '{}': '{}'. Оставить загруженное? Да - оставить, Нет - удалить.", 
+                        &file_name, err.to_string());
 
-            step_num += 1;
+                    if !confirm_with_dlg(self.parent_window, &question) {
+                        while self.steps.len() > 0 {
+                            self.delete_step(0);
+                        }
+                    } 
+
+                    return Ok(());
+                },
+            };
+
+            self.add(step_action);
         }
 
         Ok(())
@@ -806,6 +879,8 @@ impl<'label> ProcessingStep<'label> {
         }
     }
  
+    fn action<'own>(&'own self) -> &'own StepAction { &self.action } 
+
     fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Img) -> Result<(), MyError> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
