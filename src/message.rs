@@ -1,5 +1,6 @@
 #[derive(Debug, Copy, Clone)]
 pub enum Processing {
+    StepsChainIsStarted { step_num: usize, do_until_end: bool },
     StepIsStarted { step_num: usize, do_chaining: bool },
     StepProgress { step_num: usize, cur_percents: usize },
     StepIsComplete { step_num: usize },

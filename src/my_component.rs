@@ -112,6 +112,14 @@ impl MyMenuBar {
     pub fn end(&mut self) { 
         self.mb.end(); 
     }
+
+    pub fn set_active(&mut self, active: bool) {
+        if active { 
+            self.mb.activate(); 
+        } else {
+            self.mb.deactivate();
+        }
+    }
 }
 
 impl SizedWidget for MyMenuBar {

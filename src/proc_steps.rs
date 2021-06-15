@@ -100,6 +100,7 @@ pub struct ProcessingLine<'wind> {
     frame_img: frame::Frame,
     main_row: MyRow,
     init_img_col: MyColumn,
+    main_menu: MyMenuBar,
     lbl_init_img: MyLabel,
     processing_col: MyColumn,
     scroll_area: group::Scroll,
@@ -116,46 +117,46 @@ impl<'wind> ProcessingLine<'wind> {
             
         let mut init_img_col = MyColumn::new(w / 2, h);
 
-        let mut menu = MyMenuBar::new(wind_parent);
-        menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
-        menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
-        menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
+        let mut main_menu = MyMenuBar::new(wind_parent);
+        main_menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
+        main_menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
+        main_menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
 
-        menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
+        main_menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
 
-        menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
-        menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
-        menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
-        menu.add_emit("Добавить шаг/Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
-        menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
-        menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
-        menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
+        main_menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
+        main_menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
+        main_menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
+        main_menu.add_emit("Добавить шаг/Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
+        main_menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
+        main_menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
+        main_menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
 
-        menu.add_emit("Добавить шаг/Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
+        main_menu.add_emit("Добавить шаг/Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
 
-        menu.add_emit("Добавить шаг/Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
+        main_menu.add_emit("Добавить шаг/Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
 
-        menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
-        menu.end();
+        main_menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
+        main_menu.end();
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
             
         let mut frame_img = frame::Frame::default()
-            .with_size(w / 2, h - lbl_init_img.h() - menu.h());
+            .with_size(w / 2, h - lbl_init_img.h() - main_menu.h());
         frame_img.set_frame(FrameType::EmbossedFrame);
         frame_img.set_align(Align::Center);   
         
         init_img_col.end();
 
-        let mut processing_col = MyColumn::new(w / 2, h - menu.h());
+        let mut processing_col = MyColumn::new(w / 2, h - main_menu.h());
 
         let scroll_area = group::Scroll::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w / 2, h - menu.h());
+            .with_pos(x, y + main_menu.h())
+            .with_size(w / 2, h - main_menu.h());
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x, y + menu.h())
-            .with_size(w / 2, h - menu.h());
+            .with_pos(x, y + main_menu.h())
+            .with_size(w / 2, h - main_menu.h());
 
         scroll_pack.end();
         scroll_area.end();
@@ -208,6 +209,7 @@ impl<'wind> ProcessingLine<'wind> {
             frame_img,
             main_row,
             init_img_col,
+            main_menu,
             lbl_init_img,
             processing_col,
             scroll_area,
@@ -356,7 +358,33 @@ impl<'wind> ProcessingLine<'wind> {
                     },
                     Message::Processing(msg) => {
                         match msg {
+                            Processing::StepsChainIsStarted { step_num, do_until_end } => {
+                                println!("StepsChainIsStarted");
+
+                                // deactivate all controls
+                                for step in self.steps.iter_mut() {
+                                    step.set_buttons_active(false);
+                                }
+                                self.main_menu.set_active(false);
+
+                                // delete all previous results
+                                if do_until_end {
+                                    for step in self.steps.iter_mut() {
+                                        step.clear_result();
+                                    }
+                                }
+
+                                println!("StepIsStarted {}, do_chaining {}", step_num, do_until_end);
+
+                                self.are_steps_chained = do_until_end;
+                                match self.try_start_step(step_num) {
+                                    Ok(_) => {}
+                                    Err(err) => err_msg(&self.parent_window, &err.to_string())
+                                };
+                            },
                             Processing::StepIsStarted { step_num, do_chaining } => {
+                                println!("StepIsStarted {}, do_chaining {}", step_num, do_chaining);
+
                                 self.are_steps_chained = do_chaining;
                                 match self.try_start_step(step_num) {
                                     Ok(_) => {}
@@ -364,9 +392,13 @@ impl<'wind> ProcessingLine<'wind> {
                                 };
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
+                                println!("StepProgress {}, {}%", step_num, cur_percents);
+
                                 self.steps[step_num].display_progress(cur_percents);
                             },
                             Processing::StepIsComplete { step_num } => {
+                                println!("StepIsComplete {}", step_num);
+
                                 match self.steps[step_num].display_result(self.processing_data.clone()) {
                                     Ok(_) => { 
                                         if self.are_steps_chained && step_num < self.steps.len() - 1 {
@@ -374,6 +406,14 @@ impl<'wind> ProcessingLine<'wind> {
                                                 Ok(_) => {}
                                                 Err(err) => err_msg(&self.parent_window, &err.to_string())
                                             };
+                                        } else {
+                                            println!("StepsChainIsCompleted");
+            
+                                            // activate all controls
+                                            for step in self.steps.iter_mut() {
+                                                step.set_buttons_active(true);
+                                            }
+                                            self.main_menu.set_active(true);
                                         }
                                     }
                                     Err(err) => err_msg(&self.parent_window, &err.to_string())
@@ -761,6 +801,17 @@ impl<'label> ProcessingStep<'label> {
         pack.remove(self.main_column.widget_mut());
     }
     
+    fn clear_result(&mut self) {
+        self.frame_img.set_label("");
+
+        self.label_step_name.set_text("");
+                  
+        self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
+        self.frame_img.redraw();
+
+        self.image = None;
+    }
+
     fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
         self.action = self.action.edit_with_dlg(app, step_editor);
         
@@ -775,8 +826,10 @@ impl<'label> ProcessingStep<'label> {
     }
 
     fn update_btn_emits(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: false }));
-        self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, Message::Processing(Processing::StepIsStarted { step_num, do_chaining: true }));
+        self.btn_process.add_emit("Только этот шаг", self.sender, 
+            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: false }));
+        self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, 
+            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: true }));
         self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
         self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
         self.btn_move_step.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
@@ -798,8 +851,6 @@ impl<'label> ProcessingStep<'label> {
     fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Img) -> Result<(), MyError> {
         processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
         drop(processing_data);
-
-        self.set_buttons_active(false);
 
         self.frame_img.set_image(Option::<RgbImage>::None); 
 
@@ -824,13 +875,10 @@ impl<'label> ProcessingStep<'label> {
             None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
         };
 
-        self.set_buttons_active(true);
+        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
                         
         let mut rgb_image: fltk::image::RgbImage = result_img.get_drawable_copy()?;
         rgb_image.scale(self.frame_img.w() - IMG_PADDING, self.frame_img.h() - IMG_PADDING, true, true);
-
-        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
-                  
         self.frame_img.set_image(Some(rgb_image));
         self.frame_img.redraw();
 
