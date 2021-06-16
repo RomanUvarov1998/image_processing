@@ -1,4 +1,4 @@
-use crate::{img::{Img, ImgChannel}, proc_steps::StepAction, progress_provider::ProgressProvider};
+use crate::{img::{Img, ImgChannel}, processing::{StepAction, progress_provider::ProgressProvider}};
 use super::filter_trait::{ImgFilter, StringFromTo};
 
 

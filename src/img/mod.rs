@@ -1,6 +1,6 @@
 use std::{fmt, ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{enums::ColorDepth, image, prelude::ImageExt};
-use crate::{filter::{filter_trait::{ImgFilter, OneLayerFilter, StringFromTo}}, my_err::MyError, progress_provider::ProgressProvider, utils};
+use crate::{filter::{filter_trait::{ImgFilter, OneLayerFilter, StringFromTo}}, my_err::MyError, processing::progress_provider::ProgressProvider, utils};
 use self::pixel_pos::PixelPos;
 
 pub mod pixel_pos;

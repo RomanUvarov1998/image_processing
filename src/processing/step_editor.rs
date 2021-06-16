@@ -1,6 +1,8 @@
 use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, proc_steps::StepAction};
+use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}};
+
+use super::StepAction;
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;

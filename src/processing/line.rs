@@ -1,118 +1,8 @@
-use std::path::{PathBuf};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
-use std::{thread};
-use std::{fs::{self, File}, io::{Read, Write}, result};
+use std::{fs::{self, File}, io::{Read, Write}, path::PathBuf, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::app::{App, Sender};
-use fltk::{app::{self, Receiver}, dialog, group::{self}, prelude::{GroupExt, WidgetExt}, window};
-use crate::filter::channel::{ExtractChannel, NeutralizeChannel};
-use crate::filter::filter_trait::{ImgFilter, OneLayerFilter, StringFromTo};
-use crate::img::{Img, color_ops};
-use crate::message::{self, AddStep, Message, Processing, Project, StepOp};
-use crate::my_component::{MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyMenuButton, MyProgressBar, MyRow, SizedWidget};
-use crate::utils;
-use crate::{filter::{linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{MedianFilter, HistogramLocalContrast, CutBrightness}}, img::{self}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, step_editor::StepEditor};
-
-#[derive(Clone)]
-pub enum StepAction {
-    LinearCustom(LinearCustom),
-    LinearMean(LinearMean),
-    LinearGaussian(LinearGaussian),
-    MedianFilter(MedianFilter),
-    HistogramLocalContrast(HistogramLocalContrast),
-    CutBrightness(CutBrightness),
-    HistogramEqualizer,
-    Rgb2Gray,
-    NeutralizeChannel(NeutralizeChannel),
-    ExtractChannel(ExtractChannel),
-}
-
-impl StepAction {
-    fn filter_description(&self) -> String {
-        match self {
-            StepAction::LinearCustom(filter) => filter.get_description(),
-            StepAction::LinearMean(filter) => filter.get_description(),
-            StepAction::LinearGaussian(filter) => filter.get_description(),
-            StepAction::MedianFilter(filter) => filter.get_description(),
-            StepAction::HistogramLocalContrast(filter) => filter.get_description(),
-            StepAction::CutBrightness(filter) => filter.get_description(),
-            StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
-            StepAction::Rgb2Gray => "RGB => Gray".to_string(),
-            StepAction::NeutralizeChannel(filter) => filter.get_description(),
-            StepAction::ExtractChannel(filter) => filter.get_description(),
-        }
-    }
-
-    fn edit_with_dlg(&self, app: App, step_editor: &mut StepEditor) -> StepAction {
-        if let Some(edited_action) = step_editor.add_with_dlg(app, self.clone()) {
-            edited_action
-        } else {
-            self.clone()
-        }
-    }
-
-    fn act<Cbk: Fn(usize) + Clone>(&mut self, init_img: &Img, progress_cbk: Cbk) -> Img {
-        match self {
-            StepAction::LinearCustom(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::LinearMean(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::LinearGaussian(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::MedianFilter(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::HistogramLocalContrast(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::CutBrightness(ref filter) => init_img.process_by_layer(filter, progress_cbk),
-            StepAction::HistogramEqualizer => color_ops::equalize_histogram(&init_img, progress_cbk),
-            StepAction::Rgb2Gray => color_ops::rgb_to_gray(&init_img),
-            StepAction::NeutralizeChannel(filter) => init_img.process_all_layers(filter, progress_cbk),
-            StepAction::ExtractChannel(filter) => init_img.process_all_layers(filter, progress_cbk),
-        }
-    }
-
-    pub fn content_to_string(&self) -> String {
-        match self {            
-            StepAction::LinearCustom(ref filter) => filter.content_to_string(),
-            StepAction::LinearMean(ref filter) => filter.content_to_string(),
-            StepAction::LinearGaussian(ref filter) => filter.content_to_string(),
-            StepAction::MedianFilter(ref filter) => filter.content_to_string(),
-            StepAction::HistogramLocalContrast(ref filter) => filter.content_to_string(),
-            StepAction::CutBrightness(ref filter) => filter.content_to_string(),
-            StepAction::HistogramEqualizer => "Эквализация гистограммы".to_string(),
-            StepAction::Rgb2Gray => "RGB => Gray".to_string(),
-            StepAction::NeutralizeChannel(filter) => filter.content_to_string(),
-            StepAction::ExtractChannel(filter) => filter.content_to_string(),
-        }
-    }
-
-    pub fn get_save_name(&self) -> String {
-        match self {
-            StepAction::LinearCustom(_) => "LinearCustom".to_string(),
-            StepAction::LinearMean(_) => "LinearMean".to_string(),
-            StepAction::LinearGaussian(_) => "LinearGaussian".to_string(),
-            StepAction::MedianFilter(_) => "MedianFilter".to_string(),
-            StepAction::HistogramLocalContrast(_) => "HistogramLocalContrast".to_string(),
-            StepAction::CutBrightness(_) => "CutBrightness".to_string(),
-            StepAction::HistogramEqualizer => "HistogramEqualizer".to_string(),
-            StepAction::Rgb2Gray => "Rgb2Gray".to_string(),
-            StepAction::NeutralizeChannel(_) => "NeutralizeChannel".to_string(),
-            StepAction::ExtractChannel(_) => "ExtractChannel".to_string(),
-        }
-    }
-
-    pub fn from_save_name_and_string(save_name: &str, content: &str) -> Result<Self, MyError> {
-        match save_name {
-            "LinearCustom" => Ok(LinearCustom::try_from_string(content)?.into()),
-            "LinearMean" => Ok(LinearMean::try_from_string(content)?.into()),
-            "LinearGaussian" => Ok(LinearGaussian::try_from_string(content)?.into()),
-            "MedianFilter" => Ok(MedianFilter::try_from_string(content)?.into()),
-            "HistogramLocalContrast" => Ok(HistogramLocalContrast::try_from_string(content)?.into()),
-            "CutBrightness" => Ok(CutBrightness::try_from_string(content)?.into()),
-            "HistogramEqualizer" => Ok(StepAction::HistogramEqualizer),
-            "Rgb2Gray" => Ok(StepAction::Rgb2Gray),
-            "NeutralizeChannel" => Ok(NeutralizeChannel::try_from_string(content)?.into()),
-            "ExtractChannel" => Ok(ExtractChannel::try_from_string(content)?.into()),
-            _ => Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)))
-        }
-    }
-}
+use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, WidgetExt}, window};
+use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar, MyRow, SizedWidget}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use super::{PADDING, ProcessingData, StepAction, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine<'wind> {
@@ -245,7 +135,7 @@ impl<'wind> ProcessingLine<'wind> {
         }
     }
 
-    pub fn run(&mut self, app: app::App) -> result::Result<(), MyError> {
+    pub fn run(&mut self, app: app::App) -> Result<(), MyError> {
         while app.wait() {
             if let Some(msg) = self.receiver.recv() {
                 match msg {
@@ -457,7 +347,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
 
-    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> result::Result<(), MyError> {
+    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> Result<(), MyError> {
         assert!(self.steps.len() > step_num);
 
         if !self.img_presenter.has_image() {
@@ -484,7 +374,7 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn on_step_completed(&mut self, step_num: usize) -> result::Result<bool, MyError> {
+    fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
         let mut pd_locked = self.processing_data.lock()
             .unwrap()
             .take()
@@ -535,7 +425,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     
-    fn try_load_initial_img(&mut self) -> result::Result<(), MyError> {
+    fn try_load_initial_img(&mut self) -> Result<(), MyError> {
         if self.img_presenter.has_image() {
             if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step in self.steps.iter_mut() {
@@ -554,7 +444,7 @@ impl<'wind> ProcessingLine<'wind> {
             if p.is_empty() { return Ok(()); }
         }     
 
-        let init_image = img::Img::load_as_rgb(path_buf)?;
+        let init_image = Img::load_as_rgb(path_buf)?;
 
         self.lbl_init_img.set_text(&init_image.get_description());
 
@@ -563,7 +453,7 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn try_save_project(&self) -> result::Result<(), MyError> {
+    fn try_save_project(&self) -> Result<(), MyError> {
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
@@ -600,7 +490,7 @@ impl<'wind> ProcessingLine<'wind> {
         for step_num in 0..self.steps.len() {
             let step = &self.steps[step_num];
 
-            let filter_content: String = step.action.content_to_string();
+            let filter_content: String = step.action().content_to_string();
 
             let mut file_path = path.clone();
             file_path.push_str(&format!("/{}.{}.txt", step_num, step.action().get_save_name()));
@@ -617,7 +507,7 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
     
-    fn try_load_project(&mut self) -> result::Result<(), MyError> {
+    fn try_load_project(&mut self) -> Result<(), MyError> {
         if self.steps.len() > 0 && confirm_with_dlg(self.parent_window,
              "Есть несохраненный проект. Открыть вместо него?") 
         {
@@ -721,14 +611,14 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn try_save_results(&self) -> result::Result<(), MyError> {
+    fn try_save_results(&self) -> Result<(), MyError> {
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
         }
 
         // check if all steps have images
-        let all_steps_have_image = self.steps.iter().all(|s| s.img_presenter.has_image());
+        let all_steps_have_image = self.steps.iter().all(|s| s.has_image());
         if !all_steps_have_image {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
         }
@@ -762,172 +652,9 @@ impl<'wind> ProcessingLine<'wind> {
             let mut file_path = path.clone();
             file_path.push_str(&format!("/{}.bmp", step_num + 1));
 
-            self.steps[step_num].img_presenter.image().unwrap().try_save(&file_path)?;
+            self.steps[step_num].image().unwrap().try_save(&file_path)?;
         }
 
         Ok(())
     }
 }
-
-struct ProcessingData {
-    step_num: usize,
-    step_action: StepAction,
-    init_img: Img,
-    result_img: Option<Img>,
-    do_until_end: bool
-}
-
-impl ProcessingData {
-    fn new(step_num: usize, step_action: StepAction, init_img: Img, do_until_end: bool) -> Self {
-        ProcessingData {
-            step_num,
-            step_action,
-            init_img,
-            result_img: None,
-            do_until_end
-        }
-    }
-
-    fn take_result(&mut self) -> Option<Img> { self.result_img.take() }
-}
-
-pub struct ProcessingStep<'label> {
-    main_column: MyColumn,
-    btn_process: MyMenuButton<'label, message::Message>,
-    btn_edit: MyButton,
-    btn_delete: MyButton,
-    btn_move_step: MyMenuButton<'label, message::Message>,
-    label_step_name: MyLabel,
-    prog_bar: MyProgressBar,
-    img_presenter: MyImgPresenter,
-    action: StepAction,
-    step_num: usize,
-    sender: Sender<Message>
-}
-
-const PADDING: i32 = 20;
-
-impl<'label> ProcessingStep<'label> {
-    fn new(w: i32, h: i32, step_num: usize, action: StepAction) -> Self {
-        let name: String = action.filter_description();
-
-        let mut main_column = MyColumn::new(w, 100);
-
-        let label_step_name = MyLabel::new(&name);
-
-        let (sender, _) = app::channel::<Message>();
-
-        let mut btns_row = MyRow::new(w, label_step_name.h()); 
-
-        let btn_process = MyMenuButton::new("Запустить");
-        let btn_edit = MyButton::with_label("Изменить");
-        let btn_delete = MyButton::with_label("Удалить");
-        let btn_move_step = MyMenuButton::new("Переупорядочить");
-
-        btns_row.end();
-
-        let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
-        prog_bar.hide();
-            
-        let img_presenter = MyImgPresenter::new(
-            w - PADDING, h - btns_row.h() * 2);
-        
-        main_column.end();
-        
-         let mut step = ProcessingStep { 
-            main_column,
-            btn_process, btn_edit, btn_delete, btn_move_step,
-            label_step_name,
-            prog_bar,
-            img_presenter, 
-            action,
-            step_num,
-            sender
-        };
-
-        step.update_btn_emits(step_num);
-
-        step
-    }
-
-    fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
-        self.label_step_name.set_width(new_width);
-        self.prog_bar.set_width(new_width);
-        self.img_presenter.set_width(new_width)
-    }
-
-    fn draw_self_on(&mut self, pack: &mut group::Pack) {
-        pack.add(self.main_column.widget_mut());
-    }
-
-    fn remove_self_from(&mut self, pack: &mut group::Pack) {
-        pack.remove(self.main_column.widget_mut());
-    }
-    
-    fn clear_result(&mut self) {
-        self.img_presenter.clear_image();
-    }
-
-    fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
-        self.action = self.action.edit_with_dlg(app, step_editor);
-        
-        let filter_description: String = self.action.filter_description();
-
-        let img_description: String = match self.img_presenter.image() {
-            Some(img) => img.get_description(),
-            None => String::new(),
-        };
-
-        self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
-    }
-
-    fn update_btn_emits(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", self.sender, 
-            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: false }));
-        self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, 
-            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: true }));
-        self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
-        self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
-        self.btn_move_step.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        self.btn_move_step.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
-        self.step_num = step_num;
-    }
-
-    fn set_buttons_active(&mut self, active: bool) {
-        self.btn_process.set_active(active);
-        self.btn_edit.set_active(active);
-        self.btn_delete.set_active(active);
-        self.btn_move_step.set_active(active);
-    }
-
-    fn get_data_copy(&self) -> Option<img::Img> {
-        match self.img_presenter.image() {
-            Some(img_ref) => Some(img_ref.clone()),
-            None => None,
-        }
-    }
- 
-    fn action<'own>(&'own self) -> &'own StepAction { &self.action } 
-
-    fn start_processing(&mut self) {
-        self.prog_bar.show();
-        self.prog_bar.reset();
-        self.img_presenter.clear_image(); 
-    }
-
-    fn display_progress(&mut self, percents: usize) {
-        self.prog_bar.set_value(percents);
-        self.img_presenter.clear_image(); 
-    }
-
-    fn display_result(&mut self, img: Img) -> Result<(), MyError>  {
-        self.prog_bar.hide();
-
-        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), img.get_description()));
-                        
-        self.img_presenter.set_image(img)?;
-
-        Ok(())
-    }
-}
-

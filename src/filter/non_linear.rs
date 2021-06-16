@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, img_ops, pixel_pos::PixelPos}, my_err::MyError, proc_steps::StepAction, progress_provider::ProgressProvider, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::{Img, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{StepAction, progress_provider::ProgressProvider}, utils::{LinesIter}};
 use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{OneLayerFilter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 

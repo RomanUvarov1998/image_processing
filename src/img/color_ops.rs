@@ -1,5 +1,5 @@
 use fltk::enums::ColorDepth;
-use crate::{filter::utils::{HistBuf, count_histogram}, img::{ImgChannel, ImgLayer}, progress_provider::ProgressProvider};
+use crate::{filter::utils::{HistBuf, count_histogram}, img::{ImgChannel, ImgLayer}, processing::progress_provider::ProgressProvider};
 use super::{Matrix2D, Img, PIXEL_VALUES_COUNT};
 
 pub fn rgb_to_gray(img: &Img) -> Img {

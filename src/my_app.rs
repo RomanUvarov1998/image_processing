@@ -1,5 +1,5 @@
 use std::result;
-use crate::{my_err::MyError, proc_steps::{ProcessingLine}};
+use crate::{my_err::MyError, processing::line::ProcessingLine};
 use fltk::{app, enums::Damage, prelude::*, window};
 
 pub const WIN_WIDTH: i32 = 640;

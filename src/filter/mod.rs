@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod channel;
 
-use crate::{img::{Matrix2D, img_ops, pixel_pos::PixelPos}, progress_provider::ProgressProvider};
+use crate::{img::{Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::ProgressProvider};
 
 use self::filter_trait::WindowFilter;
 
