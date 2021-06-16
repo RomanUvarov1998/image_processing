@@ -448,7 +448,16 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> result::Result<(), MyError> {
-        self.steps[step_num].display_result(self.processing_data.clone())?;
+        let pd_locked = self.processing_data.lock().unwrap().take();
+        let result_img = match pd_locked {
+            Some(mut p) => match p.get_result() {
+                Some(img) => img,
+                None => { return Err(MyError::new("Нет результирующего изображения(".to_string())); },
+            },
+            None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
+        };
+
+        self.steps[step_num].display_result(result_img)?;
 
         if self.are_steps_chained && step_num < self.steps.len() - 1 {
             self.try_start_step(step_num + 1)?;
@@ -533,23 +542,25 @@ impl<'wind> ProcessingLine<'wind> {
     fn try_start_step(&mut self, step_num: usize) -> result::Result<(), MyError> {
         assert!(self.steps.len() > step_num);
 
-        if step_num == 0 {
+        let img_copy = if step_num == 0 {
             match self.img_presenter.image() {
-                Some(img) => {
-                    let img_copy = img.clone();
-                    self.steps[step_num].start_processing(self.processing_data.clone(), img_copy)?;
-                },
-                None => return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
+                Some(img) => img.clone(),
+                None => { 
+                    return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
+                }
             }
         } else {
-            let prev_step = &self.steps[step_num - 1];
-            match prev_step.get_data_copy() {
-                Some(img_copy) => {
-                    self.steps[step_num].start_processing(self.processing_data.clone(), img_copy)?;
-                },
-                None => return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
+            match self.steps[step_num - 1].get_data_copy() {
+                Some(img_copy) => img_copy,
+                None => { 
+                    return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string())); 
+                }
             }
-        }
+        };
+
+        let action_copy = self.steps[step_num].action().clone();
+        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy));
+        self.steps[step_num].start_processing();
 
         self.processing_thread.thread().unpark();
 
@@ -902,15 +913,10 @@ impl<'label> ProcessingStep<'label> {
  
     fn action<'own>(&'own self) -> &'own StepAction { &self.action } 
 
-    fn start_processing(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>, init_img: Img) -> Result<(), MyError> {
-        processing_data.lock().unwrap().replace(ProcessingData::new(self.step_num, self.action.clone(), init_img));
-        drop(processing_data);
-
+    fn start_processing(&mut self) {
         self.prog_bar.show();
         self.prog_bar.reset();
         self.img_presenter.clear_image(); 
-
-        Ok(())
     }
 
     fn display_progress(&mut self, percents: usize) {
@@ -918,22 +924,12 @@ impl<'label> ProcessingStep<'label> {
         self.img_presenter.clear_image(); 
     }
 
-    fn display_result(&mut self, processing_data: Arc<Mutex<Option<ProcessingData>>>) -> Result<(), MyError>  {
-        let pd_locked = processing_data.lock().unwrap().take();
-        drop(processing_data);
-        let result_img = match pd_locked {
-            Some(mut p) => match p.get_result() {
-                Some(img) => img,
-                None => { return Err(MyError::new("Нет результирующего изображения(".to_string())); },
-            },
-            None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
-        };
-
+    fn display_result(&mut self, img: Img) -> Result<(), MyError>  {
         self.prog_bar.hide();
 
-        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), result_img.get_description()));
+        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), img.get_description()));
                         
-        self.img_presenter.set_image(result_img)?;
+        self.img_presenter.set_image(img)?;
 
         Ok(())
     }
