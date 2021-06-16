@@ -414,7 +414,7 @@ impl<'wind> ProcessingLine<'wind> {
                                         false
                                     },
                                 };
-                                
+
                                 if !processing_continued {
                                     self.set_all_controls_active(true);
                                     self.whole_prog_bar.hide();
@@ -541,13 +541,12 @@ impl<'wind> ProcessingLine<'wind> {
     fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> result::Result<(), MyError> {
         assert!(self.steps.len() > step_num);
 
+        if !self.img_presenter.has_image() {
+            return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
+        }
+
         let img_copy = if step_num == 0 {
-            match self.img_presenter.image() {
-                Some(img) => img.clone(),
-                None => { 
-                    return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
-                }
-            }
+            self.img_presenter.image().unwrap().clone()
         } else {
             match self.steps[step_num - 1].get_data_copy() {
                 Some(img_copy) => img_copy,
