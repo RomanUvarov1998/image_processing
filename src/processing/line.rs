@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{Read, Write}, path::PathBuf, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
+use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, WidgetExt}, window};
 use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar, MyRow, SizedWidget}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
@@ -150,13 +150,17 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             Project::SaveProject => {
                                 match self.try_save_project() {
-                                    Ok(_) => show_info_msg(&self.parent_window, "Проект успешно сохранен"),
+                                    Ok(done) => if done {
+                                        show_info_msg(&self.parent_window, "Проект успешно сохранен");
+                                    },
                                     Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
                                 }
                             },
                             Project::LoadProject => {
                                 match self.try_load_project() {
-                                    Ok(_) => show_info_msg(&self.parent_window, "Проект успешно загружен"),
+                                    Ok(done) => if done { 
+                                        show_info_msg(&self.parent_window, "Проект успешно загружен"); 
+                                    },
                                     Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
                                 }
                             },
@@ -453,165 +457,138 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn try_save_project(&self) -> Result<(), MyError> {
+    const PROJECT_EXT: &'static str = "ps";
+    const ACTIONS_SAVE_SEPARATOR: &'static str = "||";
+
+    fn cur_time_str() -> String {
+        let current_datetime_formatter: DelayedFormat<StrftimeItems> = 
+            Local::now().format("%d-%m(%b)-%Y_%a_%_H.%M.%S"); 
+        format!("{}", current_datetime_formatter)
+    }
+
+    fn try_save_project(&self) -> Result<bool, MyError> {
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
         }
 
-        // choose folder
-        let mut chooser = dialog::FileChooser::new(
-            ".","*", dialog::FileChooserType::Directory, 
-            "Выберите папку для сохранения");
+        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveFile);
+        dlg.set_filter(&format!("*.{}", Self::PROJECT_EXT));
 
-        chooser.show();
+        let file_name = format!("Project {}", Self::cur_time_str());
+        dlg.set_preset_file(&file_name);
+        dlg.set_title("Сохранение проекта");
 
-        while chooser.shown() { app::wait(); }
+        dlg.show(); 
 
-        if chooser.value(1).is_none() {
-            return Ok(());
-        }
-        
-        let mut path = chooser.directory().unwrap();       
+        let mut path_buf = dlg.filename();
+        path_buf.set_extension(Self::PROJECT_EXT);
 
-        // create project folder
-        let current_datetime_formatter: DelayedFormat<StrftimeItems> = 
-            Local::now().format("Project %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
-        let dir_name = format!("{}", current_datetime_formatter);
+        let proj_path = match path_buf.to_str() {
+            Some(path) => path,
+            None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
+        };
 
-        path.push_str("/");
-        path.push_str(&dir_name);
-        
-        if let Err(err) = fs::create_dir(&path) {
-            return Err(MyError::new(err.to_string()));
+        if proj_path.is_empty() {
+            return Ok(false);
         }
 
-        // save all steps
+        let mut file = match File::create(proj_path) {
+            Ok(f) => f,
+            Err(err) => { return Err(MyError::new(err.to_string())); }
+        };
+
+        let mut file_content = String::new();
+
         for step_num in 0..self.steps.len() {
-            let step = &self.steps[step_num];
+            let action = self.steps[step_num].action();
+            let action_save_name: String = action.get_save_name();
+            let action_content: String = action.content_to_string();
+            
+            file_content.push_str(&action_save_name);
+            file_content.push_str("\n");
+            file_content.push_str(&action_content);
+            file_content.push_str("\n");
 
-            let filter_content: String = step.action().content_to_string();
-
-            let mut file_path = path.clone();
-            file_path.push_str(&format!("/{}.{}.txt", step_num, step.action().get_save_name()));
-
-            let mut file = match File::create(file_path) {
-                Ok(f) => f,
-                Err(err) => { return Err(MyError::new(err.to_string())); }
-            };
-
-            file.write_all(&filter_content.as_bytes())?;
-            file.sync_all()?;
-        }
-
-        Ok(())
-    }
-    
-    fn try_load_project(&mut self) -> Result<(), MyError> {
-        if self.steps.len() > 0 && confirm_with_dlg(self.parent_window,
-             "Есть несохраненный проект. Открыть вместо него?") 
-        {
-            while self.steps.len() > 0 {
-                self.delete_step(0);
+            if step_num < self.steps.len() - 1 {
+                file_content.push_str(Self::ACTIONS_SAVE_SEPARATOR);
+                file_content.push_str("\n");
             }
         }
 
-        // choose folder
-        let mut chooser = dialog::FileChooser::new(
-            ".","*", dialog::FileChooserType::Directory, 
-            "Выберите папку для загрузки");
-        chooser.show();
-        while chooser.shown() { app::wait(); }
-        if chooser.value(1).is_none() {
-            return Ok(());
-        }
+        file.write_all(&file_content.as_bytes())?;
+        file.sync_all()?;
+
+        Ok(true)
+    }
+    
+    fn try_load_project(&mut self) -> Result<bool, MyError> {
+        if self.steps.len() > 0 {
+            if confirm_with_dlg(self.parent_window,
+                "Есть несохраненный проект. Открыть вместо него?") 
+            {
+                while self.steps.len() > 0 {
+                    self.delete_step(0);
+                }
+            } else {
+                return Ok(false);
+            }
+        } 
         
-        let dir_path = chooser.directory().unwrap();    
+        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
+        dlg.set_filter(&format!("*.{}", Self::PROJECT_EXT));
+        dlg.set_title("Загрузка проекта");
+        dlg.show(); 
 
-        let files_iter = fs::read_dir(&dir_path)?;
-        let files_count = files_iter.count();
+        let path_buf = dlg.filename();
 
-        if files_count == 0 { 
-            return Err(MyError::new("Выбранная папка пуста, в ней не найдено ни одного файла".to_string())); 
+        let proj_path = match path_buf.to_str() {
+            Some(path) => path,
+            None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
+        };
+
+        if proj_path.is_empty() {
+            return Ok(false);
         }
 
-        let mut files_names = Vec::<Option<String>>::new();
-        files_names.resize(files_count, None);
-        
-        for dir_entry in fs::read_dir(&dir_path)? {
-            let file_path = dir_entry?.path();
+        let mut file = match File::open(&proj_path) {
+            Ok(f) => f,
+            Err(err) => { return Err(MyError::new(format!("Ошибка при открытии файла проекта: {}", err.to_string()))); },
+        };
 
-            let file_name = file_path.file_name().unwrap();
+        let mut file_content = String::new();
+        if let Err(err) = file.read_to_string(&mut file_content) {
+            return Err(MyError::new(format!("Ошибка при чтении файла проекта: {}", err.to_string())));
+        };
 
-            let mut name_parts_iter = utils::WordsIter::new(
-                file_name.to_str().unwrap(), ".");
+        let mut actions_iter = utils::TextBlocksIter::new(
+            &file_content, Self::ACTIONS_SAVE_SEPARATOR);
 
-            let action_num = match name_parts_iter.next().parse::<usize>() {
-                Ok(step_num) => step_num,
-                Err(err) => { return Err(MyError::new(err.to_string())); },
-            };
+        self.steps.reserve(actions_iter.len());
 
-            let action_name = name_parts_iter.next();
-            files_names[action_num] = Some(action_name.to_string());
-        }
+        'out: for action_str in actions_iter.iter() {
+            let mut lines_iter = utils::LinesIter::new(action_str);
+            let action_name = lines_iter.next_or_empty().to_string();
+            let action_content = lines_iter.all_left(true);
 
-        if !files_names.iter().all(|f_name| f_name.is_some()) {
-            return Err(MyError::new("В проекте отсутствуют некоторые шаги преобразования".to_string())); 
-        }
-
-        for file_num in 0..files_names.len() {
-            let step_name = files_names[file_num].clone().unwrap();
-
-            let file_name = format!("{}.{}.txt", file_num, step_name);
-
-            let file_path_str = format!("{}/{}", &dir_path, file_name);
-
-            let file_path = PathBuf::from(file_path_str);
-
-            let mut file = match File::open(&file_path) {
-                Ok(f) => f,
+            match StepAction::from_save_name_and_string(&action_name, &action_content) {
+                Ok(action) => self.add_step(action),
                 Err(err) => {
                     let question = format!(
-                        "Ошибка при открытии файла '{}': '{}'. Оставить загруженное? Да - оставить, Нет - удалить.", 
-                        &file_name, err.to_string());
+                        "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
+                        action_name, err.to_string());
 
                     if !confirm_with_dlg(self.parent_window, &question) {
-                        while self.steps.len() > 0 {
-                            self.delete_step(0);
-                        }
-                    } 
-
-                    return Ok(());
+                        break 'out;
+                    }
                 },
             };
-
-            let mut content = String::new();
-            file.read_to_string(&mut content)?;
-
-            let step_action = match StepAction::from_save_name_and_string(&step_name, &content) {
-                Ok(sa) => sa,
-                Err(err) => { 
-                    let question = format!(
-                        "Ошибка при чтении файла '{}': '{}'. Оставить загруженное? Да - оставить, Нет - удалить.", 
-                        &file_name, err.to_string());
-
-                    if !confirm_with_dlg(self.parent_window, &question) {
-                        while self.steps.len() > 0 {
-                            self.delete_step(0);
-                        }
-                    } 
-
-                    return Ok(());
-                },
-            };
-
-            self.add_step(step_action);
         }
 
-        Ok(())
+        Ok(true)
     }
 
-    fn try_save_results(&self) -> Result<(), MyError> {
+    fn try_save_results(&self) -> Result<bool, MyError> {
         // check if there are any steps
         if self.steps.len() == 0 {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
@@ -623,38 +600,39 @@ impl<'wind> ProcessingLine<'wind> {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
         }
 
-        // choose folder
-        let mut chooser = dialog::FileChooser::new(
-            ".","*", dialog::FileChooserType::Directory, 
-            "Выберите папку для сохранения");
-        chooser.show();
-        while chooser.shown() { app::wait(); }
-        if chooser.value(1).is_none() {
-            return Ok(());
+        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveDir);
+        dlg.set_title("Сохранение результатов");
+
+        dlg.show(); 
+
+        let path_buf = dlg.filename();
+
+        let mut proj_path = match path_buf.to_str() {
+            Some(path) => path.to_string(),
+            None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
+        };
+
+        if proj_path.is_empty() {
+            return Ok(false);
         }
-        
-        let mut path = chooser.directory().unwrap();       
 
-        // create project folder
-        let current_datetime_formatter: DelayedFormat<StrftimeItems> = Local::now().format("Results %d-%m(%b)-%Y_%a_%_H.%M.%S"); 
-        let dir_name = format!("{}", current_datetime_formatter);
-
-        path.push_str("/");
-        path.push_str(&dir_name);
+        proj_path.push_str("/");
+        let dir_name = format!("Results {}", Self::cur_time_str());
+        proj_path.push_str(&dir_name);
         
-        match fs::create_dir(&path) {
+        match fs::create_dir(&proj_path) {
             Ok(_) => {},
             Err(err) => { return Err(MyError::new(err.to_string())); },
         };
 
         // save all images
         for step_num in 0..self.steps.len() {
-            let mut file_path = path.clone();
+            let mut file_path = proj_path.clone();
             file_path.push_str(&format!("/{}.bmp", step_num + 1));
 
             self.steps[step_num].image().unwrap().try_save(&file_path)?;
         }
 
-        Ok(())
+        Ok(true)
     }
 }

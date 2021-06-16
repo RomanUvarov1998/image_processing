@@ -20,10 +20,10 @@ impl StringFromTo for ImgChannel {
         let mut lines = utils::LinesIter::new(string);
         if lines.len() != 1 { return Err(MyError::new(format_err_msg)); }
 
-        let mut words = utils::WordsIter::new(lines.next(), " ");
+        let mut words = utils::WordsIter::new(lines.next_or_empty(), " ");
         if words.len() != 2 { return Err(MyError::new(format_err_msg)); }
-        if words.next() != "Channel:" { return Err(MyError::new(format_err_msg)); }
-        let channel = match words.next() {
+        if words.next_or_empty() != "Channel:" { return Err(MyError::new(format_err_msg)); }
+        let channel = match words.next_or_empty() {
             "A" => ImgChannel::A,
             "R" => ImgChannel::R,
             "G" => ImgChannel::G,

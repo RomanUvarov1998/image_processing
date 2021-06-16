@@ -120,12 +120,12 @@ impl StringFromTo for MedianFilter {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let size = FilterWindowSize::try_from_string(lines_iter.next())?
+        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
             .check_size_be_3()?
             .check_w_equals_h()?
             .check_w_h_odd()?;
 
-        let ext_value = ExtendValue::try_from_string(lines_iter.next())?;
+        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
         return Ok(MedianFilter::new(size, ext_value));
     }
@@ -335,14 +335,14 @@ impl StringFromTo for HistogramLocalContrast {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 3 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let size = FilterWindowSize::try_from_string(lines_iter.next())?
+        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
             .check_size_be_3()?
             .check_w_equals_h()?
             .check_w_h_odd()?;
 
-        let ext_value = ExtendValue::try_from_string(lines_iter.next())?;
+        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
-        let a_values = ARange::try_from_string(&lines_iter.next())?;
+        let a_values = ARange::try_from_string(&lines_iter.next_or_empty())?;
 
         return Ok(HistogramLocalContrast::new(size, ext_value, a_values));
     }
@@ -426,9 +426,9 @@ impl StringFromTo for CutBrightness {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let cut_range = CutBrightnessRange::try_from_string(lines_iter.next())?;
+        let cut_range = CutBrightnessRange::try_from_string(lines_iter.next_or_empty())?;
 
-        let replace_with = ValueRepaceWith::try_from_string(lines_iter.next())?;
+        let replace_with = ValueRepaceWith::try_from_string(lines_iter.next_or_empty())?;
 
         Ok(CutBrightness::new(cut_range, replace_with))
     }

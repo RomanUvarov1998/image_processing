@@ -103,12 +103,12 @@ impl StringFromTo for LinearGaussian {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-        let size = FilterWindowSize::try_from_string(lines_iter.next())?
+        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
             .check_size_be_3()?
             .check_w_equals_h()?
             .check_w_h_odd()?;
 
-        let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next())?;
+        let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
         Ok(LinearGaussian::new(size, ext_value))
     }
@@ -212,9 +212,9 @@ impl StringFromTo for LinearCustom {
 
         for _ in 0..lines_iter.len() - 2 {
             let mut row = Vec::<f64>::new();
-            let mut words_iter = WordsIter::new(lines_iter.next(), ",");
+            let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), ",");
             loop {
-                match words_iter.next() {
+                match words_iter.next_or_empty() {
                     "" => break,
                     word => match word.parse::<f64>() {
                         Ok(value) => { row.push(value) }
@@ -234,9 +234,9 @@ impl StringFromTo for LinearCustom {
             return Err(MyError::new("Матрица должна иметь размеры > 1".to_string()));
         }
 
-        let ext_value = ExtendValue::try_from_string(lines_iter.next())?;
+        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
-        let normalized_value = NormalizeOption::try_from_string(lines_iter.next())?;
+        let normalized_value = NormalizeOption::try_from_string(lines_iter.next_or_empty())?;
 
         let mut coeffs = Vec::<f64>::new();
         for mut row in rows.clone() {
@@ -411,12 +411,12 @@ fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
     let mut lines_iter = LinesIter::new(string);
     if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
-    let size = FilterWindowSize::try_from_string(lines_iter.next())?
+    let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
         .check_size_be_3()?
         .check_w_equals_h()?
         .check_w_h_odd()?;
 
-    let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next())?;
+    let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
     Ok(LinearMean::new(size, ext_value))
 }

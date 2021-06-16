@@ -33,17 +33,17 @@ impl StringFromTo for FilterWindowSize {
 
         let format_err_msg = "Формат размера окна фильтра: '<целое число> x <целое число>".to_string();
         
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
         if words_iter.len() != 3 { return Err(MyError::new(format_err_msg)); }
         
-        let height = match words_iter.next().parse::<usize>() {
+        let height = match words_iter.next_or_empty().parse::<usize>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
 
-        if words_iter.next() != "x" { return Err(MyError::new(format_err_msg)); }
+        if words_iter.next_or_empty() != "x" { return Err(MyError::new(format_err_msg)); }
 
-        let width = match words_iter.next().parse::<usize>() {
+        let width = match words_iter.next_or_empty().parse::<usize>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
@@ -82,7 +82,7 @@ impl StringFromTo for NormalizeOption {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
 
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
 
         let format_err_msg = "Формат условия нормализации коэффициентов: 'Normalize: true' или 'Normalize: false'".to_string();
 
@@ -90,11 +90,11 @@ impl StringFromTo for NormalizeOption {
             return Err(MyError::new(format_err_msg));
         }
 
-        if words_iter.next() != "Normalize:" {
+        if words_iter.next_or_empty() != "Normalize:" {
             return Err(MyError::new(format_err_msg));
         }
 
-        let norm = match words_iter.next() {
+        let norm = match words_iter.next_or_empty() {
             "true" => NormalizeOption::Normalized,
             "false" => NormalizeOption::NotNormalized,
             _ => { return Err(MyError::new(format_err_msg)); }
@@ -122,7 +122,7 @@ impl StringFromTo for ExtendValue {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
 
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
 
         let foemat_err_msg = "Формат граничных условий: 'Ext: near' или 'Ext: 0'".to_string();
 
@@ -130,11 +130,11 @@ impl StringFromTo for ExtendValue {
             return Err(MyError::new(foemat_err_msg));
         }
 
-        if words_iter.next() != "Ext:" {
+        if words_iter.next_or_empty() != "Ext:" {
             return Err(MyError::new(foemat_err_msg));
         }
 
-        let ext_value = match words_iter.next() {
+        let ext_value = match words_iter.next_or_empty() {
             "0" => ExtendValue::Given(0_f64),
             "near" => ExtendValue::Closest,
             _ => { return Err(MyError::new(foemat_err_msg)); }
@@ -167,17 +167,17 @@ impl StringFromTo for ARange {
 
         let format_err_msg = "Формат диапазона: '<дробное число> - <дробное число>'".to_string();
         
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
         if words_iter.len() != 3 { return Err(MyError::new(format_err_msg)); }
 
-        let min = match words_iter.next().parse::<f64>() {
+        let min = match words_iter.next_or_empty().parse::<f64>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
 
-        if words_iter.next() != "-"  { return Err(MyError::new(format_err_msg)); }
+        if words_iter.next_or_empty() != "-"  { return Err(MyError::new(format_err_msg)); }
 
-        let max = match words_iter.next().parse::<f64>() {
+        let max = match words_iter.next_or_empty().parse::<f64>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
@@ -205,18 +205,18 @@ impl StringFromTo for CutBrightnessRange {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
 
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
 
         let format_err_msg = "Формат диапазона яркости: '<целое число от 0 до 255 включительно> - <целое число от 0 до 255 включительно>'".to_string();
 
-        let min = match words_iter.next().parse::<u8>() {
+        let min = match words_iter.next_or_empty().parse::<u8>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
 
-        if words_iter.next() != "-" { return Err(MyError::new(format_err_msg)); }
+        if words_iter.next_or_empty() != "-" { return Err(MyError::new(format_err_msg)); }
 
-        let max = match words_iter.next().parse::<u8>() {
+        let max = match words_iter.next_or_empty().parse::<u8>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); }
         };
@@ -243,9 +243,9 @@ impl StringFromTo for ValueRepaceWith {
 
         let format_err_msg = "Формат значения, на которое заменить: '<целое число от 0 до 255 включительно>'".to_string();
 
-        let mut words_iter = WordsIter::new(lines_iter.next(), " ");
+        let mut words_iter = WordsIter::new(lines_iter.next_or_empty(), " ");
         
-        let value = match words_iter.next().parse::<u8>() {
+        let value = match words_iter.next_or_empty().parse::<u8>() {
             Ok(val) => val,
             Err(_) => { return Err(MyError::new(format_err_msg)); },
         };
