@@ -123,7 +123,6 @@ pub struct ProcessingLine<'wind> {
     step_editor: StepEditor,
     processing_data: Arc<Mutex<Option<ProcessingData>>>,
     processing_thread: JoinHandle<()>,
-    are_steps_chained: bool,
     // graphical parts
     wind_size_prev: (i32, i32),
     img_presenter: MyImgPresenter,
@@ -232,8 +231,6 @@ impl<'wind> ProcessingLine<'wind> {
             step_editor: StepEditor::new(),
             processing_data,
             processing_thread: processing_thread_handle,
-            are_steps_chained: true,
-            
             // graphical parts
             wind_size_prev,
             img_presenter,
@@ -398,8 +395,7 @@ impl<'wind> ProcessingLine<'wind> {
 
                                 Self::clear_steps_results(&mut self.steps[step_num..]);
 
-                                self.are_steps_chained = do_until_end;
-                                match self.try_start_step(step_num) {
+                                match self.try_start_step(step_num, do_until_end) {
                                     Ok(_) => {}
                                     Err(err) => {
                                         show_err_msg(&self.parent_window, &err.to_string());
@@ -448,19 +444,20 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> result::Result<(), MyError> {
-        let pd_locked = self.processing_data.lock().unwrap().take();
-        let result_img = match pd_locked {
-            Some(mut p) => match p.get_result() {
-                Some(img) => img,
-                None => { return Err(MyError::new("Нет результирующего изображения(".to_string())); },
-            },
-            None => { return Err(MyError::new("Нет данных для обработки(".to_string())); },
-        };
+        let mut pd_locked = self.processing_data.lock()
+            .unwrap()
+            .take()
+            .expect("No processing_data detected");
+
+        let result_img = pd_locked.take_result()
+            .expect("No result image in processing_data");
 
         self.steps[step_num].display_result(result_img)?;
 
-        if self.are_steps_chained && step_num < self.steps.len() - 1 {
-            self.try_start_step(step_num + 1)?;
+        let do_until_end = pd_locked.do_until_end;
+
+        if do_until_end && step_num < self.steps.len() - 1 {
+            self.try_start_step(step_num + 1, do_until_end)?;
         } else {
             self.set_all_controls_active(true);
             self.whole_prog_bar.hide();
@@ -539,7 +536,7 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn try_start_step(&mut self, step_num: usize) -> result::Result<(), MyError> {
+    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> result::Result<(), MyError> {
         assert!(self.steps.len() > step_num);
 
         let img_copy = if step_num == 0 {
@@ -559,7 +556,7 @@ impl<'wind> ProcessingLine<'wind> {
         };
 
         let action_copy = self.steps[step_num].action().clone();
-        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy));
+        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy, do_until_end));
         self.steps[step_num].start_processing();
 
         self.processing_thread.thread().unpark();
@@ -778,19 +775,21 @@ struct ProcessingData {
     step_action: StepAction,
     init_img: Img,
     result_img: Option<Img>,
+    do_until_end: bool
 }
 
 impl ProcessingData {
-    fn new(step_num: usize, step_action: StepAction, init_img: Img) -> Self {
+    fn new(step_num: usize, step_action: StepAction, init_img: Img, do_until_end: bool) -> Self {
         ProcessingData {
             step_num,
             step_action,
             init_img,
             result_img: None,
+            do_until_end
         }
     }
 
-    fn get_result(&mut self) -> Option<Img> { self.result_img.take() }
+    fn take_result(&mut self) -> Option<Img> { self.result_img.take() }
 }
 
 pub struct ProcessingStep<'label> {
