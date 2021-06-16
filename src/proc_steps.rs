@@ -387,20 +387,17 @@ impl<'wind> ProcessingLine<'wind> {
                     Message::Processing(msg) => {
                         match msg {
                             Processing::StepsChainIsStarted { step_num, do_until_end } => {
-                                self.set_all_controls_active(false);
-
-                                self.whole_prog_bar.show();
-                                let whole_prog_min = step_num * 100 / self.steps.len();
-                                self.whole_prog_bar.set_value(whole_prog_min);
-
-                                Self::clear_steps_results(&mut self.steps[step_num..]);
-
                                 match self.try_start_step(step_num, do_until_end) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        show_err_msg(&self.parent_window, &err.to_string());
-                                        self.set_all_controls_active(true);
+                                    Ok(_) => {
+                                        self.set_all_controls_active(false);
+        
+                                        self.whole_prog_bar.show();
+                                        let whole_prog_min = step_num * 100 / self.steps.len();
+                                        self.whole_prog_bar.set_value(whole_prog_min);
+        
+                                        Self::clear_steps_results(&mut self.steps[step_num..]);
                                     }
+                                    Err(err) => show_err_msg(&self.parent_window, &err.to_string())
                                 };
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
@@ -410,12 +407,17 @@ impl<'wind> ProcessingLine<'wind> {
                                 self.steps[step_num].display_progress(cur_percents);
                             },
                             Processing::StepIsCompleted { step_num } => {
-                                match self.on_step_completed(step_num) {
-                                    Ok(_) => {},
+                                let processing_continued: bool = match self.on_step_completed(step_num) {
+                                    Ok(continued) => continued,
                                     Err(err) => {
                                         show_err_msg(&self.parent_window, &err.to_string());
-                                        self.set_all_controls_active(true);
+                                        false
                                     },
+                                };
+                                
+                                if !processing_continued {
+                                    self.set_all_controls_active(true);
+                                    self.whole_prog_bar.hide();
                                 }
                             },
                         };
@@ -443,7 +445,7 @@ impl<'wind> ProcessingLine<'wind> {
         }
     }
 
-    fn on_step_completed(&mut self, step_num: usize) -> result::Result<(), MyError> {
+    fn on_step_completed(&mut self, step_num: usize) -> result::Result<bool, MyError> {
         let mut pd_locked = self.processing_data.lock()
             .unwrap()
             .take()
@@ -463,7 +465,7 @@ impl<'wind> ProcessingLine<'wind> {
             self.whole_prog_bar.hide();
         }
         
-        Ok(())
+        Ok(do_until_end)
     }
 
     fn auto_resize(&mut self) -> Result<(), MyError> {
