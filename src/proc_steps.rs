@@ -245,14 +245,6 @@ impl<'wind> ProcessingLine<'wind> {
         }
     }
 
-    pub fn add(&mut self, step_action: StepAction) -> () {
-        self.scroll_pack.begin();
-
-        self.steps.push(ProcessingStep::new(&self, step_action));
-
-        self.scroll_pack.end();
-    }
-
     pub fn run(&mut self, app: app::App) -> result::Result<(), MyError> {
         while app.wait() {
             if let Some(msg) = self.receiver.recv() {
@@ -291,44 +283,44 @@ impl<'wind> ProcessingLine<'wind> {
                         match msg {
                             AddStep::AddStepLinCustom => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearCustom::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepLinMean => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearMean::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepLinGauss => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearGaussian::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepMed => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, MedianFilter::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepHistogramLocalContrast => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, HistogramLocalContrast::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepCutBrightness => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, CutBrightness::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
-                            AddStep::AddStepHistogramEqualizer => self.add(StepAction::HistogramEqualizer),
-                            AddStep::AddStepRgb2Gray => self.add(StepAction::Rgb2Gray),
+                            AddStep::AddStepHistogramEqualizer => self.add_step(StepAction::HistogramEqualizer),
+                            AddStep::AddStepRgb2Gray => self.add_step(StepAction::Rgb2Gray),
                             AddStep::AddStepNeutralizeChannel => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, NeutralizeChannel::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                             AddStep::AddStepExtractChannel => {
                                 if let Some(new_action) = self.step_editor.add_with_dlg(app, ExtractChannel::default().into()) {
-                                    self.add(new_action);
+                                    self.add_step(new_action);
                                 }
                             },
                         };
@@ -385,17 +377,26 @@ impl<'wind> ProcessingLine<'wind> {
                         self.parent_window.redraw();
                     },
                     Message::Processing(msg) => {
+                        let set_all_controls_active = |owner: &mut Self, active: bool| {
+                            for step in owner.steps.iter_mut() {
+                                step.set_buttons_active(active);
+                            }
+                            owner.main_menu.set_active(active);
+                        };
+
                         match msg {
                             Processing::StepsChainIsStarted { step_num, do_until_end } => {
                                 match self.try_start_step(step_num, do_until_end) {
                                     Ok(_) => {
-                                        self.set_all_controls_active(false);
+                                        set_all_controls_active(self, false);
         
                                         self.whole_prog_bar.show();
                                         let whole_prog_min = step_num * 100 / self.steps.len();
                                         self.whole_prog_bar.set_value(whole_prog_min);
         
-                                        Self::clear_steps_results(&mut self.steps[step_num..]);
+                                        for step in &mut self.steps[step_num..] {
+                                            step.clear_result();
+                                        }
                                     }
                                     Err(err) => show_err_msg(&self.parent_window, &err.to_string())
                                 };
@@ -416,7 +417,7 @@ impl<'wind> ProcessingLine<'wind> {
                                 };
 
                                 if !processing_continued {
-                                    self.set_all_controls_active(true);
+                                    set_all_controls_active(self, true);
                                     self.whole_prog_bar.hide();
                                 }
                             },
@@ -432,17 +433,55 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn set_all_controls_active(&mut self, active: bool) {
-        for step in self.steps.iter_mut() {
-            step.set_buttons_active(active);
-        }
-        self.main_menu.set_active(active);
+
+    fn add_step(&mut self, step_action: StepAction) -> () {
+        self.scroll_pack.begin();
+
+        self.steps.push(ProcessingStep::new(self.w, self.h, self.steps.len(), step_action));
+
+        self.scroll_pack.end();
     }
 
-    fn clear_steps_results(steps: &mut [ProcessingStep]) {
-        for step in steps.iter_mut() {
-            step.clear_result();
+    fn delete_step(&mut self, step_num: usize) {
+        self.scroll_pack.begin();
+        self.steps[step_num].remove_self_from(&mut self.scroll_pack);
+        self.scroll_pack.end();
+
+        self.steps.remove(step_num);
+
+        for sn in step_num..self.steps.len() {
+            self.steps[sn].update_btn_emits(sn);
         }
+
+        self.scroll_pack.top_window().unwrap().set_damage(true);
+    }
+
+
+    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> result::Result<(), MyError> {
+        assert!(self.steps.len() > step_num);
+
+        if !self.img_presenter.has_image() {
+            return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
+        }
+
+        let img_copy = if step_num == 0 {
+            self.img_presenter.image().unwrap().clone()
+        } else {
+            match self.steps[step_num - 1].get_data_copy() {
+                Some(img_copy) => img_copy,
+                None => { 
+                    return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string())); 
+                }
+            }
+        };
+
+        let action_copy = self.steps[step_num].action().clone();
+        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy, do_until_end));
+        self.steps[step_num].start_processing();
+
+        self.processing_thread.thread().unpark();
+
+        Ok(())
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> result::Result<bool, MyError> {
@@ -456,17 +495,15 @@ impl<'wind> ProcessingLine<'wind> {
 
         self.steps[step_num].display_result(result_img)?;
 
-        let do_until_end = pd_locked.do_until_end;
+        let should_continue = pd_locked.do_until_end && step_num < self.steps.len() - 1;
 
-        if do_until_end && step_num < self.steps.len() - 1 {
-            self.try_start_step(step_num + 1, do_until_end)?;
-        } else {
-            self.set_all_controls_active(true);
-            self.whole_prog_bar.hide();
+        if should_continue {
+            self.try_start_step(step_num + 1, should_continue)?;
         }
         
-        Ok(do_until_end)
+        Ok(should_continue)
     }
+
 
     fn auto_resize(&mut self) -> Result<(), MyError> {
         let ww = self.parent_window.w();
@@ -497,24 +534,13 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(())
     }
 
-    fn delete_step(&mut self, step_num: usize) {
-        self.scroll_pack.begin();
-        self.steps[step_num].remove_self_from(&mut self.scroll_pack);
-        self.scroll_pack.end();
-
-        self.steps.remove(step_num);
-
-        for sn in step_num..self.steps.len() {
-            self.steps[sn].update_btn_emits(sn);
-        }
-
-        self.scroll_pack.top_window().unwrap().set_damage(true);
-    }
-
+    
     fn try_load_initial_img(&mut self) -> result::Result<(), MyError> {
         if self.img_presenter.has_image() {
             if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
-                Self::clear_steps_results(&mut self.steps[..]);
+                for step in self.steps.iter_mut() {
+                    step.clear_result();
+                }
             } else {
                 return Ok(());
             }
@@ -524,43 +550,15 @@ impl<'wind> ProcessingLine<'wind> {
         dlg.show();
         let path_buf = dlg.filename();
 
-        match path_buf.to_str() {
-            Some(p) => if p.is_empty() { return Ok(()); }
-            _ => {}
-        }        
+        if let Some(p) = path_buf.to_str() {
+            if p.is_empty() { return Ok(()); }
+        }     
 
         let init_image = img::Img::load_as_rgb(path_buf)?;
 
         self.lbl_init_img.set_text(&init_image.get_description());
 
         self.img_presenter.set_image(init_image)?;
-
-        Ok(())
-    }
-
-    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> result::Result<(), MyError> {
-        assert!(self.steps.len() > step_num);
-
-        if !self.img_presenter.has_image() {
-            return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
-        }
-
-        let img_copy = if step_num == 0 {
-            self.img_presenter.image().unwrap().clone()
-        } else {
-            match self.steps[step_num - 1].get_data_copy() {
-                Some(img_copy) => img_copy,
-                None => { 
-                    return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string())); 
-                }
-            }
-        };
-
-        let action_copy = self.steps[step_num].action().clone();
-        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy, do_until_end));
-        self.steps[step_num].start_processing();
-
-        self.processing_thread.thread().unpark();
 
         Ok(())
     }
@@ -717,7 +715,7 @@ impl<'wind> ProcessingLine<'wind> {
                 },
             };
 
-            self.add(step_action);
+            self.add_step(step_action);
         }
 
         Ok(())
@@ -810,18 +808,16 @@ pub struct ProcessingStep<'label> {
 const PADDING: i32 = 20;
 
 impl<'label> ProcessingStep<'label> {
-    fn new(proc_line: &ProcessingLine, action: StepAction) -> Self {
+    fn new(w: i32, h: i32, step_num: usize, action: StepAction) -> Self {
         let name: String = action.filter_description();
 
-        let mut main_column = MyColumn::new(proc_line.w, 100);
+        let mut main_column = MyColumn::new(w, 100);
 
         let label_step_name = MyLabel::new(&name);
 
         let (sender, _) = app::channel::<Message>();
 
-        let mut btns_row = MyRow::new(proc_line.w, label_step_name.h()); 
-
-        let step_num = proc_line.steps.len();
+        let mut btns_row = MyRow::new(w, label_step_name.h()); 
 
         let btn_process = MyMenuButton::new("Запустить");
         let btn_edit = MyButton::with_label("Изменить");
@@ -830,11 +826,11 @@ impl<'label> ProcessingStep<'label> {
 
         btns_row.end();
 
-        let mut prog_bar = MyProgressBar::new(proc_line.w - PADDING, 30);
+        let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
         prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            proc_line.w - PADDING, proc_line.h - btns_row.h() * 2);
+            w - PADDING, h - btns_row.h() * 2);
         
         main_column.end();
         
