@@ -1,25 +1,14 @@
 use std::{borrow::{Borrow}};
-
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use crate::{img::Img, message::{Message}, my_err::MyError};
-
 use super::{Alignable, TEXT_PADDING};
+
 
 pub struct MyButton {
     btn: button::Button,
 }
 
-#[allow(unused)]
 impl MyButton {
-    pub fn new<'label, TMsg>(label: &'label str, sender: Sender<TMsg>, msg: TMsg) -> Self 
-        where TMsg: 'static + Clone + Copy + Send + Sync
-    {
-        let mut my_button = Self::with_label(label);
-        my_button.set_emit(sender, msg);
-
-        my_button
-    }
-
     pub fn with_label<'label>(label: &'label str) -> Self {
         let mut btn = button::Button::default();
         btn.set_label(label);
@@ -36,8 +25,6 @@ impl MyButton {
         self.btn.emit(sender, msg);
     }
 
-    pub fn widget<'inner>(&'inner self) -> &'inner button::Button { &self.btn }
-
     pub fn set_active(&mut self, active: bool) {
         if active { 
             self.btn.activate(); 
@@ -48,10 +35,6 @@ impl MyButton {
 }
 
 impl Alignable for MyButton {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.btn.x() }
@@ -64,12 +47,10 @@ impl Alignable for MyButton {
 }
 
 
-#[allow(unused)]
 pub struct MyLabel {
     label: frame::Frame,
 }
 
-#[allow(unused)]
 impl MyLabel {
     pub fn new<'text>(text: &'text str) -> Self {
         let mut label = frame::Frame::default();
@@ -89,15 +70,9 @@ impl MyLabel {
     pub fn set_width(&mut self, new_w: i32) {
         self.label.set_size(new_w, self.label.h());
     }
-
-    pub fn widget<'inner>(&'inner self) -> &'inner frame::Frame { &self.label }
 }
 
 impl Alignable for MyLabel {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.label.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.label.x() }
@@ -110,12 +85,10 @@ impl Alignable for MyLabel {
 }
 
 
-#[allow(unused)]
 pub struct MyMenuBar {
     mb: menu::MenuBar
 }
 
-#[allow(unused)]
 impl MyMenuBar {
     pub fn new<P: WidgetExt>(parent: &P) -> Self {
         MyMenuBar {
@@ -143,10 +116,6 @@ impl MyMenuBar {
 }
 
 impl Alignable for MyMenuBar {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.mb.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.mb.x() }
@@ -159,7 +128,6 @@ impl Alignable for MyMenuBar {
 }
 
 
-#[allow(unused)]
 pub struct MyMenuButton<'label, TMsg> 
     where TMsg: 'static + Clone + Copy + Send + Sync
 {
@@ -167,7 +135,6 @@ pub struct MyMenuButton<'label, TMsg>
     emmits: Vec<(&'label str, Sender<TMsg>, TMsg)>
 }
 
-#[allow(unused)]
 impl<'label> MyMenuButton<'label, Message> {
     pub fn new(label: &'label str) -> Self {
         let mut btn = menu::MenuButton::default();
@@ -188,8 +155,6 @@ impl<'label> MyMenuButton<'label, Message> {
         self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
     }
 
-    pub fn widget<'inner>(&'inner self) -> &'inner menu::MenuButton { &self.btn }
-
     pub fn set_active(&mut self, active: bool) {
         if active { 
             self.btn.activate(); 
@@ -202,10 +167,6 @@ impl<'label> MyMenuButton<'label, Message> {
 impl<'label, TMsg> Alignable for MyMenuButton<'label, TMsg>
     where TMsg: 'static + Clone + Copy + Send + Sync
 {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.btn.x() }
@@ -283,10 +244,6 @@ impl MyImgPresenter {
 }
 
 impl Alignable for MyImgPresenter {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.frame_img.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.frame_img.x() }
@@ -333,10 +290,6 @@ impl MyProgressBar {
 }
 
 impl Alignable for MyProgressBar {
-    fn alignment(&self) -> super::Alignment {
-        todo!()
-    }
-
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.bar.resize(x, y, w, h); }
 
     fn x(&self) -> i32 { self.bar.x() }
