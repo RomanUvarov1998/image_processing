@@ -176,19 +176,6 @@ impl Matrix2D {
         Ok(im_rgb)
     }
 
-    pub fn try_save(&self, path: &str) -> Result<(), MyError> {
-        let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
-
-        for pos in self.get_pixels_iter() {
-            let pix = bmp::Pixel::new(self[pos] as u8, self[pos] as u8, self[pos] as u8);
-            img_to_save.set_pixel(pos.col as u32, pos.row as u32, pix);
-        }
-
-        img_to_save.save(path)?;
-
-        Ok(())
-    }
-
     fn set_rect(&mut self, tl: PixelPos, br_excluded: PixelPos, value: f64) -> () {
         for pos in self.get_pixels_area_iter(tl, br_excluded) {
             self[pos] = value;
@@ -379,36 +366,38 @@ impl Img {
     }
 
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {
-        let mut img_to_save = bmp::Image::new(self.w() as u32, self.h() as u32);
+        use jpeg_encoder::{Encoder, ColorType};
 
-        for pos in self.get_pixels_iter() {
-            let pixel = match self.color_depth {
-                ColorDepth::L8 => {
-                    let pix_val = self.layers[0][pos] as u8;
-                    bmp::Pixel::new(pix_val, pix_val, pix_val)
-                },
-                ColorDepth::La8 => {
-                    let pix_val = (self.layers[0][pos] * self.layers[1][pos]) as u8;
-                    bmp::Pixel::new(pix_val, pix_val, pix_val)
-                },
-                ColorDepth::Rgb8 => {
-                    let r = self.layers[0][pos] as u8;
-                    let g = self.layers[1][pos] as u8;
-                    let b = self.layers[2][pos] as u8;
-                    bmp::Pixel::new(r, g, b)
-                },
-                ColorDepth::Rgba8 => {                    
-                    let a: f64 = self.layers[3][pos];
-                    let r = (self.layers[0][pos] * a) as u8;
-                    let g = (self.layers[1][pos] * a) as u8;
-                    let b = (self.layers[2][pos] * a) as u8;
-                    bmp::Pixel::new(r, g, b)
-                },
-            };
-            img_to_save.set_pixel(pos.col as u32, pos.row as u32, pixel);
-        }
+        let (pixels, color_type): (Vec<u8>, ColorType) = match self.color_depth() {
+            ColorDepth::L8 | ColorDepth::La8 => {
+                let vals: Vec<u8> = self.layer(0).matrix().pixels
+                    .iter()
+                    .map(|p| *p as u8)
+                    .collect();
 
-        img_to_save.save(path)?;
+                (vals, ColorType::Luma)
+            },
+            ColorDepth::Rgb8 | ColorDepth::Rgba8 => {
+                let mut vals = Vec::<u8>::with_capacity(self.w() * self.h() * 3);
+                
+                let r = &self.layer(0).matrix().pixels;
+                let g = &self.layer(1).matrix().pixels;
+                let b = &self.layer(2).matrix().pixels;
+
+                for pix_num in 0..self.w() * self.h() {
+                    vals.push(r[pix_num] as u8);
+                    vals.push(g[pix_num] as u8);
+                    vals.push(b[pix_num] as u8);
+                }
+
+                assert_eq!(vals.len(), self.w() * self.h() * 3);
+                    
+                (vals, ColorType::Rgb)
+            },
+        };
+
+        let mut encoder = Encoder::new_file(path, 100)?;
+        encoder.encode(&pixels, self.w() as u16, self.h() as u16, color_type)?;
 
         Ok(())
     }

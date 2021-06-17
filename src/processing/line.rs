@@ -12,7 +12,7 @@ pub struct ProcessingLine<'wind> {
     receiver: Receiver<Message>,
     step_editor: StepEditor,
     processing_data: Arc<Mutex<Option<ProcessingData>>>,
-    processing_thread: JoinHandle<()>,
+    processing_thread_handle: JoinHandle<()>,
     // graphical parts
     wind_size_prev: (i32, i32),
     img_presenter: MyImgPresenter,
@@ -20,7 +20,7 @@ pub struct ProcessingLine<'wind> {
     init_img_col: MyColumn,
     main_menu: MyMenuBar,
     lbl_init_img: MyLabel,
-    whole_prog_bar: MyProgressBar,
+    whole_proc_prog_bar: MyProgressBar,
     processing_col: MyColumn,
     scroll_area: group::Scroll,
     scroll_pack: group::Pack,    
@@ -60,11 +60,11 @@ impl<'wind> ProcessingLine<'wind> {
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
 
-        let mut whole_prog_bar = MyProgressBar::new(w / 2, 30);
-        whole_prog_bar.hide();
+        let mut whole_proc_prog_bar = MyProgressBar::new(w / 2, 30);
+        whole_proc_prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w / 2, h - lbl_init_img.h() - main_menu.h() - whole_prog_bar.h());
+            w / 2, h - lbl_init_img.h() - main_menu.h() - whole_proc_prog_bar.h());
         
         init_img_col.end();
 
@@ -120,7 +120,7 @@ impl<'wind> ProcessingLine<'wind> {
             receiver,
             step_editor: StepEditor::new(),
             processing_data,
-            processing_thread: processing_thread_handle,
+            processing_thread_handle,
             // graphical parts
             wind_size_prev,
             img_presenter,
@@ -128,7 +128,7 @@ impl<'wind> ProcessingLine<'wind> {
             init_img_col,
             main_menu,
             lbl_init_img,
-            whole_prog_bar,
+            whole_proc_prog_bar,
             processing_col,
             scroll_area,
             scroll_pack,
@@ -284,9 +284,9 @@ impl<'wind> ProcessingLine<'wind> {
                                     Ok(_) => {
                                         set_all_controls_active(self, false);
         
-                                        self.whole_prog_bar.show();
+                                        self.whole_proc_prog_bar.show();
                                         let whole_prog_min = step_num * 100 / self.steps.len();
-                                        self.whole_prog_bar.set_value(whole_prog_min);
+                                        self.whole_proc_prog_bar.set_value(whole_prog_min);
         
                                         for step in &mut self.steps[step_num..] {
                                             step.clear_result();
@@ -297,7 +297,7 @@ impl<'wind> ProcessingLine<'wind> {
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
                                 let whole_prog = (step_num * 100 + cur_percents) / self.steps.len();
-                                self.whole_prog_bar.set_value(whole_prog);
+                                self.whole_proc_prog_bar.set_value(whole_prog);
 
                                 self.steps[step_num].display_progress(cur_percents);
                             },
@@ -312,7 +312,7 @@ impl<'wind> ProcessingLine<'wind> {
 
                                 if !processing_continued {
                                     set_all_controls_active(self, true);
-                                    self.whole_prog_bar.hide();
+                                    self.whole_proc_prog_bar.hide();
                                 }
                             },
                         };
@@ -373,7 +373,7 @@ impl<'wind> ProcessingLine<'wind> {
         self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy, do_until_end));
         self.steps[step_num].start_processing();
 
-        self.processing_thread.thread().unpark();
+        self.processing_thread_handle.thread().unpark();
 
         Ok(())
     }
@@ -484,7 +484,7 @@ impl<'wind> ProcessingLine<'wind> {
         let mut path_buf = dlg.filename();
         path_buf.set_extension(Self::PROJECT_EXT);
 
-        let proj_path = match path_buf.to_str() {
+        let proj_path: &str = match path_buf.to_str() {
             Some(path) => path,
             None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
         };

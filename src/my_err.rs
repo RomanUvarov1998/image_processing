@@ -4,6 +4,7 @@ use std::{
 	fmt
 };
 use fltk::prelude::*;
+use jpeg_encoder::EncodingError;
 
 #[derive(Debug, Clone)]
 pub struct MyError {
@@ -48,6 +49,14 @@ impl From<std::io::Error> for MyError {
 
 impl From<FltkError> for MyError { 
 	fn from(err: FltkError) -> Self {
+		MyError {
+			msg: err.to_string()
+		}
+	}
+}
+
+impl From<EncodingError> for MyError { 
+	fn from(err: EncodingError) -> Self {
 		MyError {
 			msg: err.to_string()
 		}

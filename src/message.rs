@@ -1,11 +1,4 @@
 #[derive(Debug, Copy, Clone)]
-pub enum Processing {
-    StepsChainIsStarted { step_num: usize, do_until_end: bool },
-    StepProgress { step_num: usize, cur_percents: usize },
-    StepIsCompleted { step_num: usize },
-}
-
-#[derive(Debug, Copy, Clone)]
 pub enum Project {
     LoadImage,
     SaveProject,
@@ -35,6 +28,13 @@ pub enum StepOp {
     EditStep { step_num: usize }, 
     MoveStep { step_num: usize, direction: MoveStep }, 
     DeleteStep { step_num: usize },
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Processing {
+    StepsChainIsStarted { step_num: usize, do_until_end: bool },
+    StepProgress { step_num: usize, cur_percents: usize },
+    StepIsCompleted { step_num: usize },
 }
 
 #[derive(Debug, Copy, Clone)]
