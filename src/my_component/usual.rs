@@ -1,15 +1,7 @@
-use fltk::{app::Sender, button, enums::Shortcut, frame, group::{self, PackType}, menu, misc, prelude::{GroupExt, ImageExt, MenuExt, WidgetExt}};
+use fltk::{app::Sender, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetExt}};
 use crate::{img::Img, message::{Message}, my_err::MyError};
 
-
-pub const TEXT_PADDING: i32 = 10;
-
-
-pub trait SizedWidget {
-    fn w(&self) -> i32;
-    fn h(&self) -> i32;
-}
-
+use super::{Alignable, TEXT_PADDING};
 
 pub struct MyButton {
     btn: button::Button,
@@ -53,8 +45,19 @@ impl MyButton {
     }
 }
 
-impl SizedWidget for MyButton {
+impl Alignable for MyButton {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.btn.x() }
+
+    fn y(&self) -> i32 { self.btn.y() }
+
     fn w(&self) -> i32 { self.btn.w() }
+
     fn h(&self) -> i32 { self.btn.h() }
 }
 
@@ -88,8 +91,19 @@ impl MyLabel {
     pub fn widget<'inner>(&'inner self) -> &'inner frame::Frame { &self.label }
 }
 
-impl SizedWidget for MyLabel {
+impl Alignable for MyLabel {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.label.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.label.x() }
+
+    fn y(&self) -> i32 { self.label.y() }
+
     fn w(&self) -> i32 { self.label.w() }
+
     fn h(&self) -> i32 { self.label.h() }
 }
 
@@ -126,8 +140,19 @@ impl MyMenuBar {
     }
 }
 
-impl SizedWidget for MyMenuBar {
+impl Alignable for MyMenuBar {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.mb.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.mb.x() }
+
+    fn y(&self) -> i32 { self.mb.y() }
+
     fn w(&self) -> i32 { self.mb.w() }
+
     fn h(&self) -> i32 { self.mb.h() }
 }
 
@@ -172,10 +197,21 @@ impl<'label> MyMenuButton<'label, Message> {
     }
 }
 
-impl<'label, TMsg> SizedWidget for MyMenuButton<'label, TMsg>
+impl<'label, TMsg> Alignable for MyMenuButton<'label, TMsg>
     where TMsg: 'static + Clone + Copy + Send + Sync
 {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.btn.x() }
+
+    fn y(&self) -> i32 { self.btn.y() }
+
     fn w(&self) -> i32 { self.btn.w() }
+
     fn h(&self) -> i32 { self.btn.h() }
 }
 
@@ -256,82 +292,22 @@ impl MyImgPresenter {
     }
 }
 
-impl SizedWidget for MyImgPresenter {
+impl Alignable for MyImgPresenter {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.frame_img.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.frame_img.x() }
+
+    fn y(&self) -> i32 { self.frame_img.y() }
+
     fn w(&self) -> i32 { self.frame_img.w() }
 
     fn h(&self) -> i32 { self.frame_img.h() }
 }
 
-
-#[allow(unused)]
-pub struct MyColumn {
-    pack: group::Pack
-}
-
-#[allow(unused)]
-impl MyColumn {
-    pub fn new(w: i32, h: i32) -> Self {
-        let mut pack = group::Pack::default()
-            .with_size(w, h);
-        pack.set_type(PackType::Vertical);
-        const PADDING: i32 = 3;
-        pack.set_spacing(PADDING);
-
-        MyColumn { pack }
-    }
-
-    #[allow(unused)]
-    pub fn with_pos(mut self, x: i32, y: i32) -> Self {
-        self.pack.set_pos(x, y);
-        self
-    }
-
-    pub fn end(&mut self) { self.pack.end(); }
-
-    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
-        &mut self.pack 
-    }
-}
-
-impl SizedWidget for MyColumn {
-    fn w(&self) -> i32 { self.pack.w() }
-    fn h(&self) -> i32 { self.pack.h() }
-}
-
-
-#[allow(unused)]
-pub struct MyRow {
-    pack: group::Pack
-}
-
-#[allow(unused)]
-impl MyRow {
-    pub fn new(w: i32, h: i32) -> Self {
-        let mut pack = group::Pack::default()
-            .with_size(w, h);
-        pack.set_type(PackType::Horizontal);
-        const PADDING: i32 = 3;
-        pack.set_spacing(PADDING);
-
-        MyRow { pack }
-    }
-
-    pub fn with_pos(mut self, x: i32, y: i32) -> Self {
-        self.pack.set_pos(x, y);
-        self
-    }
-
-    pub fn end(&mut self) { self.pack.end(); }
-
-    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
-        &mut self.pack 
-    }
-}
-
-impl SizedWidget for MyRow {
-    fn w(&self) -> i32 { self.pack.w() }
-    fn h(&self) -> i32 { self.pack.h() }
-}
 
 
 pub struct MyProgressBar {
@@ -366,7 +342,17 @@ impl MyProgressBar {
     pub fn hide(&mut self) { self.bar.hide(); }
 }
 
-impl SizedWidget for MyProgressBar {
+impl Alignable for MyProgressBar {
+    fn alignment(&self) -> super::Alignment {
+        todo!()
+    }
+
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.bar.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.bar.x() }
+
+    fn y(&self) -> i32 { self.bar.y() }
+
     fn w(&self) -> i32 { self.bar.w() }
 
     fn h(&self) -> i32 { self.bar.h() }

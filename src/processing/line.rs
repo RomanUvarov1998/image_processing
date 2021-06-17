@@ -1,7 +1,7 @@
 use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, WidgetExt}, window};
-use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{MyColumn, MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar, MyRow, SizedWidget}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{container::{MyColumn, MyRow}, usual::{ MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}, Alignable}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
 use super::{PADDING, ProcessingData, StepAction, step::ProcessingStep, step_editor::StepEditor};
 
 

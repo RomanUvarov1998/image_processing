@@ -1,6 +1,6 @@
 use fltk::{app::{self, Sender}, group, prelude::GroupExt};
 
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{MyButton, MyColumn, MyImgPresenter, MyLabel, MyMenuButton, MyProgressBar, MyRow, SizedWidget}, my_err::MyError};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyImgPresenter, MyLabel, MyMenuButton, MyProgressBar}, Alignable}, my_err::MyError};
 
 use super::{PADDING, StepAction, step_editor::StepEditor};
 
