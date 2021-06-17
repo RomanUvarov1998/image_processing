@@ -415,10 +415,10 @@ impl<'wind> ProcessingLine<'wind> {
         self.scroll_pack.set_size(ww / 2 - PADDING, wh);
         self.scroll_pack.set_pos(self.x + ww / 2, self.y);
 
-        self.img_presenter.set_width(ww / 2)?;
+        self.img_presenter.redraw();
 
         for step in self.steps.iter_mut() {
-            step.auto_resize(ww / 2)?;
+            step.auto_resize(ww / 2);
         }
 
         self.wind_size_prev = (ww, wh);

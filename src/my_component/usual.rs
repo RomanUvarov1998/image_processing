@@ -1,4 +1,6 @@
-use fltk::{app::Sender, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetExt}};
+use std::{borrow::{Borrow}};
+
+use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use crate::{img::Img, message::{Message}, my_err::MyError};
 
 use super::{Alignable, TEXT_PADDING};
@@ -219,7 +221,7 @@ impl<'label, TMsg> Alignable for MyMenuButton<'label, TMsg>
 
 pub struct MyImgPresenter {
     frame_img: frame::Frame,
-    img_drawable_processable: Option<Img>,
+    img: Option<Img>,
 }
 
 impl MyImgPresenter {
@@ -232,64 +234,52 @@ impl MyImgPresenter {
         frame_img.set_frame(FrameType::EmbossedBox);
         frame_img.set_align(Align::Center); 
 
+        let img = None;
+
         MyImgPresenter {
             frame_img,
-            img_drawable_processable: None,
+            img,
         }
     }
 
     pub fn clear_image(&mut self) {
-        if let Some(_) = self.img_drawable_processable {
-            self.img_drawable_processable = None;
-            self.frame_img.set_image(Option::<fltk::image::RgbImage>::None);
-            self.frame_img.set_label("");
-            self.frame_img.redraw_label();
-            self.frame_img.redraw(); 
-        }
+        self.img = None;
+        self.frame_img.draw(|_| {});
+        self.frame_img.redraw(); 
     }
 
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
-        self.frame_img.set_label("");
-        self.frame_img.redraw_label();
-        self.set_scaled_img(img, self.frame_img.w(), self.frame_img.h())?;
+        let mut drawable = img.get_drawable_copy()?;
+
+        self.frame_img.draw(move |f| {
+            const IMG_PADDING: i32 = 10;
+
+            let x = f.x() + IMG_PADDING;
+            let y = f.y() + IMG_PADDING;
+            let w = f.w() - IMG_PADDING * 2;
+            let h = f.h() - IMG_PADDING * 2;
+
+            drawable.scale(w, h, true, true);
+            drawable.draw(x, y, w, h);
+        });
+
+        self.img = Some(img);
+
         self.frame_img.redraw(); 
 
         Ok(())
     }
 
-    pub fn has_image(&self) -> bool { self.img_drawable_processable.is_some() }
+    pub fn has_image(&self) -> bool { self.img.is_some() }
 
     pub fn image<'own>(&'own self) -> Option<&'own Img> {
-        match &self.img_drawable_processable {
-            Some(ref processable) => Some(processable),
+        match &self.img.borrow() {
+            Some(ref img) => Some(img),
             None => None,
         }
     }
 
-    pub fn set_width(&mut self, new_w: i32) -> Result<(), MyError> {
-        if self.has_image() {
-            self.set_scaled_img(self.image().unwrap().clone(), new_w, self.frame_img.h())?;
-            self.frame_img.set_size(new_w, self.frame_img.h());
-            self.frame_img.redraw(); 
-        }
-
-        Ok(())
-    }
-    
-    fn set_scaled_img(&mut self, img: Img, w: i32, h: i32) -> Result<(), MyError> {
-        pub const IMG_PADDING: i32 = 10;
-
-        let mut scaled_drawable = img.get_drawable_copy()?;
-        
-        self.img_drawable_processable = Some(img);
-
-        scaled_drawable.scale(w - IMG_PADDING, h - IMG_PADDING, 
-            true, true);
-
-        self.frame_img.set_image(Some(scaled_drawable));
-
-        Ok(())
-    }
+    pub fn redraw(&mut self) { self.frame_img.redraw(); }
 }
 
 impl Alignable for MyImgPresenter {

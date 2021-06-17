@@ -62,10 +62,10 @@ impl<'label> ProcessingStep<'label> {
     }
 
 
-    pub fn auto_resize(&mut self, new_width: i32) -> Result<(), MyError> {
+    pub fn auto_resize(&mut self, new_width: i32) {
         self.label_step_name.set_width(new_width);
         self.prog_bar.set_width(new_width);
-        self.img_presenter.set_width(new_width)
+        self.img_presenter.redraw();
     }
 
 
