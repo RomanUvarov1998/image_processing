@@ -1,12 +1,11 @@
-use fltk::{app::{self}, button, frame, group::{self, PackType}, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
+use fltk::{app::{self}, frame, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
 
-use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}};
+use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
 
 use super::StepAction;
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
-const BTN_TEXT_PADDING: i32 = 10;
 const INP_HEIGHT: i32 = 30;
 const PADDING: i32 = 20;
 const INPUT_FIELD_SIZE: (i32, i32) = (150, 30);
@@ -21,7 +20,7 @@ pub struct StepEditor {
     wind: window::Window,
     text_editor: text::TextEditor,
     lbl_message: frame::Frame,
-    btn_save: button::Button,
+    btn_save: MyButton,
 }
 
 impl StepEditor {
@@ -30,30 +29,32 @@ impl StepEditor {
             .with_size(WIN_WIDTH, WIN_HEIGHT)
             .with_label("Редактирование");
 
-        let mut hpack = group::Pack::default()
-            .with_pos(PADDING, PADDING)
-            .with_size(WIN_WIDTH - PADDING, INP_HEIGHT);
-        hpack.set_type(PackType::Horizontal);
-        hpack.set_spacing(PADDING);
+        let mut main_col = MyColumn::new(WIN_WIDTH - PADDING, INP_HEIGHT);
+        let mut row = MyRow::new(WIN_WIDTH - PADDING, INP_HEIGHT);
 
-        let mut btn_save = button::Button::default()
-            .with_label("Сохранить");
-        let (w,h) = btn_save.measure_label();
-        btn_save.set_size(w + BTN_TEXT_PADDING, h + BTN_TEXT_PADDING);
+        let btn_save = MyButton::with_label("Сохранить");
 
         let lbl_message = frame::Frame::default()
-            .with_size(WIN_WIDTH - (btn_save.x() + btn_save.width() + PADDING), INPUT_FIELD_SIZE.1);
+            .with_size(WIN_WIDTH - (btn_save.x() + btn_save.w() + PADDING), INPUT_FIELD_SIZE.1);
 
-        hpack.end();
+        row.end();
 
         let mut text_editor = text::TextEditor::default()
-            .with_pos(PADDING, hpack.y() + hpack.h() + PADDING)
-            .with_size(WIN_WIDTH - PADDING*2, WIN_HEIGHT - hpack.h() - PADDING);
+            .with_pos(PADDING, row.y() + row.h() + PADDING)
+            .with_size(WIN_WIDTH - PADDING * 2, WIN_HEIGHT - row.h() - PADDING);
         text_editor.set_buffer(text::TextBuffer::default()); 
+
+        main_col.end();
 
         wind.end();
         wind.make_resizable(true);
         wind.make_modal(true);
+
+        let row_copy = row.widget().clone();
+        let mut text_editor_copy = text_editor.clone();
+        wind.draw(move |w| {
+            text_editor_copy.set_size(w.w(), w.h() - row_copy.h());
+        });
 
         StepEditor {
             wind, btn_save, text_editor, lbl_message
@@ -63,7 +64,7 @@ impl StepEditor {
     pub fn add_with_dlg(&mut self, app: app::App, action: StepAction) -> Option<StepAction> {
         let (sender, receiver) = app::channel::<StepEditMessage>();
 
-        self.btn_save.emit(sender, StepEditMessage::TrySave);
+        self.btn_save.set_emit(sender, StepEditMessage::TrySave);
 
         let filter_settings: String = action.content_to_string();
         self.text_editor.buffer().unwrap().set_text(&filter_settings);

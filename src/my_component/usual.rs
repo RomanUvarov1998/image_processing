@@ -1,6 +1,6 @@
 use std::{borrow::{Borrow}};
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
-use crate::{img::Img, message::{Message}, my_err::MyError};
+use crate::{img::Img, my_err::MyError};
 use super::{Alignable, TEXT_PADDING};
 
 
@@ -23,14 +23,6 @@ impl MyButton {
         where TMsg: 'static + Clone + Copy + Send + Sync
     {
         self.btn.emit(sender, msg);
-    }
-
-    pub fn set_active(&mut self, active: bool) {
-        if active { 
-            self.btn.activate(); 
-        } else {
-            self.btn.deactivate();
-        }
     }
 }
 
@@ -126,58 +118,6 @@ impl Alignable for MyMenuBar {
 
     fn h(&self) -> i32 { self.mb.h() }
 }
-
-
-pub struct MyMenuButton<'label, TMsg> 
-    where TMsg: 'static + Clone + Copy + Send + Sync
-{
-    btn: menu::MenuButton,
-    emmits: Vec<(&'label str, Sender<TMsg>, TMsg)>
-}
-
-impl<'label> MyMenuButton<'label, Message> {
-    pub fn new(label: &'label str) -> Self {
-        let mut btn = menu::MenuButton::default();
-
-        btn.set_label(label);
-
-        let (w, h) = btn.measure_label();
-        const MENU_BTN_ARROW_W: i32 = 30;
-        btn.set_size(w + TEXT_PADDING + MENU_BTN_ARROW_W, h + TEXT_PADDING);
-
-        let emmits = Vec::<(&'label str, Sender<Message>, Message)>::new();
-
-        MyMenuButton::<Message>{ btn, emmits }
-    }
-
-    pub fn add_emit(&mut self, label: &'label str, sender: Sender<Message>, msg: Message) {
-        self.emmits.push((label, sender, msg));
-        self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
-    }
-
-    pub fn set_active(&mut self, active: bool) {
-        if active { 
-            self.btn.activate(); 
-        } else {
-            self.btn.deactivate();
-        }
-    }
-}
-
-impl<'label, TMsg> Alignable for MyMenuButton<'label, TMsg>
-    where TMsg: 'static + Clone + Copy + Send + Sync
-{
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
-
-    fn x(&self) -> i32 { self.btn.x() }
-
-    fn y(&self) -> i32 { self.btn.y() }
-
-    fn w(&self) -> i32 { self.btn.w() }
-
-    fn h(&self) -> i32 { self.btn.h() }
-}
-
 
 
 pub struct MyImgPresenter {

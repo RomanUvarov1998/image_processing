@@ -66,6 +66,10 @@ impl MyRow {
     pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
         &mut self.pack 
     }
+
+    pub fn widget<'own>(&'own self) -> &'own group::Pack { 
+        &self.pack 
+    }
 }
 
 impl Alignable for MyRow {
