@@ -7,7 +7,7 @@ use super::{PADDING, ProcessingData, StepAction, step::ProcessingStep, step_edit
 
 pub struct ProcessingLine<'wind> {
     parent_window: &'wind mut window::Window,
-    steps: Vec<ProcessingStep<'wind>>,
+    steps: Vec<ProcessingStep>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
     step_editor: StepEditor,

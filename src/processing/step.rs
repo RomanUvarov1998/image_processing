@@ -1,15 +1,12 @@
 use fltk::{app::{self, Sender}, group, prelude::GroupExt};
 
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyImgPresenter, MyLabel, MyMenuButton, MyProgressBar}, Alignable}, my_err::MyError};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn}, usual::{MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError};
 
 use super::{PADDING, StepAction, step_editor::StepEditor};
 
-pub struct ProcessingStep<'label> {
+pub struct ProcessingStep {
     main_column: MyColumn,
-    btn_process: MyMenuButton<'label, message::Message>,
-    btn_edit: MyButton,
-    btn_delete: MyButton,
-    btn_move_step: MyMenuButton<'label, message::Message>,
+    menu: MyMenuBar,
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
@@ -18,7 +15,7 @@ pub struct ProcessingStep<'label> {
     sender: Sender<Message>
 }
 
-impl<'label> ProcessingStep<'label> {
+impl ProcessingStep {
     pub fn new(w: i32, h: i32, step_num: usize, action: StepAction) -> Self {
         let name: String = action.filter_description();
 
@@ -28,26 +25,19 @@ impl<'label> ProcessingStep<'label> {
 
         let (sender, _) = app::channel::<Message>();
 
-        let mut btns_row = MyRow::new(w, label_step_name.h()); 
-
-        let btn_process = MyMenuButton::new("Запустить");
-        let btn_edit = MyButton::with_label("Изменить");
-        let btn_delete = MyButton::with_label("Удалить");
-        let btn_move_step = MyMenuButton::new("Переупорядочить");
-
-        btns_row.end();
+        let menu = MyMenuBar::new(main_column.widget());
 
         let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
         prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w - PADDING, h - btns_row.h() * 2);
+            w - PADDING, h - menu.h() * 2);
         
         main_column.end();
         
-         let mut step = ProcessingStep { 
+        let mut step = ProcessingStep { 
             main_column,
-            btn_process, btn_edit, btn_delete, btn_move_step,
+            menu,
             label_step_name,
             prog_bar,
             img_presenter, 
@@ -96,22 +86,19 @@ impl<'label> ProcessingStep<'label> {
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
-        self.btn_process.add_emit("Только этот шаг", self.sender, 
+        self.menu.add_emit("Запустить/Только этот шаг", self.sender, 
             Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: false }));
-        self.btn_process.add_emit("Этот шаг и все шаги ниже", self.sender, 
+        self.menu.add_emit("Запустить/Этот шаг и все шаги ниже", self.sender, 
             Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: true }));
-        self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
-        self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
-        self.btn_move_step.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        self.btn_move_step.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
+        self.menu.add_emit("Изменить", self.sender, Message::StepOp(StepOp::EditStep { step_num }));
+        self.menu.add_emit("Удалить", self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
+        self.menu.add_emit("Переупорядочить/Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
+        self.menu.add_emit("Переупорядочить/Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
         self.step_num = step_num;
     }
 
     pub fn set_buttons_active(&mut self, active: bool) {
-        self.btn_process.set_active(active);
-        self.btn_edit.set_active(active);
-        self.btn_delete.set_active(active);
-        self.btn_move_step.set_active(active);
+        self.menu.set_active(active);
     }
 
 

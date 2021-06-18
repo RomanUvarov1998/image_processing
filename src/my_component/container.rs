@@ -19,6 +19,10 @@ impl MyColumn {
 
     pub fn end(&mut self) { self.pack.end(); }
 
+    pub fn widget<'own>(&'own self) -> &'own group::Pack { 
+        &self.pack 
+    }
+
     pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
         &mut self.pack 
     }
