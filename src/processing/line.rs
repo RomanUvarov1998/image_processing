@@ -1,8 +1,8 @@
-use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
+use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, WidgetExt}, window};
-use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{container::{MyColumn, MyRow}, usual::{ MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}, Alignable}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
-use super::{PADDING, ProcessingData, StepAction, step::ProcessingStep, step_editor::StepEditor};
+use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{container::{MyColumn, MyRow}, usual::{ MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}, Alignable}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use super::{FilterBase, PADDING, ProcessingData, progress_provider::ProgressProvider, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine<'wind> {
@@ -87,20 +87,19 @@ impl<'wind> ProcessingLine<'wind> {
         wind_parent.end();
 
         let sender_copy = sender.clone();
-        let processing_data = Arc::new(Mutex::new(Option::<ProcessingData>::None));
+        let processing_data: Arc<Mutex<Option<ProcessingData>>> = Arc::new(Mutex::new(Option::<ProcessingData>::None));
         let processing_data_copy = processing_data.clone();
-        let processing_thread_handle = thread::spawn(move || {
+        let processing_thread_handle: JoinHandle<()> = thread::spawn(move || 
+        {
             loop {
                 thread::park();
                 match processing_data_copy.try_lock() {
                     Ok(mut guard) => match guard.as_mut() {
                         Some(pd) => {
-                            let step_num = pd.step_num;
-                            let progress_cbk = |cur_percents: usize| {
-                                sender_copy.send(Message::Processing(Processing::StepProgress { step_num, cur_percents }));
-                            };
+                            let mut prog_prov = ProgressProvider::new(sender_copy.clone());
+                            prog_prov.set_step_num(pd.step_num);
 
-                            pd.result_img = Some(pd.step_action.act(&pd.init_img, progress_cbk));
+                            pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
 
                             sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num: pd.step_num }));
                         },
@@ -174,56 +173,27 @@ impl<'wind> ProcessingLine<'wind> {
                         self.parent_window.redraw();
                     },
                     Message::AddStep(msg) => {
-                        match msg {
-                            AddStep::AddStepLinCustom => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearCustom::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepLinMean => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearMean::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepLinGauss => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, LinearGaussian::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepMed => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, MedianFilter::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepHistogramLocalContrast => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, HistogramLocalContrast::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepCutBrightness => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, CutBrightness::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepHistogramEqualizer => self.add_step(StepAction::HistogramEqualizer),
-                            AddStep::AddStepRgb2Gray => self.add_step(StepAction::Rgb2Gray),
-                            AddStep::AddStepNeutralizeChannel => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, NeutralizeChannel::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
-                            AddStep::AddStepExtractChannel => {
-                                if let Some(new_action) = self.step_editor.add_with_dlg(app, ExtractChannel::default().into()) {
-                                    self.add_step(new_action);
-                                }
-                            },
+                        let mut filter = match msg {
+                            AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
+                            AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
+                            AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
+                            AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
+                            AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
+                            AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
+                            AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
+                            AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
+                            AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
+                            AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
                         };
+                        if self.step_editor.edit_with_dlg(app, &mut filter) {
+                            self.add_step(filter);
+                        }
                         self.parent_window.redraw();
                     },
                     Message::StepOp(msg) => {
                         match msg {
                             StepOp::EditStep { step_num } => {
-                                self.steps[step_num].edit_action_with_dlg(app, &mut self.step_editor);
+                                self.steps[step_num].edit_filter_with_dlg(app, &mut self.step_editor);
                             },
                             StepOp::DeleteStep { step_num } => self.delete_step(step_num),
                             StepOp::MoveStep { step_num, direction } => {
@@ -328,10 +298,10 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
 
-    fn add_step(&mut self, step_action: StepAction) -> () {
+    fn add_step(&mut self, filter: FilterBase) -> () {
         self.scroll_pack.begin();
 
-        self.steps.push(ProcessingStep::new(self.w, self.h, self.steps.len(), step_action));
+        self.steps.push(ProcessingStep::new(self.w, self.h, self.steps.len(), filter));
 
         self.scroll_pack.end();
     }
@@ -369,8 +339,9 @@ impl<'wind> ProcessingLine<'wind> {
             }
         };
 
-        let action_copy = self.steps[step_num].action().clone();
-        self.processing_data.lock().unwrap().replace(ProcessingData::new(step_num, action_copy, img_copy, do_until_end));
+        let filter_copy = self.steps[step_num].filter().get_copy();
+        self.processing_data.lock().unwrap().replace(
+            ProcessingData::new(step_num, filter_copy, img_copy, do_until_end));
         self.steps[step_num].start_processing();
 
         self.processing_thread_handle.thread().unpark();
@@ -458,7 +429,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     const PROJECT_EXT: &'static str = "ps";
-    const ACTIONS_SAVE_SEPARATOR: &'static str = "||";
+    const FILTER_SAVE_SEPARATOR: &'static str = "||";
 
     fn cur_time_str() -> String {
         let current_datetime_formatter: DelayedFormat<StrftimeItems> = 
@@ -501,17 +472,17 @@ impl<'wind> ProcessingLine<'wind> {
         let mut file_content = String::new();
 
         for step_num in 0..self.steps.len() {
-            let action = self.steps[step_num].action();
-            let action_save_name: String = action.get_save_name();
-            let action_content: String = action.content_to_string();
+            let filter = self.steps[step_num].filter();
+            let filter_save_name: String = filter.get_save_name();
+            let filter_content: String = filter.content_to_string();
             
-            file_content.push_str(&action_save_name);
+            file_content.push_str(&filter_save_name);
             file_content.push_str("\n");
-            file_content.push_str(&action_content);
+            file_content.push_str(&filter_content);
             file_content.push_str("\n");
 
             if step_num < self.steps.len() - 1 {
-                file_content.push_str(Self::ACTIONS_SAVE_SEPARATOR);
+                file_content.push_str(Self::FILTER_SAVE_SEPARATOR);
                 file_content.push_str("\n");
             }
         }
@@ -561,31 +532,51 @@ impl<'wind> ProcessingLine<'wind> {
             return Err(MyError::new(format!("Ошибка при чтении файла проекта: {}", err.to_string())));
         };
 
-        let mut actions_iter = utils::TextBlocksIter::new(
-            &file_content, Self::ACTIONS_SAVE_SEPARATOR);
+        let mut filters_iter = utils::TextBlocksIter::new(
+            &file_content, Self::FILTER_SAVE_SEPARATOR);
 
-        self.steps.reserve(actions_iter.len());
+        self.steps.reserve(filters_iter.len());
 
-        'out: for action_str in actions_iter.iter() {
-            let mut lines_iter = utils::LinesIter::new(action_str);
-            let action_name = lines_iter.next_or_empty().to_string();
-            let action_content = lines_iter.all_left(true);
+        'out: for filter_str in filters_iter.iter() {
+            let mut lines_iter = utils::LinesIter::new(filter_str);
+            let filter_name = lines_iter.next_or_empty().to_string();
+            let filter_content = lines_iter.all_left(true);
 
-            match StepAction::from_save_name_and_string(&action_name, &action_content) {
-                Ok(action) => self.add_step(action),
+            match Self::try_parce_filter(&filter_name, &filter_content) {
+                Ok(filter) => self.add_step(filter),
                 Err(err) => {
                     let question = format!(
                         "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
-                        action_name, err.to_string());
+                        filter_name, err.to_string());
 
                     if !confirm_with_dlg(self.parent_window, &question) {
                         break 'out;
                     }
                 },
-            };
+            }
         }
 
         Ok(true)
+    }
+
+    fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, MyError> {
+        let mut filter = match save_name {
+            "LinearCustom" => Box::new(LinearCustom::default()) as FilterBase,
+            "LinearMean" =>  Box::new(LinearMean::default()) as FilterBase,
+            "LinearGaussian" =>  Box::new(LinearGaussian::default()) as FilterBase,
+            "MedianFilter" =>  Box::new(MedianFilter::default()) as FilterBase,
+            "HistogramLocalContrast" =>  Box::new(HistogramLocalContrast::default()) as FilterBase,
+            "CutBrightness" =>  Box::new(CutBrightness::default()) as FilterBase,
+            "EqualizeHist" => Box::new(EqualizeHist::default()) as FilterBase,
+            "Rgb2Gray" => Box::new(Rgb2Gray::default()) as FilterBase,
+            "NeutralizeChannel" =>  Box::new(NeutralizeChannel::default()) as FilterBase,
+            "ExtractChannel" =>  Box::new(ExtractChannel::default()) as FilterBase,
+            _ => {
+                return Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)));
+            }
+        };
+        filter.try_set_from_string(content)?;
+        Ok(filter)
     }
 
     fn try_save_results(&self) -> Result<bool, MyError> {

@@ -1,24 +1,19 @@
-use crate::{filter::FilterIterator, img::{Img, Matrix2D}, my_err::MyError, processing::{StepAction, progress_provider::ProgressProvider}};
+use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
-    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
     fn content_to_string(&self) -> String;
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError>;
 }
 
-pub trait OneLayerFilter : Default + Clone + StringFromTo + Into<StepAction> {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D;
+pub trait Filter : StringFromTo + Send {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img;
     fn get_description(&self) -> String;
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk>;
+    fn get_save_name(&self) -> String;
+    fn get_copy(&self) -> FilterBase;
 }
 
-pub trait ImgFilter : Default + Clone + StringFromTo + Into<StepAction> {
-    fn filter<Cbk: Fn(usize)>(&self, img: &Img, prog_prov: &mut ProgressProvider<Cbk>) -> Img;
-    fn get_description(&self) -> String;
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk>;
-}
-
-pub trait WindowFilter : OneLayerFilter {
+pub trait WindowFilter : Filter {
     fn process_window(&self, window_buffer: &mut [f64]) -> f64;
     fn w(&self) -> usize;
     fn h(&self) -> usize;

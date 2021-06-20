@@ -1,64 +1,12 @@
-use std::{fmt, ops::{Index, IndexMut}, path::PathBuf, result};
+use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{enums::ColorDepth, image, prelude::ImageExt};
-use crate::{filter::{filter_trait::{ImgFilter, OneLayerFilter, StringFromTo}}, my_err::MyError, processing::progress_provider::ProgressProvider, utils};
+use crate::{filter::filter_option::ImgChannel, my_err::MyError};
 use self::pixel_pos::PixelPos;
 
 pub mod pixel_pos;
-pub mod color_ops;
 pub mod img_ops;
 
 pub const PIXEL_VALUES_COUNT: usize = 256_usize;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum ImgChannel { L, R, G, B, A }
-
-impl StringFromTo for ImgChannel {
-    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-        let format_err_msg = "Должна быть одна строка: 'Channel: <Название канала A, R, G, B L>".to_string();
-        
-        let mut lines = utils::LinesIter::new(string);
-        if lines.len() != 1 { return Err(MyError::new(format_err_msg)); }
-
-        let mut words = utils::WordsIter::new(lines.next_or_empty(), " ");
-        if words.len() != 2 { return Err(MyError::new(format_err_msg)); }
-        if words.next_or_empty() != "Channel:" { return Err(MyError::new(format_err_msg)); }
-        let channel = match words.next_or_empty() {
-            "A" => ImgChannel::A,
-            "R" => ImgChannel::R,
-            "G" => ImgChannel::G,
-            "B" => ImgChannel::B,
-            "L" => ImgChannel::L,
-            _ => { return Err(MyError::new(format_err_msg)); }
-        };
-
-        Ok(channel)
-    }
-
-    fn content_to_string(&self) -> String {
-        format!("Channel: {}", self)
-    }
-}
-
-impl PartialEq for ImgChannel {
-    fn eq(&self, other: &Self) -> bool {
-        *self as u8 == *other as u8
-    }
-}
-
-impl fmt::Display for ImgChannel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let channel_str: &str = match self {
-            ImgChannel::L => "L",
-            ImgChannel::R => "B",
-            ImgChannel::G => "G",
-            ImgChannel::B => "B",
-            ImgChannel::A => "A",
-        };
-
-        write!(f, "{}", channel_str)
-    }
-}
 
 
 #[derive(Clone)]
@@ -307,32 +255,6 @@ impl Img {
 
     pub fn get_description(&self) -> String {
         format!("Изображение {} (строк) x {} (столбцов) x {} (каналов)", self.h(), self.w(), self.d())
-    }
-
-    pub fn process_by_layer<F: OneLayerFilter, Cbk: Fn(usize)>(&self, filter: &F, progress_cbk: Cbk) -> Img {
-        let mut prog_prov: ProgressProvider<Cbk> = filter.create_progress_provider(&self, progress_cbk);
-            
-        let mut res_layers = Vec::<ImgLayer>::with_capacity(self.d());
-
-        for layer in self.layers() {
-            let res_mat = match layer.channel() {
-                ImgChannel::A => {
-                    layer.matrix().clone()
-                },
-                _ => {
-                    filter.filter(layer.matrix(), &mut prog_prov)
-                },
-            };
-            res_layers.push(ImgLayer::new(res_mat, layer.channel()));
-        }
-
-        Img::new(self.w(), self.h(), res_layers, self.color_depth())
-    }
-
-    pub fn process_all_layers<F: ImgFilter, Cbk: Fn(usize)>(&self, filter: &F, progress_cbk: Cbk) -> Img {
-        let mut prog_prov: ProgressProvider<Cbk> = filter.create_progress_provider(&self, progress_cbk);
-
-        filter.filter(self, &mut prog_prov)
     }
 
     pub fn layers<'own>(&'own self) -> &'own Vec<ImgLayer> { &self.layers }

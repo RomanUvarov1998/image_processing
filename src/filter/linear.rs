@@ -1,7 +1,6 @@
 use fltk::enums::ColorDepth;
-
-use crate::{img::{Img, Matrix2D, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{StepAction, progress_provider::ProgressProvider}, utils::{LinesIter, WordsIter}};
-use super::{FilterIterator, filter_option::{ExtendValue, FilterWindowSize, NormalizeOption}, filter_trait::{OneLayerFilter, StringFromTo, WindowFilter}};
+use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}, utils::{LinesIter, WordsIter}};
+use super::{ByLayer, FilterIterator, filter_option::{ExtendValue, FilterWindowSize, ImgChannel, NormalizeOption, Parceable}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 
 #[derive(Clone)]
@@ -40,29 +39,52 @@ impl LinearGaussian {
     }
 }
 
-impl OneLayerFilter for LinearGaussian {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
-        super::filter_window(
-            mat, 
-            self, 
-            LinearGaussian::process_window, 
-            prog_prov)
+impl Filter for LinearGaussian {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let pixels_per_layer = img.h() * img.w();
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+            let actions_count = layers_count * pixels_per_layer;
+    
+            prog_prov.reset(actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let pixels_per_layer = img.h() * img.w();
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
+    fn get_save_name(&self) -> String {
+        "LinearGaussian".to_string()
+    }
+    
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
+    }
+}
+
+impl ByLayer for LinearGaussian {
+    fn process_layer(
+        &self,
+        layer: &ImgLayer, 
+        prog_prov: &mut ProgressProvider) -> ImgLayer 
+    {
+        let result_mat = match layer.channel() {
+            ImgChannel::A => layer.matrix().clone(),
+            _ => super::process_with_window(
+                layer.matrix(), 
+                self, 
+                LinearGaussian::process_window, 
+                prog_prov),
         };
 
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * pixels_per_layer)
+        ImgLayer::new(result_mat, layer.channel())
     }
 }
 
@@ -79,9 +101,7 @@ impl WindowFilter for LinearGaussian {
 
     fn h(&self) -> usize { self.size.height }
 
-    fn get_extend_value(&self) -> ExtendValue {
-        self.extend_value
-    }
+    fn get_extend_value(&self) -> ExtendValue { self.extend_value }
 
     fn get_iter(&self) -> FilterIterator {
         FilterIterator {
@@ -99,7 +119,7 @@ impl Default for LinearGaussian {
 }
 
 impl StringFromTo for LinearGaussian {
-    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
@@ -108,19 +128,16 @@ impl StringFromTo for LinearGaussian {
             .check_w_equals_h()?
             .check_w_h_odd()?;
 
-        let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
+        let extend_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
-        Ok(LinearGaussian::new(size, ext_value))
+        self.size = size;
+        self.extend_value = extend_value;
+
+        Ok(())
     }
 
     fn content_to_string(&self) -> String {
         format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
-    }
-}
-
-impl Into<StepAction> for LinearGaussian {
-    fn into(self) -> StepAction {
-        StepAction::LinearGaussian(self)
     }
 }
 
@@ -130,7 +147,7 @@ pub struct LinearCustom {
     width: usize,
     height: usize,
     extend_value: ExtendValue,
-    arr: Vec<f64>,
+    coeffs: Vec<f64>,
     normalized: NormalizeOption,
     name: String
 }
@@ -143,7 +160,7 @@ impl LinearCustom {
 
         normalized.normalize(&mut coeffs[..]);
 
-        LinearCustom { width, height, arr: coeffs, extend_value, normalized, name: "Линейный фильтр".to_string() }
+        LinearCustom { width, height, coeffs, extend_value, normalized, name: "Линейный фильтр".to_string() }
     }
 }
 
@@ -153,7 +170,7 @@ impl WindowFilter for LinearCustom {
 
         for pos in self.get_iter() {
             let ind = pos.row * self.width + pos.col;
-            sum += window_buffer[ind] * self.arr[ind];
+            sum += window_buffer[ind] * self.coeffs[ind];
         }
         
         sum
@@ -176,34 +193,38 @@ impl WindowFilter for LinearCustom {
     }
 }
 
-impl OneLayerFilter for LinearCustom {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
-        super::filter_window(
-            mat, 
-            self, 
-            LinearCustom::process_window, 
-            prog_prov)
+impl Filter for LinearCustom {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let pixels_per_layer = img.h() * img.w();
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+            let all_actions_count = layers_count * pixels_per_layer;
+
+            prog_prov.reset(all_actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let pixels_per_layer = img.h() * img.w();
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
-        };
+    fn get_save_name(&self) -> String {
+        "LinearCustom".to_string()
+    }
 
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * pixels_per_layer)
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
     }
 }
 
 impl StringFromTo for LinearCustom {
-    fn try_from_string(string: &str) -> Result<Self, MyError> {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
         let mut rows = Vec::<Vec<f64>>::new();
 
         let mut lines_iter = LinesIter::new(string);
@@ -234,7 +255,7 @@ impl StringFromTo for LinearCustom {
             return Err(MyError::new("Матрица должна иметь размеры > 1".to_string()));
         }
 
-        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
+        let extend_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
         let normalized_value = NormalizeOption::try_from_string(lines_iter.next_or_empty())?;
 
@@ -245,7 +266,13 @@ impl StringFromTo for LinearCustom {
         let width = rows.last().unwrap().len();
         let height = rows.len();
 
-        Ok(LinearCustom::with_coeffs(coeffs, width, height, ext_value, normalized_value))
+        self.width = width;
+        self.height = height;
+        self.coeffs = coeffs;
+        self.extend_value = extend_value;
+        self.normalized = normalized_value;
+
+        Ok(())
     }
 
     fn content_to_string(&self) -> String {
@@ -253,7 +280,7 @@ impl StringFromTo for LinearCustom {
 
         for row in 0..self.height {
             for col in 0..self.width {
-                fil_string.push_str(&self.arr[row * self.width + col].to_string());
+                fil_string.push_str(&self.coeffs[row * self.width + col].to_string());
                 if col < self.width - 1 {
                     fil_string.push_str(", ");
                 }
@@ -278,12 +305,24 @@ impl Default for LinearCustom {
     }
 }
 
-impl Into<StepAction> for LinearCustom {
-    fn into(self) -> StepAction {
-        StepAction::LinearCustom(self)
+impl ByLayer for LinearCustom {
+    fn process_layer(
+        &self,
+        layer: &ImgLayer, 
+        prog_prov: &mut ProgressProvider) -> ImgLayer 
+    {
+        let result_mat = {
+            match layer.channel() {
+                ImgChannel::A => layer.matrix().clone(),
+                _ => super::process_with_window(layer.matrix(), self, 
+                    LinearCustom::process_window, 
+                    prog_prov),
+            }
+        };
+        
+        ImgLayer::new(result_mat, layer.channel())
     }
 }
-
 
 #[derive(Clone)]
 pub struct LinearMean {
@@ -319,8 +358,78 @@ impl WindowFilter for LinearMean {
     }
 }
 
-impl OneLayerFilter for LinearMean {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
+impl Filter for LinearMean {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let row_sums = img.w() + 1;
+            let col_sums = img.h() + 1;
+            let diffs = img.h() * img.w();
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+            let all_actions_count = layers_count * (row_sums + col_sums + diffs);
+
+            prog_prov.reset(all_actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
+    }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+
+    fn get_save_name(&self) -> String {
+        "LinearMean".to_string()
+    }
+
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
+    }
+}
+
+impl Default for LinearMean {
+    fn default() -> Self {
+        LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Closest)
+    }
+}
+
+impl StringFromTo for LinearMean {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
+        let mut lines_iter = LinesIter::new(string);
+        if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
+
+        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
+            .check_size_be_3()?
+            .check_w_equals_h()?
+            .check_w_h_odd()?;
+
+        let extend_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
+
+        self.size = size;
+        self.extend_value = extend_value;
+
+        Ok(())
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
+    }
+}
+
+impl ByLayer for LinearMean {
+    fn process_layer(&self, layer: &ImgLayer, prog_prov: &mut ProgressProvider) -> ImgLayer {
+        let mat = match layer.channel() {
+            ImgChannel::A => {
+                return layer.clone()
+            },
+            _ => {
+                layer.matrix().clone()
+            }
+        };
+        
         let mut sum_res = img_ops::extend_matrix(
             &mat, 
             ExtendValue::Given(0_f64), 
@@ -378,56 +487,7 @@ impl OneLayerFilter for LinearMean {
             prog_prov.complete_action();
         }
 
-        mat_res
-    }
-
-    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
-
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let row_sums = img.w() + 1;
-        let col_sums = img.h() + 1;
-        let diffs = img.h() * img.w();
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
-        };
-
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * (row_sums + col_sums + diffs))
-    }
-}
-
-impl Default for LinearMean {
-    fn default() -> Self {
-        LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Closest)
-    }
-}
-
-impl StringFromTo for LinearMean {
-fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-    let mut lines_iter = LinesIter::new(string);
-    if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
-
-    let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
-        .check_size_be_3()?
-        .check_w_equals_h()?
-        .check_w_h_odd()?;
-
-    let ext_value: ExtendValue = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
-
-    Ok(LinearMean::new(size, ext_value))
-}
-
-fn content_to_string(&self) -> String {
-    format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
-}
-}
-
-impl Into<StepAction> for LinearMean {
-    fn into(self) -> StepAction {
-        StepAction::LinearMean(self)
+        // create layer
+        ImgLayer::new(mat_res, layer.channel())
     }
 }

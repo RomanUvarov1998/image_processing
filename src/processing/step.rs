@@ -1,8 +1,6 @@
 use fltk::{app::{self, Sender}, group, prelude::GroupExt};
-
 use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn}, usual::{MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError};
-
-use super::{PADDING, StepAction, step_editor::StepEditor};
+use super::{FilterBase, PADDING, step_editor::StepEditor};
 
 pub struct ProcessingStep {
     main_column: MyColumn,
@@ -10,14 +8,14 @@ pub struct ProcessingStep {
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
-    action: StepAction,
+    filter: FilterBase,
     step_num: usize,
     sender: Sender<Message>
 }
 
 impl ProcessingStep {
-    pub fn new(w: i32, h: i32, step_num: usize, action: StepAction) -> Self {
-        let name: String = action.filter_description();
+    pub fn new(w: i32, h: i32, step_num: usize, filter: FilterBase) -> Self {
+        let name: String = filter.get_description();
 
         let mut main_column = MyColumn::new(w, 100);
 
@@ -41,7 +39,7 @@ impl ProcessingStep {
             label_step_name,
             prog_bar,
             img_presenter, 
-            action,
+            filter,
             step_num,
             sender
         };
@@ -72,17 +70,15 @@ impl ProcessingStep {
         self.img_presenter.clear_image();
     }
 
-    pub fn edit_action_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
-        self.action = self.action.edit_with_dlg(app, step_editor);
-        
-        let filter_description: String = self.action.filter_description();
-
-        let img_description: String = match self.img_presenter.image() {
-            Some(img) => img.get_description(),
-            None => String::new(),
-        };
-
-        self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
+    pub fn edit_filter_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
+        if step_editor.edit_with_dlg(app, &mut self.filter) {
+            let filter_description: String = self.filter.get_description();
+            let img_description: String = match self.img_presenter.image() {
+                Some(img) => img.get_description(),
+                None => String::new(),
+            };
+            self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
+        }
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
@@ -108,12 +104,12 @@ impl ProcessingStep {
             None => None,
         }
     }
- 
-    pub fn action<'own>(&'own self) -> &'own StepAction { &self.action } 
 
     pub fn has_image(&self) -> bool { self.img_presenter.has_image() }
     
     pub fn image<'own>(&'own self) -> Option<&'own Img> { self.img_presenter.image() }
+    
+    pub fn filter<'own>(&'own self) -> &'own FilterBase { &self.filter }
 
 
     pub fn start_processing(&mut self) {
@@ -130,7 +126,7 @@ impl ProcessingStep {
     pub fn display_result(&mut self, img: Img) -> Result<(), MyError>  {
         self.prog_bar.hide();
 
-        self.label_step_name.set_text(&format!("{} {}", self.action.filter_description(), img.get_description()));
+        self.label_step_name.set_text(&format!("{} {}", self.filter.get_description(), img.get_description()));
                         
         self.img_presenter.set_image(img)?;
 

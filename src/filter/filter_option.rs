@@ -1,5 +1,10 @@
-use crate::{my_err::MyError, utils::{LinesIter, WordsIter}};
-use super::filter_trait::StringFromTo;
+use std::fmt;
+use crate::{my_err::MyError, utils::{self, LinesIter, WordsIter}};
+
+pub trait Parceable {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized;
+    fn content_to_string(&self) -> String;
+}
 
 #[derive(Clone)]
 pub struct FilterWindowSize { pub width: usize, pub height: usize }
@@ -26,7 +31,7 @@ impl FilterWindowSize {
         Ok(self)
     }
 }
-impl StringFromTo for FilterWindowSize {
+impl Parceable for FilterWindowSize {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -77,7 +82,7 @@ impl NormalizeOption {
         }
     }
 }
-impl StringFromTo for NormalizeOption {
+impl Parceable for NormalizeOption {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -117,7 +122,7 @@ pub enum ExtendValue {
     Closest,
     Given(f64)
 }
-impl StringFromTo for ExtendValue {
+impl Parceable for ExtendValue {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -160,7 +165,7 @@ impl ARange {
         ARange { min, max }
     }
 }
-impl StringFromTo for ARange {
+impl Parceable for ARange {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -200,7 +205,7 @@ impl CutBrightnessRange {
     }
 }
 
-impl StringFromTo for CutBrightnessRange {
+impl Parceable for CutBrightnessRange {
     fn try_from_string(string: &str) -> Result<Self, MyError> {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -236,7 +241,7 @@ impl ValueRepaceWith {
     pub fn new(value: u8) -> Self { ValueRepaceWith { value } }
 }
 
-impl StringFromTo for ValueRepaceWith {
+impl Parceable for ValueRepaceWith {
     fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
         let mut lines_iter = LinesIter::new(string);
         assert_eq!(lines_iter.len(), 1);
@@ -255,5 +260,57 @@ impl StringFromTo for ValueRepaceWith {
 
     fn content_to_string(&self) -> String {
         format!("{}", self.value)
+    }
+}
+
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum ImgChannel { L, R, G, B, A }
+
+impl Parceable for ImgChannel {
+    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
+        let format_err_msg = "Должна быть одна строка: 'Channel: <Название канала A, R, G, B L>".to_string();
+        
+        let mut lines = utils::LinesIter::new(string);
+        if lines.len() != 1 { return Err(MyError::new(format_err_msg)); }
+
+        let mut words = utils::WordsIter::new(lines.next_or_empty(), " ");
+        if words.len() != 2 { return Err(MyError::new(format_err_msg)); }
+        if words.next_or_empty() != "Channel:" { return Err(MyError::new(format_err_msg)); }
+        let channel = match words.next_or_empty() {
+            "A" => ImgChannel::A,
+            "R" => ImgChannel::R,
+            "G" => ImgChannel::G,
+            "B" => ImgChannel::B,
+            "L" => ImgChannel::L,
+            _ => { return Err(MyError::new(format_err_msg)); }
+        };
+
+        Ok(channel)
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("Channel: {}", self)
+    }
+}
+
+impl PartialEq for ImgChannel {
+    fn eq(&self, other: &Self) -> bool {
+        *self as u8 == *other as u8
+    }
+}
+
+impl fmt::Display for ImgChannel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let channel_str: &str = match self {
+            ImgChannel::L => "L",
+            ImgChannel::R => "B",
+            ImgChannel::G => "G",
+            ImgChannel::B => "B",
+            ImgChannel::A => "A",
+        };
+
+        write!(f, "{}", channel_str)
     }
 }

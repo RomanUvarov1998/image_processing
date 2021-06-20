@@ -1,8 +1,6 @@
 use fltk::{app::{self}, frame, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
+use crate::{filter::{filter_trait::Filter}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
 
-use crate::{filter::{channel::{ExtractChannel, NeutralizeChannel}, filter_trait::StringFromTo, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
-
-use super::StepAction;
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;
@@ -61,12 +59,12 @@ impl StepEditor {
         }
     }
 
-    pub fn add_with_dlg(&mut self, app: app::App, action: StepAction) -> Option<StepAction> {
+    pub fn edit_with_dlg(&mut self, app: app::App, filter: &mut Box<dyn Filter>) -> bool {
         let (sender, receiver) = app::channel::<StepEditMessage>();
 
         self.btn_save.set_emit(sender, StepEditMessage::TrySave);
 
-        let filter_settings: String = action.content_to_string();
+        let filter_settings: String = filter.content_to_string();
         self.text_editor.buffer().unwrap().set_text(&filter_settings);
 
         // if window is closed by user, "Close" message helps exit the message loop
@@ -96,76 +94,21 @@ impl StepEditor {
                             Some(ref buf) => buf.text(),
                             None => continue
                         };
-                        match &action {
-                            StepAction::LinearCustom(_) => match LinearCustom::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::LinearMean(_) => match LinearMean::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::LinearGaussian(_) => match LinearGaussian::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::MedianFilter(_) => match MedianFilter::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::HistogramLocalContrast(_) => match HistogramLocalContrast::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::CutBrightness(_) => match CutBrightness::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::NeutralizeChannel(_) => match NeutralizeChannel::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            StepAction::ExtractChannel(_) => match ExtractChannel::try_from_string(&text) {
-                                Ok(filter) => {
-                                    self.wind.hide();
-                                    return Some(filter.into());
-                                },
-                                Err(err) => self.lbl_message.set_label(&err.get_message())
-                            },
-                            _ => { 
+                        match filter.try_set_from_string(&text) {
+                            Ok(_) => {
                                 self.wind.hide();
-                                return Some(action); 
+                                return true;
                             },
-                        };
+                            Err(err) => self.lbl_message.set_label(&err.get_message()),
+                        }
                     },
                     StepEditMessage::Exit => {
-                        return None;
+                        return false;
                     }
                 }
             }
         }
 
-        return None;
+        return false;
     }
 }

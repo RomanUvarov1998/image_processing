@@ -1,7 +1,7 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{StepAction, progress_provider::ProgressProvider}, utils::{LinesIter}};
-use super::{FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ValueRepaceWith}, filter_trait::{OneLayerFilter, StringFromTo, WindowFilter}, linear::LinearMean};
+use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}, utils::{LinesIter}};
+use super::{ByLayer, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
 #[derive(Clone)]
@@ -89,34 +89,39 @@ impl WindowFilter for MedianFilter {
     }
 }
 
-impl OneLayerFilter for MedianFilter {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
-        super::filter_window(
-            mat, 
-            self, 
-            MedianFilter::process_window, 
-            prog_prov)
+impl Filter for MedianFilter {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let pixels_per_layer = img.h() * img.w();
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+
+            let actions_count = layers_count * pixels_per_layer;
+
+            prog_prov.reset(actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
     }
     
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
 
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let pixels_per_layer = img.h() * img.w();
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
-        };
-
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * pixels_per_layer)
+    fn get_save_name(&self) -> String {
+        "MedianFilter".to_string()
+    }
+    
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
     }
 }
 
 impl StringFromTo for MedianFilter {
-    fn try_from_string(string: &str) -> Result<Self, MyError> {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
         let mut lines_iter = LinesIter::new(string);
         if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
 
@@ -125,9 +130,12 @@ impl StringFromTo for MedianFilter {
             .check_w_equals_h()?
             .check_w_h_odd()?;
 
-        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
+        let extend_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
 
-        return Ok(MedianFilter::new(size, ext_value));
+        self.size = size;
+        self.extend_value = extend_value;
+
+        Ok(())
     }
 
     fn content_to_string(&self) -> String {
@@ -141,17 +149,30 @@ impl Default for MedianFilter {
     }
 }
 
-impl Into<StepAction> for MedianFilter {
-    fn into(self) -> StepAction {
-        StepAction::MedianFilter(self)
+impl ByLayer for MedianFilter {
+    fn process_layer(
+        &self,
+        layer: &ImgLayer, 
+        prog_prov: &mut ProgressProvider) -> ImgLayer
+    {
+        let result_mat = {
+            match layer.channel() {
+                ImgChannel::A => layer.matrix().clone(),
+                _ => super::process_with_window(layer.matrix(), self, 
+                    Self::process_window, 
+                    prog_prov),
+            }
+        };
+        
+        ImgLayer::new(result_mat, layer.channel())
     }
-}
+}   
 
 
 #[derive(Clone)]
 pub struct HistogramLocalContrast {
     size: FilterWindowSize,
-    ext_value: ExtendValue,
+    extend_value: ExtendValue,
     mean_filter: LinearMean,
     a_values: ARange,
     name: String
@@ -162,7 +183,7 @@ impl HistogramLocalContrast {
     {
         HistogramLocalContrast { 
             size, 
-            ext_value, 
+            extend_value: ext_value, 
             mean_filter: LinearMean::new(FilterWindowSize::new(3, 3), ExtendValue::Given(0_f64)),
             a_values,
             name: "Локальный контраст (гистограмма)".to_string()
@@ -173,8 +194,138 @@ impl HistogramLocalContrast {
     pub fn h(&self) -> usize { self.size.height }
 }
 
-impl OneLayerFilter for HistogramLocalContrast {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
+impl Filter for HistogramLocalContrast {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let fil_size_half = self.w() / 2;
+            let mean_filter = 
+                img.h() + fil_size_half * 2 + 1
+                + img.w() + fil_size_half * 2 + 1
+                + (img.h() + 2) * (img.w() + 2);
+
+            let count_hists = (img.h() + 0) * (img.w() + 0);
+
+            let count_c = (img.h() + 2) * (img.w() + 2);
+            let count_c_power = (img.h() + 0) * (img.w() + 0);
+            let write_res = (img.h() + 0) * (img.w() + 0);
+
+            let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
+
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+
+            let actions_count = layers_count * per_layer;
+
+            prog_prov.reset(actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
+    }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+
+    fn get_save_name(&self) -> String {
+        "HistogramLocalContrast".to_string()
+    }
+    
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
+    }
+}
+
+impl WindowFilter for HistogramLocalContrast {
+    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
+        //count histogram bins            
+        let mut hist_counts: [u32; 256_usize] = [0; 256_usize];
+        for v in &window_buffer[..] {
+            hist_counts[(*v as u8) as usize] += 1;
+        }
+
+        //count min and max 
+        let mut max_value = hist_counts[0];
+        let mut min_value = hist_counts[0];
+        for v in &hist_counts[1..] {
+            if *v == 0 { continue; }
+            if max_value < *v { max_value = *v; }
+            if min_value < *v { min_value = *v; }
+        }
+        
+        return if min_value == max_value {
+            0_f64
+        } else {
+            (max_value as f64 - min_value as f64) / max_value as f64
+        }
+    }
+    
+    fn w(&self) -> usize { self.size.width }
+
+    fn h(&self) -> usize { self.size.height }
+
+    fn get_extend_value(&self) -> ExtendValue {
+        self.extend_value
+    }
+
+    fn get_iter(&self) -> FilterIterator {
+        FilterIterator {
+            width: self.w(),
+            height: self.h(),
+            cur_pos: PixelPos::default()
+        }
+    }
+}
+
+impl StringFromTo for HistogramLocalContrast {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
+        let mut lines_iter = LinesIter::new(string);
+        if lines_iter.len() != 3 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
+
+        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
+            .check_size_be_3()?
+            .check_w_equals_h()?
+            .check_w_h_odd()?;
+
+        let extend_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
+
+        let a_values = ARange::try_from_string(&lines_iter.next_or_empty())?;
+
+        self.size = size;
+        self.a_values = a_values;
+        self.extend_value = extend_value;
+
+        Ok(())
+    }
+    
+    fn content_to_string(&self) -> String {
+        format!("{}\n{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string(), self.a_values.content_to_string())
+    }
+}
+
+impl Default for HistogramLocalContrast {
+    fn default() -> Self {
+        HistogramLocalContrast::new(FilterWindowSize::new(3, 3), ExtendValue::Closest, ARange::new(0.5, 0.5))
+    }
+}
+
+impl ByLayer for HistogramLocalContrast {    
+    fn process_layer(
+        &self,
+        layer: &ImgLayer, 
+        prog_prov: &mut ProgressProvider) -> ImgLayer 
+    {
+        let mat = {
+            match layer.channel() {
+                ImgChannel::A => {
+                    return layer.clone();
+                },
+                _ => layer.matrix(),
+            }
+        };
+
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
         let mat_ext = img_ops::extend_matrix(
@@ -182,7 +333,11 @@ impl OneLayerFilter for HistogramLocalContrast {
             ExtendValue::Closest, 
             win_half.row, win_half.col, win_half.row, win_half.col);
         
-        let mat_ext_filtered = self.mean_filter.filter(&mat_ext, prog_prov);
+        let mat_ext_filtered = {
+            let layer_ext = ImgLayer::new(mat_ext.clone(), layer.channel());
+            let layer_ext_filtered = self.mean_filter.process_layer(&layer_ext, prog_prov);
+            layer_ext_filtered.matrix().clone()
+        };
 
         //-------------------------------- create hist matrix ---------------------------------
         let mut mat_hist = Matrix2D::empty_size_of(&mat_ext);
@@ -256,111 +411,7 @@ impl OneLayerFilter for HistogramLocalContrast {
             prog_prov.complete_action();
         }
 
-        mat_res
-    }
-    
-    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
-
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let fil_size_half = self.w() / 2;
-        let mean_filter = 
-            img.h() + fil_size_half * 2 + 1
-            + img.w() + fil_size_half * 2 + 1
-            + (img.h() + 2) * (img.w() + 2);
-
-        let count_hists = (img.h() + 0) * (img.w() + 0);
-
-        let count_c = (img.h() + 2) * (img.w() + 2);
-        let count_c_power = (img.h() + 0) * (img.w() + 0);
-        let write_res = (img.h() + 0) * (img.w() + 0);
-
-        let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
-
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
-        };
-
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * per_layer)
-    }
-}
-
-impl WindowFilter for HistogramLocalContrast {
-    fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
-        //count histogram bins            
-        let mut hist_counts: [u32; 256_usize] = [0; 256_usize];
-        for v in &window_buffer[..] {
-            hist_counts[(*v as u8) as usize] += 1;
-        }
-
-        //count min and max 
-        let mut max_value = hist_counts[0];
-        let mut min_value = hist_counts[0];
-        for v in &hist_counts[1..] {
-            if *v == 0 { continue; }
-            if max_value < *v { max_value = *v; }
-            if min_value < *v { min_value = *v; }
-        }
-        
-        return if min_value == max_value {
-            0_f64
-        } else {
-            (max_value as f64 - min_value as f64) / max_value as f64
-        }
-    }
-    
-    fn w(&self) -> usize { self.size.width }
-
-    fn h(&self) -> usize { self.size.height }
-
-    fn get_extend_value(&self) -> ExtendValue {
-        self.ext_value
-    }
-
-    fn get_iter(&self) -> FilterIterator {
-        FilterIterator {
-            width: self.w(),
-            height: self.h(),
-            cur_pos: PixelPos::default()
-        }
-    }
-}
-
-impl StringFromTo for HistogramLocalContrast {
-    fn try_from_string(string: &str) -> Result<Self, MyError> {
-        let mut lines_iter = LinesIter::new(string);
-        if lines_iter.len() != 3 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
-
-        let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
-            .check_size_be_3()?
-            .check_w_equals_h()?
-            .check_w_h_odd()?;
-
-        let ext_value = ExtendValue::try_from_string(lines_iter.next_or_empty())?;
-
-        let a_values = ARange::try_from_string(&lines_iter.next_or_empty())?;
-
-        return Ok(HistogramLocalContrast::new(size, ext_value, a_values));
-    }
-    
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}\n{}", self.size.content_to_string(), self.ext_value.content_to_string(), self.a_values.content_to_string())
-    }
-}
-
-impl Default for HistogramLocalContrast {
-    fn default() -> Self {
-        HistogramLocalContrast::new(FilterWindowSize::new(3, 3), ExtendValue::Closest, ARange::new(0.5, 0.5))
-    }
-}
-
-impl Into<StepAction> for HistogramLocalContrast {
-    fn into(self) -> StepAction {
-        StepAction::HistogramLocalContrast(self)
+        ImgLayer::new(mat_res, layer.channel())
     }
 }
 
@@ -378,9 +429,79 @@ impl CutBrightness {
     }
 }
 
-impl OneLayerFilter for CutBrightness {
-    fn filter<Cbk: Fn(usize)>(&self, mat: &Matrix2D, prog_prov: &mut ProgressProvider<Cbk>) -> Matrix2D {
-        let mut mat_res = Matrix2D::empty_size_of(&mat);
+impl Filter for CutBrightness {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+        {
+            let pixels_per_layer = img.h() * img.w();
+            let layers_count = match img.color_depth() {
+                ColorDepth::L8 => img.d(),
+                ColorDepth::La8 => img.d() - 1,
+                ColorDepth::Rgb8 => img.d(),
+                ColorDepth::Rgba8 => img.d() - 1,
+            };
+
+            let actions_count = layers_count * pixels_per_layer;
+
+            prog_prov.reset(actions_count);
+        }
+
+        super::process_each_layer(img, self, prog_prov)
+    }
+
+    fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
+
+    fn get_save_name(&self) -> String {
+        "CutBrightness".to_string()
+    }
+    
+    fn get_copy(&self) -> FilterBase {
+        let copy = self.clone();
+        Box::new(copy) as FilterBase
+    }
+}
+
+impl Default for CutBrightness {
+    fn default() -> Self {
+        Self::new(CutBrightnessRange::new(100, 200), ValueRepaceWith::new(0))
+    }
+}
+
+impl StringFromTo for CutBrightness {
+    fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
+        let mut lines_iter = LinesIter::new(string);
+        if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
+
+        let cut_range = CutBrightnessRange::try_from_string(lines_iter.next_or_empty())?;
+
+        let replace_with = ValueRepaceWith::try_from_string(lines_iter.next_or_empty())?;
+
+        self.cut_range = cut_range;
+        self.replace_with = replace_with;
+
+        Ok(())
+    }
+
+    fn content_to_string(&self) -> String {
+        format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string())
+    }
+}
+
+impl ByLayer for CutBrightness {
+    fn process_layer(
+        &self,
+        layer: &ImgLayer, 
+        prog_prov: &mut ProgressProvider) -> ImgLayer 
+    {
+        let mut mat_res = {
+            match layer.channel() {
+                ImgChannel::A => {
+                    return layer.clone();
+                },
+                _ => Matrix2D::empty_size_of(layer.matrix()),
+            }
+        };
+
+        let mat = layer.matrix();
 
         for pos in mat.get_pixels_iter() {
             let pix_val = mat[pos] as u8;
@@ -395,51 +516,6 @@ impl OneLayerFilter for CutBrightness {
             prog_prov.complete_action();
         }
         
-        mat_res
-    }
-
-    fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
-
-    fn create_progress_provider<Cbk: Fn(usize)>(&self, img: &Img, progress_cbk: Cbk) -> ProgressProvider<Cbk> {
-        let pixels_per_layer = img.h() * img.w();
-        let layers_count = match img.color_depth() {
-            ColorDepth::L8 => img.d(),
-            ColorDepth::La8 => img.d() - 1,
-            ColorDepth::Rgb8 => img.d(),
-            ColorDepth::Rgba8 => img.d() - 1,
-        };
-
-        ProgressProvider::new(
-            progress_cbk, 
-            layers_count * pixels_per_layer)
-    }
-}
-
-impl Default for CutBrightness {
-    fn default() -> Self {
-        Self::new(CutBrightnessRange::new(100, 200), ValueRepaceWith::new(0))
-    }
-}
-
-impl StringFromTo for CutBrightness {
-    fn try_from_string(string: &str) -> Result<Self, MyError> where Self: Sized {
-        let mut lines_iter = LinesIter::new(string);
-        if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
-
-        let cut_range = CutBrightnessRange::try_from_string(lines_iter.next_or_empty())?;
-
-        let replace_with = ValueRepaceWith::try_from_string(lines_iter.next_or_empty())?;
-
-        Ok(CutBrightness::new(cut_range, replace_with))
-    }
-
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string())
-    }
-}
-
-impl Into<StepAction> for CutBrightness {
-    fn into(self) -> StepAction {
-        StepAction::CutBrightness(self)
+        ImgLayer::new(mat_res, layer.channel())
     }
 }
