@@ -16,8 +16,15 @@ impl LinearGaussian {
         assert_eq!(size.width % 2, 1);
         assert_eq!(size.width, size.height);
 
+        let coeffs = Self::count_coeffs(size);
+
+        LinearGaussian { size, extend_value, coeffs, name: "Линейный фильтр (гауссовский)".to_string() }
+    }
+
+    fn count_coeffs(size: FilterWindowSize) -> Vec<f64> {
         let mut coeffs = Vec::<f64>::new();
         coeffs.resize(size.width * size.height, 0_f64);
+
         let r = size.width / 2;
         let one_over_pi: f64 = 1_f64 / 3.14159265359_f64;
         let one_over_2_r_squared: f64 =  1_f64 / (2_f64 * f64::powi(r as f64, 2));
@@ -35,7 +42,7 @@ impl LinearGaussian {
 
         for c in coeffs.iter_mut() { *c /= sum; }
 
-        LinearGaussian { size, extend_value, coeffs, name: "Линейный фильтр (гауссовский)".to_string() }
+        coeffs
     }
 }
 
@@ -132,6 +139,7 @@ impl StringFromTo for LinearGaussian {
 
         self.size = size;
         self.extend_value = extend_value;
+        self.coeffs = Self::count_coeffs(size);
 
         Ok(())
     }

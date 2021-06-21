@@ -6,7 +6,7 @@ pub trait Parceable {
     fn content_to_string(&self) -> String;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct FilterWindowSize { pub width: usize, pub height: usize }
 impl FilterWindowSize {
     pub fn new(width: usize, height: usize) -> Self { 
