@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Sub};
+use std::{ops::{AddAssign, Sub}};
 
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
 use crate::{img::Img, my_err::MyError};
@@ -27,6 +27,7 @@ impl MyImgPresenter {
 
     pub fn clear_image(&mut self) {
         self.img = None;
+        self.frame_img.handle(|_, _| { false });
         self.frame_img.draw(|_| {});
         self.frame_img.redraw(); 
     }
@@ -34,73 +35,76 @@ impl MyImgPresenter {
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
         // data to move into closure
         let (sender, receiver) = std::sync::mpsc::channel::<ImgPresMsg>();
-        let mut was_mouse_down = false;
-
-        self.frame_img.handle(move |f, ev| {
-            let (x, y) = fltk::app::event_coords();
-
-            use fltk::app::MouseWheel;
-
-            const SCROLL_DELTA: f32 = 0.2_f32;
-            let delta = match fltk::app::event_dy() {
-                MouseWheel::None => 0_f32,
-                MouseWheel::Down => SCROLL_DELTA,
-                MouseWheel::Up => -SCROLL_DELTA,
-                MouseWheel::Right | MouseWheel::Left => unreachable!("")
-            };
-
-            use fltk::enums::Event;
-            let event_handled = match ev {
-                Event::Enter => {
-                    sender.send(ImgPresMsg::MouseEnter).unwrap();
-                    true
-                },
-                Event::Push => {
-                    was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseDown (Pos::new(x, y))).unwrap();
-                    true
-                },
-                Event::Released => {
-                    was_mouse_down = false;
-                    sender.send(ImgPresMsg::MouseUp).unwrap();
-                    true
-                },
-                Event::Leave => {
-                    was_mouse_down = false;
-                    sender.send(ImgPresMsg::MouseLeave).unwrap();
-                    true
-                },
-                Event::MouseWheel => {
-                    if was_mouse_down {
-                        sender.send(ImgPresMsg::MouseScroll { delta }).unwrap();
-                        true
-                    } else {
-                        false
-                    }
-                },
-                Event::Drag => {
-                    was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseMove (Pos::new(x, y))).unwrap();
-                    true
-                },
-                _ => return false
-            };
-
-            f.redraw();
-
-            event_handled
-        });
 
         // data to move into closure
         let mut drawable = img.get_drawable_copy()?;
-        let mut img_pres_rect = ImgPresRect::new(&img);
+        let mut img_pres_rect = ImgPresRect::new(&img, &self.frame_img);
 
         self.frame_img.draw(move |f| {
             while let Ok(msg) = receiver.try_recv() {
                 img_pres_rect.consume_msg(msg, f);
             }
 
-            img_pres_rect.scale_draw(&mut drawable, f);
+			img_pres_rect.scale_draw(&mut drawable, f);
+        });
+
+        // data to move into closure
+		let mut was_mouse_down = false;
+        self.frame_img.handle(move |f, ev| {
+            let (x, y) = (fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
+
+            use fltk::app::MouseWheel;
+
+            const SCROLL_DELTA: i32 = 20;
+            let delta_percents = match fltk::app::event_dy() {
+                MouseWheel::None => 0,
+                MouseWheel::Down => SCROLL_DELTA,
+                MouseWheel::Up => -SCROLL_DELTA,
+                MouseWheel::Right | MouseWheel::Left => unreachable!("")
+            };
+
+            use fltk::enums::Event;
+			let event_handled = match ev {
+                Event::Enter => {
+                    sender.send(ImgPresMsg::MouseEnter).unwrap_or(());
+					true
+                },
+                Event::Push => {
+                    was_mouse_down = true;
+                    sender.send(ImgPresMsg::MouseDown (Pos::new(x, y))).unwrap_or(());
+					true
+                },
+                Event::Released => {
+                    was_mouse_down = false;
+                    sender.send(ImgPresMsg::MouseUp).unwrap_or(());
+					true
+                },
+                Event::Leave => {
+                    was_mouse_down = false;
+                    sender.send(ImgPresMsg::MouseLeave).unwrap_or(());
+					true
+                },
+                Event::MouseWheel => {
+                    if was_mouse_down {
+                        sender.send(ImgPresMsg::MouseScroll { delta_percents }).unwrap_or(());
+						true
+                    } else {
+						false
+                    }
+                },
+                Event::Drag => {
+                    was_mouse_down = true;
+                    sender.send(ImgPresMsg::MouseMove (Pos::new(x, y))).unwrap_or(());
+                    true
+                },
+                _ => false
+            };
+
+			if event_handled {
+            	f.redraw();
+			}
+
+            event_handled
         });
 
         self.img = Some(img);
@@ -138,23 +142,27 @@ impl Alignable for MyImgPresenter {
 #[derive(Clone, Copy, Debug)]
 struct ImgPresRect {
     im_pos: Pos,
-    im_sz: Size,
-    scale_factor: f32,
+    im_sz_initial: Size,
+    scale_factor_percents: i32,
     prev_pos: Option<Pos>
 }
 
 impl ImgPresRect {
-    fn new(img: &Img) -> Self {
-        ImgPresRect { 
+    fn new(img: &Img, frame: &frame::Frame) -> Self {
+        let mut rect = ImgPresRect { 
             im_pos: Pos::new(0, 0), 
-            scale_factor: 1_f32,
-            im_sz: Size::new(img.w() as i32, img.h() as i32),
+            scale_factor_percents: 100,
+            im_sz_initial: Size::new(img.w() as i32, img.h() as i32),
             prev_pos: None
-        }
+        };
+
+		rect.correct_pos(frame);
+		rect.correct_scale(frame);
+
+		rect
     }
 
     fn consume_msg(&mut self, msg: ImgPresMsg, frame: &frame::Frame) {
-
         match msg {
             ImgPresMsg::MouseEnter => {},
             ImgPresMsg::MouseDown (pos) => {
@@ -164,21 +172,10 @@ impl ImgPresRect {
                 if let Some(prev) = self.prev_pos {
 					let delta = cur - prev;
 					self.prev_pos = Some(cur);
-					
-                    self.im_pos += delta;
 
-					// correct position
-					let img_bottom_right: Pos = self.im_sz.into();
-					let frame_pos = Pos::new(frame.x(), frame.y());
-					let frame_size = Pos::new(frame.w(), frame.h());
+					self.im_pos += delta;
 					
-					let pos_min = frame_pos + frame_size - img_bottom_right;
-					let pos_max = frame_pos;
-			
-					self.im_pos.clamp(pos_min, pos_max);
-			
-					println!("{} <= {} <= {}", pos_min.x, self.im_pos.x, pos_max.x);
-					println!("{} <= {} <= {}", pos_min.y, self.im_pos.y, pos_max.y);
+					self.correct_pos(frame);
                 }
             },
             ImgPresMsg::MouseUp => {
@@ -187,24 +184,74 @@ impl ImgPresRect {
             ImgPresMsg::MouseLeave => {
                 self.prev_pos = None;
             },
-            ImgPresMsg::MouseScroll { delta } => {
-                self.scale_factor += delta;
+            ImgPresMsg::MouseScroll { delta_percents } => {	
+				self.scale_factor_percents += delta_percents;
 
-				// let min_w = frame
-
-				let im_w = (self.scale_factor * self.im_sz.w as f32) as i32;
-				let im_h = (self.scale_factor * self.im_sz.h as f32) as i32;
-				self.im_sz = Size::new(im_w, im_h);
+				self.correct_scale(frame);
             },
         }
     }
 
+	fn correct_pos(&mut self, frame: &frame::Frame) {
+		let (im_w, im_h) = self.im_size_scaled();
+
+		// min left
+		if self.im_pos.x + im_w < frame.w() { 
+			self.im_pos.x = frame.w() - im_w; 
+		}
+
+		// max right
+		if self.im_pos.x > 0 { 
+			self.im_pos.x = 0;
+		}
+
+		// min top
+		if self.im_pos.y + im_h < frame.h() { 
+			self.im_pos.y = frame.h() - im_h; 
+		}
+
+		// max bottom
+		if self.im_pos.y > 0 { 
+			self.im_pos.y = 0;
+		}
+	}
+
+	fn correct_scale(&mut self, frame: &frame::Frame) {
+		const MAX_PERCENTS: i32 = 1500;
+		const MIN_PERCENTS: i32 = 1;
+
+		let percents_to_fit_horizontaly = frame.w() * 100 / self.im_sz_initial.w;
+		let percents_to_fit_vertically = frame.h() * 100 / self.im_sz_initial.h;
+
+		let min_percents = std::cmp::min(percents_to_fit_horizontaly, percents_to_fit_vertically);
+
+		self.scale_factor_percents = std::cmp::max(
+			min_percents,
+			self.scale_factor_percents);
+
+		self.scale_factor_percents = std::cmp::max(
+			MIN_PERCENTS,
+			self.scale_factor_percents);
+			
+		self.scale_factor_percents = std::cmp::min(
+			MAX_PERCENTS,
+			self.scale_factor_percents);
+	}
+
+	fn im_size_scaled(&self) -> (i32, i32) /* w, h */ {
+		(
+			self.im_sz_initial.w * self.scale_factor_percents / 100,
+			self.im_sz_initial.h * self.scale_factor_percents / 100,
+		)
+	}
+
     fn scale_draw(&mut self, img: &mut fltk::image::RgbImage, f: &frame::Frame) {
-        img.scale(self.im_sz.w, self.im_sz.h, true, true);
+		let (im_w, im_h) = self.im_size_scaled();
+        img.scale(im_w, im_h, true, true);
 
         use fltk::draw;
         draw::push_clip(f.x(), f.y(), f.w(), f.h());
-        img.draw(self.im_pos.x, self.im_pos.y, self.im_sz.w, self.im_sz.h);
+        img.draw(f.x() + self.im_pos.x, f.y() + self.im_pos.y, im_w, im_h);
         draw::pop_clip();
     }
 }
@@ -217,14 +264,6 @@ impl Pos {
 	fn new(x: i32, y: i32) -> Self {
 		Self { x, y }
 	}
-
-	fn clamp(&mut self, min: Pos, max: Pos) {
-		assert!(min.x <= max.x);
-		assert!(min.y <= max.y);
-
-		self.x = if self.x < min.x { min.x } else if self.x > max.x { max.x } else { self.x };
-		self.y = if self.y < min.y { min.y } else if self.y > max.y { max.y } else { self.y };
-	}
 }
 
 impl Sub for Pos {
@@ -232,14 +271,6 @@ impl Sub for Pos {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Pos::new(self.x - rhs.x, self.y - rhs.y)
-    }
-}
-
-impl Add for Pos {
-    type Output = Pos;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Pos::new(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
@@ -274,6 +305,6 @@ enum ImgPresMsg {
     MouseMove (Pos),
     MouseUp,
     MouseLeave,
-    MouseScroll { delta: f32 },
+    MouseScroll { delta_percents: i32 },
 }
 
