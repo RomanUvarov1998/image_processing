@@ -3,6 +3,7 @@ pub const TEXT_PADDING: i32 = 10;
 
 pub mod container;
 pub mod usual;
+pub mod img_presenter;
 
 pub trait Alignable {
     fn resize(&mut self, x: i32, y: i32, w: i32, h: i32);

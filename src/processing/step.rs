@@ -1,5 +1,5 @@
 use fltk::{app::{self, Sender}, group, prelude::GroupExt};
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn}, usual::{MyImgPresenter, MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError};
 use super::{FilterBase, PADDING, step_editor::StepEditor};
 
 pub struct ProcessingStep {
