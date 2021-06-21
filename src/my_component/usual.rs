@@ -1,5 +1,5 @@
 use std::{borrow::{Borrow}};
-use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
+use fltk::{app::{self, Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use crate::{img::Img, my_err::MyError};
 use super::{Alignable, TEXT_PADDING};
 
@@ -120,6 +120,84 @@ impl Alignable for MyMenuBar {
 }
 
 
+#[derive(Clone, Copy, Debug)]
+enum ImgPresMsg {
+    MouseEnter,
+    MouseDown { x: i32, y: i32 },
+    MouseMove { x: i32, y: i32 },
+    MouseUp,
+    MouseLeave,
+    MouseScroll { delta: f32 },
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ImgPresRect {
+    pos: (i32, i32),
+    scale: (f32, f32),
+    img_sz: (i32, i32),
+    prev_pos: Option<(i32, i32)>
+}
+impl ImgPresRect {
+    fn new(img: &Img) -> Self {
+        ImgPresRect { 
+            pos: (0, 0), 
+            scale: (1_f32, 1_f32),
+            img_sz: (img.w() as i32, img.h() as i32),
+            prev_pos: None
+        }
+    }
+
+    fn consume_msg(&mut self, msg: ImgPresMsg) {
+        match msg {
+            ImgPresMsg::MouseEnter => {},
+            ImgPresMsg::MouseDown { x, y } => {
+                self.prev_pos = Some((x, y));
+            },
+            ImgPresMsg::MouseMove { x, y } => {
+                if let Some((prev_x, prev_y)) = self.prev_pos {
+                    let dx = x - prev_x;
+                    let dy = y - prev_y;
+
+                    self.pos.0 += dx;
+                    self.pos.1 += dy;
+
+                    self.prev_pos = Some((x, y));
+                }
+            },
+            ImgPresMsg::MouseUp => {
+                self.prev_pos = None;
+            },
+            ImgPresMsg::MouseLeave => {
+                self.prev_pos = None;
+            },
+            ImgPresMsg::MouseScroll { delta } => {
+                self.scale.0 += delta;
+                self.scale.1 += delta;
+            },
+        }
+    }
+
+    const IMG_PADDING: i32 = 10;
+
+    fn scale_draw(&mut self, img: &mut fltk::image::RgbImage, f: &frame::Frame) {
+        let w = (self.scale.0 * self.img_sz.0 as f32) as i32;
+        let h = (self.scale.1 * self.img_sz.1 as f32) as i32;
+
+        img.scale(w, h, true, true);
+
+        let x = f.x() + Self::IMG_PADDING + self.pos.0;
+        let y = f.y() + Self::IMG_PADDING + self.pos.1;
+        
+        let right = f.x() + f.w();
+        let bottom = f.y() + f.h();
+        
+        let w = right - x - Self::IMG_PADDING * 2;
+        let h = bottom - y - Self::IMG_PADDING * 2;
+
+        img.draw(x, y, w, h);
+    }
+}
+
 pub struct MyImgPresenter {
     frame_img: frame::Frame,
     img: Option<Img>,
@@ -137,10 +215,7 @@ impl MyImgPresenter {
 
         let img = None;
 
-        MyImgPresenter {
-            frame_img,
-            img,
-        }
+        MyImgPresenter { frame_img, img }
     }
 
     pub fn clear_image(&mut self) {
@@ -150,18 +225,75 @@ impl MyImgPresenter {
     }
 
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
+        // data to move into closure
+        let (sender, receiver) = std::sync::mpsc::channel::<ImgPresMsg>();
+        let mut was_mouse_down = false;
+
+        self.frame_img.handle(move |f, ev| {
+            let (x, y) = fltk::app::event_coords();
+
+            use app::MouseWheel;
+
+            const SCROLL_DELTA: f32 = 0.2_f32;
+            let delta = match fltk::app::event_dy() {
+                MouseWheel::None => 0_f32,
+                MouseWheel::Down => SCROLL_DELTA,
+                MouseWheel::Up => -SCROLL_DELTA,
+                MouseWheel::Right | MouseWheel::Left => unreachable!("")
+            };
+
+            use fltk::enums::Event;
+            let event_handled = match ev {
+                Event::Enter => {
+                    sender.send(ImgPresMsg::MouseEnter).unwrap();
+                    true
+                },
+                Event::Push => {
+                    was_mouse_down = true;
+                    sender.send(ImgPresMsg::MouseDown { x, y }).unwrap();
+                    true
+                },
+                Event::Released => {
+                    was_mouse_down = false;
+                    sender.send(ImgPresMsg::MouseUp).unwrap();
+                    true
+                },
+                Event::Leave => {
+                    was_mouse_down = false;
+                    sender.send(ImgPresMsg::MouseLeave).unwrap();
+                    true
+                },
+                Event::MouseWheel => {
+                    if was_mouse_down {
+                        sender.send(ImgPresMsg::MouseScroll { delta }).unwrap();
+                        true
+                    } else {
+                        false
+                    }
+                },
+                Event::Drag => {
+                    was_mouse_down = true;
+                    sender.send(ImgPresMsg::MouseMove { x, y }).unwrap();
+                    true
+                },
+                _ => return false
+            };
+
+            f.redraw();
+
+            event_handled
+        });
+
+        // data to move into closure
         let mut drawable = img.get_drawable_copy()?;
+        let mut img_pres_rect = ImgPresRect::new(&img);
 
         self.frame_img.draw(move |f| {
-            const IMG_PADDING: i32 = 10;
+            while let Ok(msg) = receiver.try_recv() {
+                img_pres_rect.consume_msg(msg);
+            }
 
-            let x = f.x() + IMG_PADDING;
-            let y = f.y() + IMG_PADDING;
-            let w = f.w() - IMG_PADDING * 2;
-            let h = f.h() - IMG_PADDING * 2;
-
-            drawable.scale(w, h, true, true);
-            drawable.draw(x, y, w, h);
+            img_pres_rect.scale_draw(&mut drawable, f);
         });
 
         self.img = Some(img);
