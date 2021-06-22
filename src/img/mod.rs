@@ -1,5 +1,5 @@
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
-use fltk::{enums::ColorDepth, image, prelude::ImageExt};
+use fltk::{enums::ColorDepth, image::{self}, prelude::ImageExt};
 use crate::{filter::filter_option::ImgChannel, my_err::MyError};
 use self::pixel_pos::PixelPos;
 
@@ -223,6 +223,7 @@ impl Img {
 
         if im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
         if im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
+        
         let width = im.w() as usize;
         let height = im.h() as usize;
         let color_depth = im.depth();
@@ -240,6 +241,26 @@ impl Img {
         }
 
         Ok(img)
+    }
+
+    pub fn from<T: ImageExt>(sh_im: T) -> Self {
+        let width = sh_im.w() as usize;
+        let height = sh_im.h() as usize;
+        let color_depth = sh_im.depth();
+        let all_pixels: Vec<f64> = sh_im.to_rgb_data().into_iter().map(|v| v as f64).collect();
+
+        let layers_count = color_depth as u8 as usize;
+        assert_eq!(all_pixels.len() % layers_count, 0);
+
+        let mut img = Img::empty_with_size(width, height, color_depth);
+
+        for pixel_num in 0..all_pixels.len() {
+            let layer_num = pixel_num % layers_count;
+            let layer_pixel_num = pixel_num / layers_count;
+            img.layer_mut(layer_num).matrix_mut().pixels[layer_pixel_num] = all_pixels[pixel_num];
+        }
+
+        img
     }
 
     pub fn w(&self) -> usize { self.width }

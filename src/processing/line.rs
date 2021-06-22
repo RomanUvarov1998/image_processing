@@ -1,7 +1,7 @@
 use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, WidgetExt}, window};
-use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}, window};
+use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
 use super::{FilterBase, PADDING, ProcessingData, progress_provider::ProgressProvider, step::ProcessingStep, step_editor::StepEditor};
 
 
@@ -39,7 +39,11 @@ impl<'wind> ProcessingLine<'wind> {
         let mut main_menu = MyMenuBar::new(wind_parent);
         main_menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         main_menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
-        main_menu.add_emit("Импорт/Загрузить", sender, Message::Project(Project::LoadImage));
+
+        main_menu.add_emit("Импорт/Файл", sender, 
+            Message::Project(Project::Import(ImportType::FromFile)));
+        main_menu.add_emit("Импорт/Системный буфер обмена", sender, 
+            Message::Project(Project::Import(ImportType::FromSystemClipoard)));
 
         main_menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
 
@@ -146,10 +150,10 @@ impl<'wind> ProcessingLine<'wind> {
                 match msg {
                     Message::Project(msg) => {
                         match msg {
-                            Project::LoadImage => {
-                                match self.try_load_initial_img() {
+                            Project::Import (import_type) => {
+                                match self.try_inport_initial_img(import_type) {
                                     Ok(_) => {}
-                                    Err(err) => show_err_msg(&self.parent_window, &err.to_string())
+                                    Err(err) => show_err_msg(&self.parent_window, err)
                                 };
                                 self.parent_window.redraw();
                             },
@@ -158,7 +162,7 @@ impl<'wind> ProcessingLine<'wind> {
                                     Ok(done) => if done {
                                         show_info_msg(&self.parent_window, "Проект успешно сохранен");
                                     },
-                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
+                                    Err(err) => show_err_msg(&self.parent_window, err),
                                 }
                             },
                             Project::LoadProject => {
@@ -166,13 +170,13 @@ impl<'wind> ProcessingLine<'wind> {
                                     Ok(done) => if done { 
                                         show_info_msg(&self.parent_window, "Проект успешно загружен"); 
                                     },
-                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
+                                    Err(err) => show_err_msg(&self.parent_window, err),
                                 }
                             },
                             Project::SaveResults => {
                                 match self.try_save_results() {
                                     Ok(_) => show_info_msg(&self.parent_window, "Результаты успешно сохранены"),
-                                    Err(err) => show_err_msg(&self.parent_window, &err.get_message()),
+                                    Err(err) => show_err_msg(&self.parent_window, err),
                                 }
                             }
                         };
@@ -268,7 +272,7 @@ impl<'wind> ProcessingLine<'wind> {
                                             step.clear_result();
                                         }
                                     }
-                                    Err(err) => show_err_msg(&self.parent_window, &err.to_string())
+                                    Err(err) => show_err_msg(&self.parent_window, err)
                                 };
                             },
                             Processing::StepProgress { step_num, cur_percents } => {
@@ -281,7 +285,7 @@ impl<'wind> ProcessingLine<'wind> {
                                 let processing_continued: bool = match self.on_step_completed(step_num) {
                                     Ok(continued) => continued,
                                     Err(err) => {
-                                        show_err_msg(&self.parent_window, &err.to_string());
+                                        show_err_msg(&self.parent_window, err);
                                         false
                                     },
                                 };
@@ -418,7 +422,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     
-    fn try_load_initial_img(&mut self) -> Result<(), MyError> {
+    fn try_inport_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
         if self.img_presenter.has_image() {
             if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step in self.steps.iter_mut() {
@@ -429,15 +433,31 @@ impl<'wind> ProcessingLine<'wind> {
             }
         }
 
-        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
-        dlg.show();
-        let path_buf = dlg.filename();
+        let init_image = match import_type {
+            ImportType::FromFile => {
+                let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
+                dlg.show();
+                let path_buf = dlg.filename();
+        
+                if let Some(p) = path_buf.to_str() {
+                    if p.is_empty() { return Ok(()); }
+                }     
 
-        if let Some(p) = path_buf.to_str() {
-            if p.is_empty() { return Ok(()); }
-        }     
+                let sh_im = fltk::image::SharedImage::load(path_buf)?;
 
-        let init_image = Img::load_as_rgb(path_buf)?;
+                if sh_im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
+                if sh_im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
+        
+                Img::from(sh_im)
+            },
+            ImportType::FromSystemClipoard => {
+                match app::event_clipboard_image() {
+                    Some(rgb_img) => Img::from(rgb_img),
+                    None => { return Err(MyError::new("Не удалось загрузить изображение из системного буфера".to_string())); },
+                }
+            },
+        };
+
 
         self.lbl_init_img.set_text(&init_image.get_description());
 

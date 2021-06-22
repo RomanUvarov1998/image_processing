@@ -1,7 +1,10 @@
 use fltk::{prelude::WidgetExt, window::Window};
+use crate::my_err::MyError;
 
-pub fn show_err_msg(parent_window: &Window, msg: &str) {
-    let (x, y) = count_box_pos(parent_window, msg);
+pub fn show_err_msg(parent_window: &Window, err: MyError) {
+    let msg = err.get_message();
+
+    let (x, y) = count_box_pos(parent_window, &msg);
 
     fltk::dialog::alert(x, y, &msg);
 }

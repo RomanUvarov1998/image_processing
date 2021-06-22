@@ -1,10 +1,13 @@
 #[derive(Debug, Copy, Clone)]
 pub enum Project {
-    LoadImage,
+    Import (ImportType),
     SaveProject,
     LoadProject,
     SaveResults,
 }
+
+#[derive(Debug, Copy, Clone)]
+pub enum ImportType { FromFile, FromSystemClipoard }
 
 #[derive(Debug, Copy, Clone)]
 pub enum MoveStep { Up, Down }
