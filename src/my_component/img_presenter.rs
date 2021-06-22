@@ -188,6 +188,7 @@ impl ImgPresRect {
 				self.scale_factor_percents += delta_percents;
 
 				self.correct_scale(frame);
+                self.correct_pos(frame);
             },
         }
     }
