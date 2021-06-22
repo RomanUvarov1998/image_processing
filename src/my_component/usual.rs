@@ -22,6 +22,18 @@ impl MyButton {
     {
         self.btn.emit(sender, msg);
     }
+
+    pub fn set_active(&mut self, active: bool) {
+        if active {
+            self.btn.activate();
+        } else {
+            self.btn.deactivate();
+        }
+    }
+
+    pub fn widget<'own>(&'own mut self) -> &'own mut button::Button {
+        &mut self.btn
+    }
 }
 
 impl Alignable for MyButton {

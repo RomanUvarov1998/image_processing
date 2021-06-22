@@ -1,32 +1,40 @@
 use std::{ops::{AddAssign, Sub}};
 
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::Img, my_err::MyError};
+use crate::{img::Img, my_component::{container::MyColumn, usual::MyButton}, my_err::MyError};
 use super::Alignable;
 
 
 pub struct MyImgPresenter {
+    btn_fit: MyButton,
     frame_img: frame::Frame,
     img: Option<Img>,
 }
 
 impl MyImgPresenter {
     pub fn new(w: i32, h: i32) -> Self {
+        let mut column = MyColumn::new(w, h);
+
+        let mut btn_fit = MyButton::with_label("Уместить");
+        btn_fit.set_active(false);
+
         let mut frame_img = frame::Frame::default()
             .with_size(w, h);
-
         use fltk::enums::{FrameType, Align};
-
         frame_img.set_frame(FrameType::EmbossedBox);
         frame_img.set_align(Align::Center); 
+        
+        column.end();
 
         let img = None;
 
-        MyImgPresenter { frame_img, img }
+        MyImgPresenter { btn_fit, frame_img, img }
     }
 
     pub fn clear_image(&mut self) {
         self.img = None;
+        self.btn_fit.set_active(false);
+        self.btn_fit.widget().set_callback(move |_| { });
         self.frame_img.handle(|_, _| { false });
         self.frame_img.draw(|_| {});
         self.frame_img.redraw(); 
@@ -38,7 +46,7 @@ impl MyImgPresenter {
 
         // data to move into closure
         let mut drawable = img.get_drawable_copy()?;
-        let mut img_pres_rect = ImgPresRect::new(&img, &self.frame_img);
+        let mut img_pres_rect = ImgPresRect::new(&img, &mut self.frame_img);
 
         self.frame_img.draw(move |f| {
             while let Ok(msg) = receiver.try_recv() {
@@ -49,8 +57,17 @@ impl MyImgPresenter {
         });
 
         // data to move into closure
-		let mut was_mouse_down = false;
+        let sender_for_btn = sender.clone();
+        let mut frame_copy = self.frame_img.clone();
+        
+        self.btn_fit.widget().set_callback(move |_| {
+            sender_for_btn.send(ImgPresMsg::Fit).unwrap_or(());
+            frame_copy.redraw();
+        });
+        self.btn_fit.set_active(true);
 
+        // data to move into closure
+		let mut was_mouse_down = false;
         self.frame_img.handle(move |f, ev| {
             let (x, y) = (fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
 
@@ -193,6 +210,12 @@ impl ImgPresRect {
 				self.correct_scale(frame);
                 self.correct_pos(frame);
             },
+            ImgPresMsg::Fit => {
+                self.scale_factor = Self::scale_percents_to_fit(self.im_sz_initial, frame);
+
+				self.correct_scale(frame);
+                self.correct_pos(frame);
+            },
         }
     }
 
@@ -316,5 +339,6 @@ enum ImgPresMsg {
     MouseUp,
     MouseLeave,
     MouseScroll { factor_delta: f32 },
+    Fit
 }
 
