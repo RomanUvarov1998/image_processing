@@ -11,7 +11,7 @@ pub struct ProcessingLine<'wind> {
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
     step_editor: StepEditor,
-    processing_data: Arc<Mutex<Option<ProcessingData>>>,
+    processing_data_arc: Arc<Mutex<Option<ProcessingData>>>,
     processing_thread_handle: JoinHandle<()>,
     // graphical parts
     wind_size_prev: (i32, i32),
@@ -87,28 +87,30 @@ impl<'wind> ProcessingLine<'wind> {
         wind_parent.end();
 
         let sender_copy = sender.clone();
-        let processing_data: Arc<Mutex<Option<ProcessingData>>> = Arc::new(Mutex::new(Option::<ProcessingData>::None));
-        let processing_data_copy = processing_data.clone();
-        let processing_thread_handle: JoinHandle<()> = thread::spawn(move || 
+        let processing_data_arc: Arc<Mutex<Option<ProcessingData>>> = Arc::new(Mutex::new(Option::<ProcessingData>::None));
+        let processing_data_arc_copy = processing_data_arc.clone();
+        let processing_thread_handle: JoinHandle<()> = thread::Builder::new().name("Processing".to_string()).spawn(move || 
         {
             loop {
-                thread::park();
-                match processing_data_copy.try_lock() {
-                    Ok(mut guard) => match guard.as_mut() {
-                        Some(pd) => {
-                            let mut prog_prov = ProgressProvider::new(sender_copy.clone());
-                            prog_prov.set_step_num(pd.step_num);
+                thread::park(); 
 
-                            pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
+                use std::sync::MutexGuard;
+                let mut guard: MutexGuard<Option<ProcessingData>> = processing_data_arc_copy
+                    .try_lock()
+                    .expect("Couldn't lock the processing data");
 
-                            sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num: pd.step_num }));
-                        },
-                        None => { }
-                    },
-                    Err(_) => { }
-                };
+                let pd: &mut ProcessingData = guard
+                    .as_mut()
+                    .expect("Expected Some(processing data), but None was there");
+
+                let mut prog_prov = ProgressProvider::new(sender_copy.clone());
+                prog_prov.set_step_num(pd.step_num);
+
+                pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
+
+                sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num: pd.step_num }));
             }
-        });
+        }).unwrap();
 
         let wind_size_prev = (wind_parent.w(), wind_parent.h());
 
@@ -118,7 +120,7 @@ impl<'wind> ProcessingLine<'wind> {
             x, y, w, h,
             receiver,
             step_editor: StepEditor::new(),
-            processing_data,
+            processing_data_arc,
             processing_thread_handle,
             // graphical parts
             wind_size_prev,
@@ -340,7 +342,7 @@ impl<'wind> ProcessingLine<'wind> {
         };
 
         let filter_copy = self.steps[step_num].filter().get_copy();
-        self.processing_data.lock().unwrap().replace(
+        self.processing_data_arc.lock().unwrap().replace(
             ProcessingData::new(step_num, filter_copy, img_copy, do_until_end));
         self.steps[step_num].start_processing();
 
@@ -350,7 +352,7 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
-        let mut pd_locked = self.processing_data.lock()
+        let mut pd_locked = self.processing_data_arc.lock()
             .unwrap()
             .take()
             .expect("No processing_data detected");
