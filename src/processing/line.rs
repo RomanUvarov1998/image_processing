@@ -94,21 +94,25 @@ impl<'wind> ProcessingLine<'wind> {
             loop {
                 thread::park(); 
 
-                use std::sync::MutexGuard;
-                let mut guard: MutexGuard<Option<ProcessingData>> = processing_data_arc_copy
-                    .try_lock()
-                    .expect("Couldn't lock the processing data");
+                let step_num = {
+                    use std::sync::MutexGuard;
+                    let mut guard: MutexGuard<Option<ProcessingData>> = processing_data_arc_copy
+                        .try_lock()
+                        .expect("Couldn't lock the processing data");
+    
+                    let pd: &mut ProcessingData = guard
+                        .as_mut()
+                        .expect("Expected Some(processing data), but None was there");
+    
+                    let mut prog_prov = ProgressProvider::new(sender_copy.clone());
+                    prog_prov.set_step_num(pd.step_num);
+    
+                    pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
 
-                let pd: &mut ProcessingData = guard
-                    .as_mut()
-                    .expect("Expected Some(processing data), but None was there");
+                    pd.step_num
+                };
 
-                let mut prog_prov = ProgressProvider::new(sender_copy.clone());
-                prog_prov.set_step_num(pd.step_num);
-
-                pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
-
-                sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num: pd.step_num }));
+                sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num }));
             }
         }).unwrap();
 
@@ -340,10 +344,17 @@ impl<'wind> ProcessingLine<'wind> {
                 }
             }
         };
-
+            
         let filter_copy = self.steps[step_num].filter().get_copy();
-        self.processing_data_arc.lock().unwrap().replace(
-            ProcessingData::new(step_num, filter_copy, img_copy, do_until_end));
+
+        {
+            use std::sync::MutexGuard;
+            let mut guard: MutexGuard<Option<ProcessingData>> = self.processing_data_arc.lock()
+                .expect("Couldn't lock processing data from the main thread");
+
+            guard.replace(ProcessingData::new(step_num, filter_copy, img_copy, do_until_end));
+        }
+
         self.steps[step_num].start_processing();
 
         self.processing_thread_handle.thread().unpark();
@@ -352,17 +363,22 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
-        let mut pd_locked = self.processing_data_arc.lock()
-            .unwrap()
-            .take()
-            .expect("No processing_data detected");
+        let (result_img, should_continue) = {
+            let mut guard = self.processing_data_arc.lock()
+                .expect("Couldn't lock processing data from the main thread");
+    
+            let mut pd_locked = guard.take()
+                .expect("No processing_data detected");
+    
+            let result_img = pd_locked.take_result()
+                .expect("No result image in processing_data");
 
-        let result_img = pd_locked.take_result()
-            .expect("No result image in processing_data");
+            let should_continue = pd_locked.do_until_end && step_num < self.steps.len() - 1;
+
+            (result_img, should_continue)
+        };
 
         self.steps[step_num].display_result(result_img)?;
-
-        let should_continue = pd_locked.do_until_end && step_num < self.steps.len() - 1;
 
         if should_continue {
             self.try_start_step(step_num + 1, should_continue)?;
