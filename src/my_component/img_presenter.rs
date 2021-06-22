@@ -50,14 +50,15 @@ impl MyImgPresenter {
 
         // data to move into closure
 		let mut was_mouse_down = false;
+
         self.frame_img.handle(move |f, ev| {
             let (x, y) = (fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
 
             use fltk::app::MouseWheel;
 
-            const SCROLL_DELTA: i32 = 20;
-            let delta_percents = match fltk::app::event_dy() {
-                MouseWheel::None => 0,
+            const SCROLL_DELTA: f32 = 0.2_f32;
+            let delta_percents: f32 = match fltk::app::event_dy() {
+                MouseWheel::None => 0_f32,
                 MouseWheel::Down => SCROLL_DELTA,
                 MouseWheel::Up => -SCROLL_DELTA,
                 MouseWheel::Right | MouseWheel::Left => unreachable!("")
@@ -86,7 +87,7 @@ impl MyImgPresenter {
                 },
                 Event::MouseWheel => {
                     if was_mouse_down {
-                        sender.send(ImgPresMsg::MouseScroll { delta_percents }).unwrap_or(());
+                        sender.send(ImgPresMsg::MouseScroll { factor_delta: delta_percents }).unwrap_or(());
 						true
                     } else {
 						false
@@ -143,21 +144,23 @@ impl Alignable for MyImgPresenter {
 struct ImgPresRect {
     im_pos: Pos,
     im_sz_initial: Size,
-    scale_factor_percents: i32,
+    scale_factor: f32,
     prev_pos: Option<Pos>
 }
 
 impl ImgPresRect {
     fn new(img: &Img, frame: &frame::Frame) -> Self {
+        let im_sz_initial = Size::new(img.w() as i32, img.h() as i32);
+        let scale_factor = Self::scale_percents_to_fit(im_sz_initial, frame);
+
         let mut rect = ImgPresRect { 
             im_pos: Pos::new(0, 0), 
-            scale_factor_percents: 100,
-            im_sz_initial: Size::new(img.w() as i32, img.h() as i32),
+            scale_factor,
+            im_sz_initial,
             prev_pos: None
         };
 
 		rect.correct_pos(frame);
-		rect.correct_scale(frame);
 
 		rect
     }
@@ -184,8 +187,8 @@ impl ImgPresRect {
             ImgPresMsg::MouseLeave => {
                 self.prev_pos = None;
             },
-            ImgPresMsg::MouseScroll { delta_percents } => {	
-				self.scale_factor_percents += delta_percents;
+            ImgPresMsg::MouseScroll { factor_delta } => {	
+				self.scale_factor += factor_delta;
 
 				self.correct_scale(frame);
                 self.correct_pos(frame);
@@ -218,31 +221,37 @@ impl ImgPresRect {
 	}
 
 	fn correct_scale(&mut self, frame: &frame::Frame) {
-		const MAX_PERCENTS: i32 = 1500;
-		const MIN_PERCENTS: i32 = 1;
+		const MAX_FACTOR: f32 = 15.0_f32;
+		const MIN_FACTOR: f32 = 0.01_f32;
 
-		let percents_to_fit_horizontaly = frame.w() * 100 / self.im_sz_initial.w;
-		let percents_to_fit_vertically = frame.h() * 100 / self.im_sz_initial.h;
+        let minimal_to_fit = Self::scale_percents_to_fit(self.im_sz_initial, frame);
 
-		let min_percents = std::cmp::min(percents_to_fit_horizontaly, percents_to_fit_vertically);
-
-		self.scale_factor_percents = std::cmp::max(
-			min_percents,
-			self.scale_factor_percents);
-
-		self.scale_factor_percents = std::cmp::max(
-			MIN_PERCENTS,
-			self.scale_factor_percents);
-			
-		self.scale_factor_percents = std::cmp::min(
-			MAX_PERCENTS,
-			self.scale_factor_percents);
+        if self.scale_factor < minimal_to_fit {
+            self.scale_factor = minimal_to_fit;
+        }
+        if self.scale_factor > MAX_FACTOR {
+            self.scale_factor = MAX_FACTOR;
+        }
+        if self.scale_factor < MIN_FACTOR {
+            self.scale_factor = MIN_FACTOR;
+        }
 	}
 
-	fn im_size_scaled(&self) -> (i32, i32) /* w, h */ {
+    fn scale_percents_to_fit(im_sz: Size, frame: &frame::Frame) -> f32 {
+		let to_fit_horizontaly = frame.w() as f32 / im_sz.w as f32;
+		let to_fit_vertically = frame.h() as f32 / im_sz.h as f32;
+
+        if to_fit_vertically < to_fit_horizontaly {
+            to_fit_vertically
+        } else {
+            to_fit_horizontaly
+        }
+    }
+
+    fn im_size_scaled(&self) -> (i32, i32) /* w, h */ {
 		(
-			self.im_sz_initial.w * self.scale_factor_percents / 100,
-			self.im_sz_initial.h * self.scale_factor_percents / 100,
+			(self.im_sz_initial.w as f32 * self.scale_factor) as i32,
+			(self.im_sz_initial.h as f32 * self.scale_factor) as i32,
 		)
 	}
 
@@ -306,6 +315,6 @@ enum ImgPresMsg {
     MouseMove (Pos),
     MouseUp,
     MouseLeave,
-    MouseScroll { delta_percents: i32 },
+    MouseScroll { factor_delta: f32 },
 }
 
