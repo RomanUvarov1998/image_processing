@@ -69,18 +69,6 @@ impl MyImgPresenter {
 
 			img_pres_rect.draw_img(&mut drawable, f);
         });
-
-        // ------------------------------------ btn fit ----------------------------------------
-        // data to move into closure
-        let sender_for_btn = sender.clone();
-        let mut frame_copy = self.frame_img.clone();  
-
-        self.btn_fit.widget().set_callback(move |_| {
-            sender_for_btn.send(ImgPresMsg::Fit).unwrap_or(());
-            frame_copy.redraw();
-        });
-        self.btn_fit.set_active(true);
-
         // ------------------------------------ btn toggle selection ----------------------------------------
         // data to move into closure
         let sender_for_btn = sender.clone();
@@ -92,6 +80,21 @@ impl MyImgPresenter {
             frame_copy.redraw();
         });
         self.btn_toggle_selection.activate();
+
+        // ------------------------------------ btn fit ----------------------------------------
+        // data to move into closure
+        let sender_for_btn = sender.clone();
+        let mut frame_copy = self.frame_img.clone();  
+        let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();  
+
+        self.btn_fit.widget().set_callback(move |_| {
+            sender_for_btn.send(ImgPresMsg::Fit).unwrap_or(());
+            sender_for_btn.send(ImgPresMsg::SelectionOff).unwrap_or(());
+            btn_toggle_selection_copy.toggle(false);
+            frame_copy.redraw();
+        });
+        self.btn_fit.set_active(true);
+
 
         // ------------------------------------ frame handling ----------------------------------------
         // data to move into closure
@@ -119,11 +122,6 @@ impl MyImgPresenter {
                 Event::Released => {
                     was_mouse_down = false;
                     sender.send(ImgPresMsg::MouseUp).unwrap_or(());
-					true
-                },
-                Event::Leave => {
-                    was_mouse_down = false;
-                    sender.send(ImgPresMsg::MouseLeave).unwrap_or(());
 					true
                 },
                 Event::MouseWheel => {
@@ -192,9 +190,7 @@ struct ImgPresRect {
 impl ImgPresRect {
     fn new(img: &Img, frame: &frame::Frame) -> Self {
         let im_sz_initial = Size::new(img.w() as i32, img.h() as i32);
-        let scale_factor = Self::scale_factor_to_fit(
-            im_sz_initial, 
-            frame.w(), frame.h());
+        let scale_factor = Self::scale_factor_to_fit(im_sz_initial, Size::of(frame));
 
         let mut rect = ImgPresRect { 
             im_pos: Pos::new(0, 0), 
@@ -204,64 +200,37 @@ impl ImgPresRect {
             selection_rect: None
         };
 
-        rect.correct_pos_scale(frame);
+        rect.correct_pos_scale(Size::of(frame));
 
 		rect
     }
 
+
     fn consume_msg(&mut self, msg: ImgPresMsg, frame: &frame::Frame) {
         match msg {
-            ImgPresMsg::MouseDown (pos) => {
-                self.prev_pos = Some(pos);
-
-                if let Some(ref mut rect) = self.selection_rect {
-                    rect.start_drag(pos.x, pos.y);
-                }
-            },
-            ImgPresMsg::MouseMove (cur) => {
-                if let Some(prev) = self.prev_pos {
-					let delta = cur - prev;
-					self.prev_pos = Some(cur);
-
-                    match self.selection_rect {
-                        Some(ref mut rect) => {
-                            rect.drag(delta);
-                        },
-                        None => {
-                            self.im_pos += delta;
-                        },
-                    }
-                }
-            },
+            ImgPresMsg::MouseDown (pos) => self.start_drag(pos),
+            ImgPresMsg::MouseMove (cur) => self.drag(cur),
             ImgPresMsg::MouseUp => {
-                self.prev_pos = None;
-
-                if let Some(ref mut rect) = self.selection_rect {
-                    rect.stop_drag();
-                }
-
-                self.correct_pos_scale(frame);
-            },
-            ImgPresMsg::MouseLeave => {
-                self.prev_pos = None;
+                self.stop_drag();
+                self.correct_pos_scale(Size::of(frame));
             },
             ImgPresMsg::MouseScroll { factor_delta, mouse_x, mouse_y } => {	
-                self.scale(factor_delta, Pos::new(mouse_x, mouse_y), frame);
+                self.scale(factor_delta, Pos::new(mouse_x, mouse_y), Size::of(frame));
             },
             ImgPresMsg::Fit => {
-                let (new_sf, anchor) = if let Some(ref mut rect) = self.selection_rect {
-                    let new_sf = Self::scale_factor_to_fit(rect.size(), frame.w(), frame.h());
+                let (delta, anchor) = if let Some(ref mut rect) = self.selection_rect {
+                    let new_sf = Self::scale_factor_to_fit(rect.size(), Size::of(frame));
 
                     (new_sf, rect.center())
                 } else {
-                    let new_sf = Self::scale_factor_to_fit(self.im_sz_initial, frame.w(), frame.h());
+                    let new_sf = Self::scale_factor_to_fit(self.im_sz_initial, Size::of(frame));
                     
-                    (new_sf, Pos::new(frame.x() + frame.w() / 2,frame.y() + frame.y() / 2))
+                    (new_sf - self.scale_factor, Pos::center_of(frame))
                 };
 
-                self.scale(new_sf - self.scale_factor, anchor, frame);
+                self.scale(delta, anchor, Size::of(frame));
 
-                self.correct_pos_scale(frame);
+                self.correct_pos_scale(Size::of(frame));
             },
             ImgPresMsg::SeletionOn => {
                 self.selection_rect = Some(SelectionRect::middle_third_of(frame));
@@ -272,14 +241,46 @@ impl ImgPresRect {
         }
     }
 
-	fn correct_pos_scale(&mut self, frame: &frame::Frame) {
+
+    fn start_drag(&mut self, pos: Pos) {
+        self.prev_pos = Some(pos);
+
+        if let Some(ref mut rect) = self.selection_rect {
+            rect.start_drag(pos.x, pos.y);
+        }
+    }
+
+    fn drag(&mut self, to: Pos) {
+        let prev = match self.prev_pos {
+            Some(pos) => pos,
+            None => { return; },
+        };
+
+        let delta = to - prev;
+        self.prev_pos = Some(to);
+
+        if let Some(ref mut rect) = self.selection_rect {
+            rect.drag(delta);
+        } else {
+            self.im_pos += delta;
+        }
+    }
+
+    fn stop_drag(&mut self) {
+        self.prev_pos = None;
+
+        if let Some(ref mut rect) = self.selection_rect {
+            rect.stop_drag();
+        }
+    }
+
+
+	fn correct_pos_scale(&mut self, frame_sz: Size) {
         // --------------------------- correct image scale --------------------------- 
 		const MAX_FACTOR: f32 = 15.0_f32;
 		const MIN_FACTOR: f32 = 0.01_f32;
 
-        let minimal_to_fit = Self::scale_factor_to_fit(
-            self.im_sz_initial, 
-            frame.w(), frame.h());
+        let minimal_to_fit = Self::scale_factor_to_fit(self.im_sz_initial, frame_sz);
 
         if self.scale_factor < minimal_to_fit {
             self.scale_factor = minimal_to_fit;
@@ -295,8 +296,8 @@ impl ImgPresRect {
 		let (im_w, im_h) = self.im_size_scaled();
 
 		// min left
-		if self.im_pos.x + im_w < frame.w() { 
-			self.im_pos.x = frame.w() - im_w; 
+		if self.im_pos.x + im_w < frame_sz.w { 
+			self.im_pos.x = frame_sz.w - im_w; 
 		}
 
 		// max right
@@ -305,20 +306,19 @@ impl ImgPresRect {
 		}
 
 		// min top
-		if self.im_pos.y + im_h < frame.h() { 
-			self.im_pos.y = frame.h() - im_h; 
+		if self.im_pos.y + im_h < frame_sz.h { 
+			self.im_pos.y = frame_sz.h - im_h; 
 		}
 
 		// max bottom
 		if self.im_pos.y > 0 { 
 			self.im_pos.y = 0;
 		}
-	
 	}
 
-    fn scale_factor_to_fit(im_sz: Size, rect_w: i32, rect_h: i32) -> f32 {
-		let to_fit_horizontaly = rect_w as f32 / im_sz.w as f32;
-		let to_fit_vertically = rect_h as f32 / im_sz.h as f32;
+    fn scale_factor_to_fit(im_sz: Size, rect_sz: Size) -> f32 {
+		let to_fit_horizontaly = rect_sz.w as f32 / im_sz.w as f32;
+		let to_fit_vertically = rect_sz.h as f32 / im_sz.h as f32;
 
         if to_fit_vertically < to_fit_horizontaly {
             to_fit_vertically
@@ -327,11 +327,11 @@ impl ImgPresRect {
         }
     }
 
-    fn scale(&mut self, delta: f32, anchor: Pos, frame: &frame::Frame) {
+    fn scale(&mut self, delta: f32, anchor: Pos, frame_sz: Size) {
         let scale_factor_prev = self.scale_factor;
         
         self.scale_factor += delta;
-        let scale_factor_min = Self::scale_factor_to_fit(self.im_sz_initial, frame.w(), frame.h());
+        let scale_factor_min = Self::scale_factor_to_fit(self.im_sz_initial, frame_sz);
         if self.scale_factor < scale_factor_min {
             self.scale_factor = scale_factor_min;
         }
@@ -344,6 +344,7 @@ impl ImgPresRect {
         
         self.im_pos -= shift;
     }
+
 
     fn im_size_scaled(&self) -> (i32, i32) /* w, h */ {
 		(
@@ -530,6 +531,13 @@ impl Pos {
             (self.y as f32 * val) as i32,
         )
     }
+
+    fn center_of<W: WidgetExt>(wid: &W) -> Self {
+        Pos {
+            x: wid.x() + wid.w() / 2,
+            y: wid.y() + wid.h() / 2
+        }
+    }
 }
 
 impl Sub for Pos {
@@ -578,6 +586,10 @@ impl Size {
 	fn new(w: i32, h: i32) -> Self {
 		Self { w, h }
 	}
+
+    fn of<W: WidgetExt>(wid: &W) -> Self {
+		Self { w: wid.w(), h: wid.h() }
+	}
 }
 
 impl AddAssign for Size {
@@ -593,7 +605,6 @@ enum ImgPresMsg {
     MouseDown (Pos),
     MouseMove (Pos),
     MouseUp,
-    MouseLeave,
     MouseScroll { factor_delta: f32, mouse_x: i32, mouse_y: i32 },
     Fit,
     SeletionOn, SelectionOff
