@@ -219,9 +219,9 @@ impl ImgPresRect {
             },
             ImgPresMsg::Fit => {
                 let (delta, anchor) = if let Some(ref mut rect) = self.selection_rect {
-                    let new_sf = Self::scale_factor_to_fit(rect.size(), Size::of(frame));
+                    let sf_mul = Self::scale_factor_to_fit(rect.size(), Size::of(frame));
 
-                    (new_sf, rect.center())
+                    ((sf_mul - 1.0) * self.scale_factor, rect.center())
                 } else {
                     let new_sf = Self::scale_factor_to_fit(self.im_sz_initial, Size::of(frame));
                     
@@ -314,6 +314,25 @@ impl ImgPresRect {
 		if self.im_pos.y > 0 { 
 			self.im_pos.y = 0;
 		}
+
+        // --------------------------- correct selection rect position --------------------------- 
+        if let Some(ref mut rect) = self.selection_rect {
+            if rect.pos_top_left.x < 0 {
+                rect.pos_top_left.x = 0;
+            }
+
+            if rect.pos_top_left.y < 0 {
+                rect.pos_top_left.y = 0;
+            }
+
+            if rect.pos_bottom_right.x > frame_sz.w {
+                rect.pos_bottom_right.x = frame_sz.w;
+            }
+
+            if rect.pos_bottom_right.y > frame_sz.h {
+                rect.pos_bottom_right.y = frame_sz.h;
+            }
+        }
 	}
 
     fn scale_factor_to_fit(im_sz: Size, rect_sz: Size) -> f32 {
@@ -379,6 +398,7 @@ enum SelRectDrag {
 }
 
 
+#[derive(Debug)]
 struct SelectionRect {
     pos_top_left: Pos,
     pos_bottom_right: Pos,
