@@ -264,12 +264,7 @@ impl ImgPresRect {
                 self.correct_pos_scale(frame);
             },
             ImgPresMsg::SeletionOn => {
-                let w = frame.w() / 3;
-                let h = frame.h() / 3;
-                let x = w;
-                let y = h;
-
-                self.selection_rect = Some(SelectionRect::new(x, y, w, h));
+                self.selection_rect = Some(SelectionRect::middle_third_of(frame));
             },
             ImgPresMsg::SelectionOff => {
                 self.selection_rect = None;
@@ -390,7 +385,12 @@ struct SelectionRect {
 }
 
 impl SelectionRect {
-    fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+    fn middle_third_of(frame: &frame::Frame) -> Self {
+        let w = frame.w() / 3;
+        let h = frame.h() / 3;
+        let x = w;
+        let y = h;
+        
         SelectionRect { 
             pos_top_left: Pos::new(x, y), 
             pos_bottom_right: Pos::new(x + w, y + h), 
