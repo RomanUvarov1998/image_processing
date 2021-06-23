@@ -1,7 +1,6 @@
-use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}, sync::{Arc, Mutex}};
-
+use std::{sync::{Arc, Mutex}};
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError};
+use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{Pos, Size}};
 use super::Alignable;
 
 
@@ -611,96 +610,6 @@ impl SelectionRect {
                 };
             }
         }
-    }
-}
-
-
-#[derive(Clone, Copy, Debug)]
-struct Pos { x: i32, y: i32 }
-
-impl Pos {
-	fn new(x: i32, y: i32) -> Self {
-		Self { x, y }
-	}
-
-    fn mul_f(&self, val: f32) -> Self {
-        Pos::new(
-            (self.x as f32 * val) as i32,
-            (self.y as f32 * val) as i32,
-        )
-    }
-
-    fn center_of<W: WidgetExt>(wid: &W) -> Self {
-        Pos {
-            x: wid.x() + wid.w() / 2,
-            y: wid.y() + wid.h() / 2
-        }
-    }
-}
-
-impl Sub for Pos {
-    type Output = Pos;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Pos::new(self.x - rhs.x, self.y - rhs.y)
-    }
-}
-
-impl Add for Pos {
-    type Output = Pos;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Pos::new(self.x + rhs.x, self.y + rhs.y)
-    }
-}
-
-impl AddAssign for Pos {
-    fn add_assign(&mut self, rhs: Self) {
-		self.x += rhs.x;
-		self.y += rhs.y;
-    }
-}
-
-impl SubAssign for Pos {
-    fn sub_assign(&mut self, rhs: Self) {
-		self.x -= rhs.x;
-		self.y -= rhs.y;
-    }
-}
-
-impl Neg for Pos {
-    type Output = Pos;
-
-    fn neg(self) -> Self::Output {
-        Self { x: -self.x, y: -self.y }
-    }
-}
-
-
-#[derive(Clone, Copy, Debug)]
-struct Size { w: i32, h: i32 }
-
-impl Size {
-	fn new(w: i32, h: i32) -> Self {
-		Self { w, h }
-	}
-
-    fn of<W: WidgetExt>(wid: &W) -> Self {
-		Self { w: wid.w(), h: wid.h() }
-	}
-
-    fn mul_f(&self, val: f32) -> Self {
-        Size::new(
-            (self.w as f32 * val) as i32,
-            (self.h as f32 * val) as i32,
-        )
-    }
-}
-
-impl AddAssign for Size {
-    fn add_assign(&mut self, rhs: Self) {
-		self.w += rhs.w;
-		self.h += rhs.h;
     }
 }
 
