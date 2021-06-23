@@ -111,10 +111,6 @@ impl MyImgPresenter {
 
             use fltk::enums::Event;
 			let event_handled = match ev {
-                Event::Enter => {
-                    sender.send(ImgPresMsg::MouseEnter).unwrap_or(());
-					true
-                },
                 Event::Push => {
                     was_mouse_down = true;
                     sender.send(ImgPresMsg::MouseDown (Pos::new(x, y))).unwrap_or(());
@@ -215,7 +211,6 @@ impl ImgPresRect {
 
     fn consume_msg(&mut self, msg: ImgPresMsg, frame: &frame::Frame) {
         match msg {
-            ImgPresMsg::MouseEnter => {},
             ImgPresMsg::MouseDown (pos) => {
                 self.prev_pos = Some(pos);
 
@@ -596,7 +591,6 @@ impl AddAssign for Size {
 
 #[derive(Clone, Copy, Debug)]
 enum ImgPresMsg {
-    MouseEnter,
     MouseDown (Pos),
     MouseMove (Pos),
     MouseUp,
