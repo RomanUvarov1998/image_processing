@@ -49,6 +49,59 @@ impl Alignable for MyButton {
 }
 
 
+#[derive(Clone)]
+pub struct MyToggleButton {
+    btn: button::ToggleButton,
+}
+
+#[allow(unused)]
+impl MyToggleButton {
+    pub fn with_label<'label>(label: &'label str) -> Self {
+        let mut btn = button::ToggleButton::default();
+        btn.set_label(label);
+
+        let (w, h) = btn.measure_label();
+        btn.set_size(w + TEXT_PADDING, h + TEXT_PADDING);
+
+        MyToggleButton { btn }
+    }
+
+    pub fn toggle(&mut self, value: bool) {
+        self.btn.toggle(value);
+    }
+
+    pub fn set_active(&mut self, active: bool) {
+        if active {
+            self.btn.activate();
+        } else {
+            self.btn.deactivate();
+        }
+    }
+
+    pub fn set_emit<TMsg>(&mut self, sender: Sender<TMsg>, msg: TMsg) 
+        where TMsg: 'static + Clone + Copy + Send + Sync
+    {
+        self.btn.emit(sender, msg);
+    }
+
+    pub fn widget<'own>(&'own mut self) -> &'own mut button::ToggleButton {
+        &mut self.btn
+    }
+}
+
+impl Alignable for MyToggleButton {
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.btn.x() }
+
+    fn y(&self) -> i32 { self.btn.y() }
+
+    fn w(&self) -> i32 { self.btn.w() }
+
+    fn h(&self) -> i32 { self.btn.h() }
+}
+
+
 pub struct MyLabel {
     label: frame::Frame,
 }

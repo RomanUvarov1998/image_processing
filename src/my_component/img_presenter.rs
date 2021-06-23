@@ -1,13 +1,13 @@
 use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}};
 
-use fltk::{button::ToggleButton, frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::Img, my_component::{container::MyColumn, usual::MyButton}, my_err::MyError};
+use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
+use crate::{img::Img, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError};
 use super::Alignable;
 
 
 pub struct MyImgPresenter {
     btn_fit: MyButton,
-    btn_toggle_selection: ToggleButton,
+    btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
     img: Option<Img>,
 }
@@ -16,15 +16,19 @@ impl MyImgPresenter {
     pub fn new(w: i32, h: i32) -> Self {
         let mut column = MyColumn::new(w, h);
 
+        let mut btns_row = MyRow::new(w, 100);
+
         let mut btn_fit = MyButton::with_label("Уместить");
         btn_fit.set_active(false);
 
-        let mut btn_toggle_selection = ToggleButton::default().with_label("Выделение");
-        {
-            let (w, h) = btn_toggle_selection.measure_label();
-            btn_toggle_selection.set_size(w, h);
-            btn_toggle_selection.deactivate();
-        }
+        let mut btn_toggle_selection = MyToggleButton::with_label("Выделение");
+        btn_toggle_selection.set_active(false);
+
+        btns_row.resize(
+            btns_row.x(), btns_row.y(), 
+            btns_row.w(), 
+            std::cmp::max(btn_fit.h(), btn_toggle_selection.h()));
+        btns_row.end();
 
         let mut frame_img = frame::Frame::default()
             .with_size(w, h - btn_fit.h() - btn_toggle_selection.h());
@@ -45,8 +49,8 @@ impl MyImgPresenter {
         self.btn_fit.set_active(false);
         self.btn_fit.widget().set_callback(move |_| { });
 
-        self.btn_toggle_selection.deactivate();
-        self.btn_toggle_selection.set_callback(move |_| { });
+        self.btn_toggle_selection.set_active(false);
+        self.btn_toggle_selection.widget().set_callback(move |_| { });
 
         self.frame_img.handle(|_, _| { false });
         self.frame_img.draw(|_| {});
@@ -74,12 +78,12 @@ impl MyImgPresenter {
         let sender_for_btn = sender.clone();
         let mut frame_copy = self.frame_img.clone();
 
-        self.btn_toggle_selection.set_callback(move |btn| { 
+        self.btn_toggle_selection.widget().set_callback(move |btn| { 
             let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
             sender_for_btn.send(msg).unwrap_or(());
             frame_copy.redraw();
         });
-        self.btn_toggle_selection.activate();
+        self.btn_toggle_selection.set_active(true);
 
         // ------------------------------------ btn fit ----------------------------------------
         // data to move into closure
