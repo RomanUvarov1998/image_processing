@@ -204,7 +204,7 @@ impl ImgPresRect {
             selection_rect: None
         };
 
-		rect.correct_pos(frame);
+        rect.correct_pos_scale(frame);
 
 		rect
     }
@@ -240,8 +240,7 @@ impl ImgPresRect {
                     rect.stop_drag();
                 }
 
-                self.correct_pos(frame);
-                self.correct_scale(frame);
+                self.correct_pos_scale(frame);
             },
             ImgPresMsg::MouseLeave => {
                 self.prev_pos = None;
@@ -262,8 +261,7 @@ impl ImgPresRect {
 
                 self.scale(new_sf - self.scale_factor, anchor, frame);
 
-                self.correct_scale(frame);
-                self.correct_pos(frame);
+                self.correct_pos_scale(frame);
             },
             ImgPresMsg::SeletionOn => {
                 let w = frame.w() / 3;
@@ -279,7 +277,26 @@ impl ImgPresRect {
         }
     }
 
-	fn correct_pos(&mut self, frame: &frame::Frame) {
+	fn correct_pos_scale(&mut self, frame: &frame::Frame) {
+        // --------------------------- correct image scale --------------------------- 
+		const MAX_FACTOR: f32 = 15.0_f32;
+		const MIN_FACTOR: f32 = 0.01_f32;
+
+        let minimal_to_fit = Self::scale_factor_to_fit(
+            self.im_sz_initial, 
+            frame.w(), frame.h());
+
+        if self.scale_factor < minimal_to_fit {
+            self.scale_factor = minimal_to_fit;
+        }
+        if self.scale_factor > MAX_FACTOR {
+            self.scale_factor = MAX_FACTOR;
+        }
+        if self.scale_factor < MIN_FACTOR {
+            self.scale_factor = MIN_FACTOR;
+        }
+
+        // --------------------------- correct image position --------------------------- 
 		let (im_w, im_h) = self.im_size_scaled();
 
 		// min left
@@ -301,25 +318,7 @@ impl ImgPresRect {
 		if self.im_pos.y > 0 { 
 			self.im_pos.y = 0;
 		}
-	}
-
-	fn correct_scale(&mut self, frame: &frame::Frame) {
-		const MAX_FACTOR: f32 = 15.0_f32;
-		const MIN_FACTOR: f32 = 0.01_f32;
-
-        let minimal_to_fit = Self::scale_factor_to_fit(
-            self.im_sz_initial, 
-            frame.w(), frame.h());
-
-        if self.scale_factor < minimal_to_fit {
-            self.scale_factor = minimal_to_fit;
-        }
-        if self.scale_factor > MAX_FACTOR {
-            self.scale_factor = MAX_FACTOR;
-        }
-        if self.scale_factor < MIN_FACTOR {
-            self.scale_factor = MIN_FACTOR;
-        }
+	
 	}
 
     fn scale_factor_to_fit(im_sz: Size, rect_w: i32, rect_h: i32) -> f32 {
