@@ -283,6 +283,25 @@ impl Img {
     pub fn layer_mut<'own>(&'own mut self, ind: usize) -> &'own mut ImgLayer { &mut self.layers[ind] }
     pub fn layer<'own>(&'own self, ind: usize) -> &'own ImgLayer { &self.layers[ind] }
 
+    pub fn croped_copy(&self, top_left: PixelPos, bottom_right: PixelPos) -> Img {
+        println!("{:?} -> {:?}, in {} x {}", top_left, bottom_right, self.w(), self.h());
+        assert!(bottom_right.col <= self.w());
+        assert!(bottom_right.row <= self.h());
+
+        let mut img = Img::empty_with_size(
+            bottom_right.col - top_left.col, 
+            bottom_right.row - top_left.row, 
+            self.color_depth());
+        
+        for pos in PixelsIterator::for_rect_area(top_left, bottom_right) {
+            for ch_num in 0..self.d() {
+                img.layer_mut(ch_num)[pos] = self.layer(ch_num)[pos];
+            }
+        }
+
+        img
+    }
+
     pub fn get_pixels_iter(&self) -> PixelsIterator {
         PixelsIterator::for_full_image(self.layer(0).matrix())
     }

@@ -84,8 +84,12 @@ impl MyToggleButton {
         self.btn.emit(sender, msg);
     }
 
-    pub fn widget<'own>(&'own mut self) -> &'own mut button::ToggleButton {
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut button::ToggleButton {
         &mut self.btn
+    }
+
+    pub fn widget<'own>(&'own self) -> &'own button::ToggleButton {
+        &self.btn
     }
 }
 
@@ -145,9 +149,9 @@ pub struct MyMenuBar {
 }
 
 impl MyMenuBar {
-    pub fn new<P: WidgetExt>(parent: &P) -> Self {
+    pub fn new(w: i32) -> Self {
         MyMenuBar {
-            mb: menu::MenuBar::default().with_size(parent.w(), 30)
+            mb: menu::MenuBar::default().with_size(w, 30)
         }
     }
 

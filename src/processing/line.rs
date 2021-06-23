@@ -36,7 +36,7 @@ impl<'wind> ProcessingLine<'wind> {
             
         let mut init_img_col = MyColumn::new(w / 2, h);
 
-        let mut main_menu = MyMenuBar::new(wind_parent);
+        let mut main_menu = MyMenuBar::new(init_img_col.w());
         main_menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         main_menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
 
@@ -342,9 +342,9 @@ impl<'wind> ProcessingLine<'wind> {
             self.img_presenter.image().unwrap().clone()
         } else {
             match self.steps[step_num - 1].get_data_copy() {
-                Some(img_copy) => img_copy,
-                None => { 
-                    return Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string())); 
+                Ok(img_copy) => img_copy,
+                Err(err) => { 
+                    return Err(MyError::new(format!("Необходим результат предыдущего шага для обработки текущего: {}", err.get_message()))); 
                 }
             }
         };

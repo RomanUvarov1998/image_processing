@@ -1,7 +1,7 @@
-use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}};
+use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}, sync::{Arc, Mutex}};
 
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::Img, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError};
+use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError};
 use super::Alignable;
 
 
@@ -9,6 +9,7 @@ pub struct MyImgPresenter {
     btn_fit: MyButton,
     btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
+    img_pres_rect_arc: Arc<Mutex<Option<ImgPresRect>>>,
     img: Option<Img>,
 }
 
@@ -40,7 +41,9 @@ impl MyImgPresenter {
 
         let img = None;
 
-        MyImgPresenter { btn_fit, btn_toggle_selection, frame_img, img }
+        let img_pres_rect_arc = Arc::new(Mutex::new(None));
+
+        MyImgPresenter { btn_fit, btn_toggle_selection, frame_img, img, img_pres_rect_arc }
     }
 
     pub fn clear_image(&mut self) {
@@ -50,11 +53,16 @@ impl MyImgPresenter {
         self.btn_fit.widget().set_callback(move |_| { });
 
         self.btn_toggle_selection.set_active(false);
-        self.btn_toggle_selection.widget().set_callback(move |_| { });
+        self.btn_toggle_selection.widget_mut().set_callback(move |_| { });
 
         self.frame_img.handle(|_, _| { false });
         self.frame_img.draw(|_| {});
         self.frame_img.redraw(); 
+
+        {
+            let mut rect_locked = self.img_pres_rect_arc.lock().unwrap();
+            rect_locked.take();
+        }
     }
 
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
@@ -64,21 +72,30 @@ impl MyImgPresenter {
         // ------------------------------------ frame drawing ----------------------------------------
         // data to move into closure
         let mut drawable = img.get_drawable_copy()?;
-        let mut img_pres_rect = ImgPresRect::new(&img, &mut self.frame_img);
+
+        {
+            let mut mutex = self.img_pres_rect_arc.lock().unwrap();
+            mutex.replace(ImgPresRect::new(&img, &mut self.frame_img));
+        }
+
+        let img_pres_rect_arc = self.img_pres_rect_arc.clone();
 
         self.frame_img.draw(move |f| {
+            let mut rect_locked = img_pres_rect_arc.lock().unwrap();
+
             while let Ok(msg) = receiver.try_recv() {
-                img_pres_rect.consume_msg(msg, f);
+                rect_locked.as_mut().unwrap().consume_msg(msg, f);
             }
 
-			img_pres_rect.draw_img(&mut drawable, f);
+			rect_locked.as_mut().unwrap().draw_img(&mut drawable, f);
         });
+
         // ------------------------------------ btn toggle selection ----------------------------------------
         // data to move into closure
         let sender_for_btn = sender.clone();
         let mut frame_copy = self.frame_img.clone();
 
-        self.btn_toggle_selection.widget().set_callback(move |btn| { 
+        self.btn_toggle_selection.widget_mut().set_callback(move |btn| { 
             let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
             sender_for_btn.send(msg).unwrap_or(());
             frame_copy.redraw();
@@ -156,6 +173,28 @@ impl MyImgPresenter {
         self.frame_img.redraw(); 
 
         Ok(())
+    }
+
+    pub fn get_selection_rect(&self) -> Result<(PixelPos, PixelPos), MyError> {
+        let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+
+        match rect_locked.as_ref() {
+            Some(pres_rect) => {
+                if let Some(ref sel_rect) = pres_rect.selection_rect {
+                    let tl_x = (sel_rect.pos_top_left.x as f32 / pres_rect.scale_factor) as usize;
+                    let tl_y = (sel_rect.pos_top_left.y as f32 / pres_rect.scale_factor) as usize;
+                    let br_x = (sel_rect.pos_bottom_right.x as f32 / pres_rect.scale_factor) as usize;
+                    let br_y = (sel_rect.pos_bottom_right.y as f32 / pres_rect.scale_factor) as usize;
+
+                    Ok((PixelPos::new(tl_x, tl_y), PixelPos::new(br_x, br_y)))
+                } else {
+                    return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+                }
+            },
+            None => {
+                return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+            },
+        }
     }
 
     pub fn has_image(&self) -> bool { self.img.is_some() }
@@ -320,21 +359,31 @@ impl ImgPresRect {
 		}
 
         // --------------------------- correct selection rect position --------------------------- 
+        let (im_top_left, im_bottom_right) = {
+            let (w, h) = self.im_size_scaled();
+            (self.im_pos, Pos::new(w, h))
+        };
+
+        let left = std::cmp::max(0, im_top_left.x);
+        let top = std::cmp::max(0, im_top_left.y);
+        let right = std::cmp::min(frame_sz.w, im_bottom_right.x);
+        let bottom = std::cmp::min(frame_sz.h, im_bottom_right.y);
+        
         if let Some(ref mut rect) = self.selection_rect {
-            if rect.pos_top_left.x < 0 {
-                rect.pos_top_left.x = 0;
+            if rect.pos_top_left.x < left {
+                rect.pos_top_left.x = left;
             }
 
-            if rect.pos_top_left.y < 0 {
-                rect.pos_top_left.y = 0;
+            if rect.pos_top_left.y < top {
+                rect.pos_top_left.y = top;
             }
 
-            if rect.pos_bottom_right.x > frame_sz.w {
-                rect.pos_bottom_right.x = frame_sz.w;
+            if rect.pos_bottom_right.x > right {
+                rect.pos_bottom_right.x = right;
             }
 
-            if rect.pos_bottom_right.y > frame_sz.h {
-                rect.pos_bottom_right.y = frame_sz.h;
+            if rect.pos_bottom_right.y > bottom {
+                rect.pos_bottom_right.y = bottom;
             }
         }
 	}
@@ -395,7 +444,7 @@ impl ImgPresRect {
 
 
 #[derive(Clone, Copy, Debug)]
-enum SelRectDrag {
+enum SelRectDragType {
     TopLeft, TopMiddle, TopRight,
     MiddleLeft, Middle, MiddleRight,
     BottomLeft, BottomMiddle, BottomRight,
@@ -406,7 +455,7 @@ enum SelRectDrag {
 struct SelectionRect {
     pos_top_left: Pos,
     pos_bottom_right: Pos,
-    drag_type: Option<SelRectDrag>
+    drag_type: Option<SelRectDragType>
 }
 
 impl SelectionRect {
@@ -476,23 +525,23 @@ impl SelectionRect {
 
         self.drag_type = 
             if fits_rect(self.x(), self.y()) {
-                Some(SelRectDrag::TopLeft)
+                Some(SelRectDragType::TopLeft)
             } else if fits_rect(self.x() + self.w() / 2, self.y()) {
-                Some(SelRectDrag::TopMiddle)
+                Some(SelRectDragType::TopMiddle)
             } else if fits_rect(self.x() + self.w(), self.y()) {
-                Some(SelRectDrag::TopRight)
+                Some(SelRectDragType::TopRight)
             } else if fits_rect(self.x(), self.y() + self.h() / 2) {
-                Some(SelRectDrag::MiddleLeft)
+                Some(SelRectDragType::MiddleLeft)
             } else if fits_rect(self.x() + self.w() / 2, self.y() + self.h() / 2) {
-                Some(SelRectDrag::Middle)
+                Some(SelRectDragType::Middle)
             } else if fits_rect(self.x() + self.w(), self.y() + self.h() / 2) {
-                Some(SelRectDrag::MiddleRight)
+                Some(SelRectDragType::MiddleRight)
             } else if fits_rect(self.x(), self.y() + self.h()) {
-                Some(SelRectDrag::BottomLeft)
+                Some(SelRectDragType::BottomLeft)
             } else if fits_rect(self.x() + self.w() / 2, self.y() + self.h()) {
-                Some(SelRectDrag::BottomMiddle)
+                Some(SelRectDragType::BottomMiddle)
             } else if fits_rect(self.x() + self.w(), self.y() + self.h()) {
-                Some(SelRectDrag::BottomRight)
+                Some(SelRectDragType::BottomRight)
             } else {
                 None
             };
@@ -503,38 +552,63 @@ impl SelectionRect {
     }
 
     fn drag(&mut self, delta: Pos)  {
-        if let Some(dt) = self.drag_type {
+        if let Some(ref mut dt) = self.drag_type {
             match dt {
-                SelRectDrag::TopLeft => {
+                SelRectDragType::TopLeft => {
                     self.pos_top_left += delta;
                 },
-                SelRectDrag::TopMiddle => {
+                SelRectDragType::TopMiddle => {
                     self.pos_top_left.y += delta.y;
                 },
-                SelRectDrag::TopRight => {
+                SelRectDragType::TopRight => {
                     self.pos_top_left.y += delta.y;
                     self.pos_bottom_right.x += delta.x;
                 },
-                SelRectDrag::MiddleLeft => {
+                SelRectDragType::MiddleLeft => {
                     self.pos_top_left.x += delta.x;
                 },
-                SelRectDrag::Middle => {
+                SelRectDragType::Middle => {
                     self.pos_top_left += delta;
                     self.pos_bottom_right += delta;
                 },
-                SelRectDrag::MiddleRight => {
+                SelRectDragType::MiddleRight => {
                     self.pos_bottom_right.x += delta.x;
                 },
-                SelRectDrag::BottomLeft => {
+                SelRectDragType::BottomLeft => {
                     self.pos_top_left.x += delta.x;
                     self.pos_bottom_right.y += delta.y;
                 },
-                SelRectDrag::BottomMiddle => {
+                SelRectDragType::BottomMiddle => {
                     self.pos_bottom_right.y += delta.y;
                 },
-                SelRectDrag::BottomRight => {
+                SelRectDragType::BottomRight => {
                     self.pos_bottom_right += delta;
                 },
+            }
+
+            if self.pos_top_left.x > self.pos_bottom_right.x {
+                std::mem::swap(&mut self.pos_top_left.x, &mut self.pos_bottom_right.x);
+                *dt = match dt {
+                    SelRectDragType::TopLeft => SelRectDragType::TopRight,
+                    SelRectDragType::TopRight => SelRectDragType::TopLeft,
+                    SelRectDragType::MiddleLeft => SelRectDragType::MiddleRight,
+                    SelRectDragType::MiddleRight => SelRectDragType::MiddleLeft,
+                    SelRectDragType::BottomLeft => SelRectDragType::BottomRight,
+                    SelRectDragType::BottomRight => SelRectDragType::BottomLeft,
+                    _ => *dt
+                };
+            }
+            if self.pos_top_left.y > self.pos_bottom_right.y {
+                std::mem::swap(&mut self.pos_top_left.y, &mut self.pos_bottom_right.y);
+                *dt = match dt {
+                    SelRectDragType::TopLeft => SelRectDragType::BottomLeft,
+                    SelRectDragType::TopMiddle => SelRectDragType::BottomMiddle,
+                    SelRectDragType::TopRight => SelRectDragType::BottomRight,
+                    SelRectDragType::BottomLeft => SelRectDragType::TopLeft,
+                    SelRectDragType::BottomMiddle => SelRectDragType::TopMiddle,
+                    SelRectDragType::BottomRight => SelRectDragType::TopRight,
+                    _ => *dt
+                };
             }
         }
     }
@@ -614,6 +688,13 @@ impl Size {
     fn of<W: WidgetExt>(wid: &W) -> Self {
 		Self { w: wid.w(), h: wid.h() }
 	}
+
+    fn mul_f(&self, val: f32) -> Self {
+        Size::new(
+            (self.w as f32 * val) as i32,
+            (self.h as f32 * val) as i32,
+        )
+    }
 }
 
 impl AddAssign for Size {

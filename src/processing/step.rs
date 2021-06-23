@@ -1,10 +1,11 @@
-use fltk::{app::{self, Sender}, group, prelude::GroupExt};
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError};
+use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar, MyToggleButton}}, my_err::MyError};
 use super::{FilterBase, PADDING, step_editor::StepEditor};
 
 pub struct ProcessingStep {
     main_column: MyColumn,
     menu: MyMenuBar,
+    btn_toggle_mode: MyToggleButton,
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
@@ -23,7 +24,19 @@ impl ProcessingStep {
 
         let (sender, _) = app::channel::<Message>();
 
-        let menu = MyMenuBar::new(main_column.widget());
+        let mut btns_row = MyRow::new(w, 100);
+
+        let mut menu = MyMenuBar::new(main_column.w());
+
+        let btn_toggle_mode = MyToggleButton::with_label("Брать выделенное");
+
+        menu.resize(menu.x(), menu.y(), menu.w() - btn_toggle_mode.w(), menu.h());
+
+        btns_row.resize(
+            btns_row.x(), btns_row.y(), 
+            btns_row.w(), 
+            std::cmp::max(menu.h(), btn_toggle_mode.h()));
+        btns_row.end();        
 
         let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
         prog_bar.hide();
@@ -36,6 +49,7 @@ impl ProcessingStep {
         let mut step = ProcessingStep { 
             main_column,
             menu,
+            btn_toggle_mode,
             label_step_name,
             prog_bar,
             img_presenter, 
@@ -98,10 +112,18 @@ impl ProcessingStep {
     }
 
 
-    pub fn get_data_copy(&self) -> Option<Img> {
+    pub fn get_data_copy(&self) -> Result<Img, MyError> {
         match self.img_presenter.image() {
-            Some(img_ref) => Some(img_ref.clone()),
-            None => None,
+            Some(img_ref) => {
+                if self.btn_toggle_mode.widget().is_toggled() {
+                    let (tl, br) = self.img_presenter.get_selection_rect()?;
+                    println!("going to crop {:?} -> {:?}", tl, br);
+                    Ok(img_ref.croped_copy(tl, br))
+                } else {
+                    Ok(img_ref.clone())
+                }
+            },
+            None => Err(MyError::new("Шаг не содержит изображения".to_string())),
         }
     }
 
