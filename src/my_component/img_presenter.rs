@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex}};
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{Pos, Size}};
+use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
 
 
@@ -120,7 +120,10 @@ impl MyImgPresenter {
         // data to move into closure
 		let mut was_mouse_down = false;
         self.frame_img.handle(move |f, ev| {
-            let (x, y) = (fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
+            let mouse_pos = {
+                let (x, y) = (fltk::app::event_x(), fltk::app::event_y());
+                Pos::new(x, y)
+            };
 
             use fltk::app::MouseWheel;
 
@@ -136,7 +139,7 @@ impl MyImgPresenter {
 			let event_handled = match ev {
                 Event::Push => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseDown (Pos::new(x, y))).unwrap_or(());
+                    sender.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap_or(());
 					true
                 },
                 Event::Released => {
@@ -146,7 +149,7 @@ impl MyImgPresenter {
                 },
                 Event::MouseWheel => {
                     if was_mouse_down {
-                        sender.send(ImgPresMsg::MouseScroll { factor_delta, mouse_x: x, mouse_y: y }).unwrap_or(());
+                        sender.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap_or(());
 						true
                     } else {
 						false
@@ -154,7 +157,7 @@ impl MyImgPresenter {
                 },
                 Event::Drag => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseMove (Pos::new(x, y))).unwrap_or(());
+                    sender.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap_or(());
                     true
                 },
                 _ => false
@@ -175,35 +178,29 @@ impl MyImgPresenter {
     }
 
     pub fn get_selection_rect(&self) -> Result<(PixelPos, PixelPos), MyError> {
-        let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+        todo!()
+        // let rect_locked = self.img_pres_rect_arc.lock().unwrap();
 
-        match rect_locked.as_ref() {
-            Some(pres_rect) => {
-                if let Some(ref sel_rect) = pres_rect.selection_rect {
-                    let tl_x = (sel_rect.pos_top_left.x as f32 / pres_rect.scale_factor) as usize;
-                    let tl_y = (sel_rect.pos_top_left.y as f32 / pres_rect.scale_factor) as usize;
-                    let br_x = (sel_rect.pos_bottom_right.x as f32 / pres_rect.scale_factor) as usize;
-                    let br_y = (sel_rect.pos_bottom_right.y as f32 / pres_rect.scale_factor) as usize;
+        // match rect_locked.as_ref() {
+        //     Some(scale_rect) => {
+        //         if let Some(ref sel_rect) = scale_rect.selection_rect {
+        //             let tl = scale_rect.scale_rect.screen_to_self(sel_rect.inner.tl());
+        //             let br = scale_rect.scale_rect.screen_to_self(sel_rect.inner.br());
 
-                    Ok((PixelPos::new(tl_x, tl_y), PixelPos::new(br_x, br_y)))
-                } else {
-                    return Err(MyError::new("Необходимо установить режим выделения".to_string()));
-                }
-            },
-            None => {
-                return Err(MyError::new("Необходимо установить режим выделения".to_string()));
-            },
-        }
+        //             Ok((tl.to_pixel_pos(), br.to_pixel_pos()))
+        //         } else {
+        //             return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+        //         }
+        //     },
+        //     None => {
+        //         return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+        //     },
+        // }
     }
 
     pub fn has_image(&self) -> bool { self.img.is_some() }
 
-    pub fn image<'own>(&'own self) -> Option<&'own Img> {
-        match &self.img {
-            Some(ref img) => Some(img),
-            None => None,
-        }
-    }
+    pub fn image<'own>(&'own self) -> Option<&'own Img> { self.img.as_ref() }
 
     pub fn redraw(&mut self) { self.frame_img.redraw(); }
 }
@@ -222,29 +219,21 @@ impl Alignable for MyImgPresenter {
 
 
 struct ImgPresRect {
-    im_pos: Pos,
-    im_sz_initial: Size,
-    scale_factor: f32,
+    scale_rect: ScalableRect,
     prev_pos: Option<Pos>,
     selection_rect: Option<SelectionRect>
 }
 
 impl ImgPresRect {
     fn new(img: &Img, frame: &frame::Frame) -> Self {
-        let im_sz_initial = Size::new(img.w() as i32, img.h() as i32);
-        let scale_factor = Self::scale_factor_to_fit(im_sz_initial, Size::of(frame));
-
-        let mut rect = ImgPresRect { 
-            im_pos: Pos::new(0, 0), 
-            scale_factor,
-            im_sz_initial,
+        let mut rect = ScalableRect::new(0, 0, img.w() as i32, img.h() as i32);
+        rect.stretch_self_to_area(RectArea::of_widget(frame));
+        
+        ImgPresRect { 
+            scale_rect: rect,
             prev_pos: None,
             selection_rect: None
-        };
-
-        rect.correct_pos_scale(Size::of(frame));
-
-		rect
+        }
     }
 
 
@@ -252,27 +241,17 @@ impl ImgPresRect {
         match msg {
             ImgPresMsg::MouseDown (pos) => self.start_drag(pos),
             ImgPresMsg::MouseMove (cur) => self.drag(cur),
-            ImgPresMsg::MouseUp => {
-                self.stop_drag();
-                self.correct_pos_scale(Size::of(frame));
-            },
-            ImgPresMsg::MouseScroll { factor_delta, mouse_x, mouse_y } => {	
-                self.scale(factor_delta, Pos::new(mouse_x, mouse_y), Size::of(frame));
-            },
+            ImgPresMsg::MouseUp => self.stop_drag(frame),
+            ImgPresMsg::MouseScroll { factor_delta, pos } => 
+                self.scale(pos, factor_delta, frame),
             ImgPresMsg::Fit => {
-                let (delta, anchor) = if let Some(ref mut rect) = self.selection_rect {
-                    let sf_mul = Self::scale_factor_to_fit(rect.size(), Size::of(frame));
-
-                    ((sf_mul - 1.0) * self.scale_factor, rect.center())
+                if let Some(ref sel_rect) = self.selection_rect {
+                    self.scale_rect.zoom_area(
+                        RectArea::of_draggable_rect(&sel_rect.inner),
+                        Pos::center_of(frame));
                 } else {
-                    let new_sf = Self::scale_factor_to_fit(self.im_sz_initial, Size::of(frame));
-                    
-                    (new_sf - self.scale_factor, Pos::center_of(frame))
-                };
-
-                self.scale(delta, anchor, Size::of(frame));
-
-                self.correct_pos_scale(Size::of(frame));
+                    self.scale_rect.stretch_self_to_area(RectArea::of_widget(frame));
+                }
             },
             ImgPresMsg::SeletionOn => {
                 self.selection_rect = Some(SelectionRect::middle_third_of(frame));
@@ -288,7 +267,7 @@ impl ImgPresRect {
         self.prev_pos = Some(pos);
 
         if let Some(ref mut rect) = self.selection_rect {
-            rect.start_drag(pos.x, pos.y);
+            rect.start_drag(pos);
         }
     }
 
@@ -301,140 +280,46 @@ impl ImgPresRect {
         let delta = to - prev;
         self.prev_pos = Some(to);
 
-        if let Some(ref mut rect) = self.selection_rect {
-            rect.drag(delta);
+        if let Some(ref mut sel_rect) = self.selection_rect {
+            if !sel_rect.drag(delta)  {
+                self.scale_rect.translate(delta);
+            }
         } else {
-            self.im_pos += delta;
+            self.scale_rect.translate(delta);
         }
     }
 
-    fn stop_drag(&mut self) {
+    fn scale(&mut self, anchor: Pos, delta: f32, frame: &frame::Frame) {
+        self.scale_rect.scale_keep_anchor_pos(delta, anchor);
+        self.scale_rect.fit_scale(Pos::size_of(frame));
+    }
+
+    fn stop_drag(&mut self, frame: &frame::Frame) {
         self.prev_pos = None;
 
-        if let Some(ref mut rect) = self.selection_rect {
-            rect.stop_drag();
+        self.scale_rect.fit_scale(Pos::size_of(frame));
+        self.scale_rect.fit_pos(RectArea::of_widget(frame));
+
+        if let Some(ref mut sel_rect) = self.selection_rect {
+            sel_rect.stop_drag();
+            sel_rect.inner.fit_inside(RectArea::of_widget(frame));
+            sel_rect.inner.fit_inside(self.scale_rect.area_scaled());
         }
     }
 
-
-	fn correct_pos_scale(&mut self, frame_sz: Size) {
-        // --------------------------- correct image scale --------------------------- 
-		const MAX_FACTOR: f32 = 15.0_f32;
-		const MIN_FACTOR: f32 = 0.01_f32;
-
-        let minimal_to_fit = Self::scale_factor_to_fit(self.im_sz_initial, frame_sz);
-
-        if self.scale_factor < minimal_to_fit {
-            self.scale_factor = minimal_to_fit;
-        }
-        if self.scale_factor > MAX_FACTOR {
-            self.scale_factor = MAX_FACTOR;
-        }
-        if self.scale_factor < MIN_FACTOR {
-            self.scale_factor = MIN_FACTOR;
-        }
-
-        // --------------------------- correct image position --------------------------- 
-		let (im_w, im_h) = self.im_size_scaled();
-
-		// min left
-		if self.im_pos.x + im_w < frame_sz.w { 
-			self.im_pos.x = frame_sz.w - im_w; 
-		}
-
-		// max right
-		if self.im_pos.x > 0 { 
-			self.im_pos.x = 0;
-		}
-
-		// min top
-		if self.im_pos.y + im_h < frame_sz.h { 
-			self.im_pos.y = frame_sz.h - im_h; 
-		}
-
-		// max bottom
-		if self.im_pos.y > 0 { 
-			self.im_pos.y = 0;
-		}
-
-        // --------------------------- correct selection rect position --------------------------- 
-        let (im_top_left, im_bottom_right) = {
-            let (w, h) = self.im_size_scaled();
-            (self.im_pos, Pos::new(w, h))
-        };
-
-        let left = std::cmp::max(0, im_top_left.x);
-        let top = std::cmp::max(0, im_top_left.y);
-        let right = std::cmp::min(frame_sz.w, im_bottom_right.x);
-        let bottom = std::cmp::min(frame_sz.h, im_bottom_right.y);
-        
-        if let Some(ref mut rect) = self.selection_rect {
-            if rect.pos_top_left.x < left {
-                rect.pos_top_left.x = left;
-            }
-
-            if rect.pos_top_left.y < top {
-                rect.pos_top_left.y = top;
-            }
-
-            if rect.pos_bottom_right.x > right {
-                rect.pos_bottom_right.x = right;
-            }
-
-            if rect.pos_bottom_right.y > bottom {
-                rect.pos_bottom_right.y = bottom;
-            }
-        }
-	}
-
-    fn scale_factor_to_fit(im_sz: Size, rect_sz: Size) -> f32 {
-		let to_fit_horizontaly = rect_sz.w as f32 / im_sz.w as f32;
-		let to_fit_vertically = rect_sz.h as f32 / im_sz.h as f32;
-
-        if to_fit_vertically < to_fit_horizontaly {
-            to_fit_vertically
-        } else {
-            to_fit_horizontaly
-        }
-    }
-
-    fn scale(&mut self, delta: f32, anchor: Pos, frame_sz: Size) {
-        let scale_factor_prev = self.scale_factor;
-        
-        self.scale_factor += delta;
-        let scale_factor_min = Self::scale_factor_to_fit(self.im_sz_initial, frame_sz);
-        if self.scale_factor < scale_factor_min {
-            self.scale_factor = scale_factor_min;
-        }
-
-        let relative = anchor - self.im_pos;
-
-        let c = self.scale_factor / scale_factor_prev - 1.0;
-
-        let shift = relative.mul_f(c);
-        
-        self.im_pos -= shift;
-    }
-
-
-    fn im_size_scaled(&self) -> (i32, i32) /* w, h */ {
-		(
-			(self.im_sz_initial.w as f32 * self.scale_factor) as i32,
-			(self.im_sz_initial.h as f32 * self.scale_factor) as i32,
-		)
-	}
 
     fn draw_img(&mut self, img: &mut fltk::image::RgbImage, f: &frame::Frame) {
-		let (im_w, im_h) = self.im_size_scaled();
+		let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
         img.scale(im_w, im_h, true, true);
 
         use fltk::draw;
         draw::push_clip(f.x(), f.y(), f.w(), f.h());
         
-        img.draw(f.x() + self.im_pos.x, f.y() + self.im_pos.y, im_w, im_h);
+        let im_pos = self.scale_rect.tl();
+        img.draw(im_pos.x, im_pos.y, im_w, im_h);
 
         if let Some(ref rect) = self.selection_rect {
-            rect.draw(f);
+            rect.draw();
         }
         
         draw::pop_clip();
@@ -442,174 +327,109 @@ impl ImgPresRect {
 }
 
 
-#[derive(Clone, Copy, Debug)]
-enum SelRectDragType {
-    TopLeft, TopMiddle, TopRight,
-    MiddleLeft, Middle, MiddleRight,
-    BottomLeft, BottomMiddle, BottomRight,
-}
-
-
 #[derive(Debug)]
 struct SelectionRect {
-    pos_top_left: Pos,
-    pos_bottom_right: Pos,
-    drag_type: Option<SelRectDragType>
+    inner: DraggableRect,
+    drag_pos: Option<DragPos>
 }
 
 impl SelectionRect {
     fn middle_third_of(frame: &frame::Frame) -> Self {
-        let w = frame.w() / 3;
-        let h = frame.h() / 3;
+        let w = frame.x() + frame.w() / 3;
+        let h = frame.y() + frame.h() / 3;
         let x = w;
         let y = h;
         
         SelectionRect { 
-            pos_top_left: Pos::new(x, y), 
-            pos_bottom_right: Pos::new(x + w, y + h), 
-            drag_type: None 
+            inner: DraggableRect::new(x, y, w, h) ,
+            drag_pos: None 
         }
     }
 
-    fn x(&self) -> i32 { self.pos_top_left.x }
-    fn y(&self) -> i32 { self.pos_top_left.y }
-    fn w(&self) -> i32 { self.pos_bottom_right.x - self.pos_top_left.x }
-    fn h(&self) -> i32 { self.pos_bottom_right.y - self.pos_top_left.y }
-    fn size(&self) -> Size { Size::new(self.w(), self.h()) }
-    fn center(&self) -> Pos { 
-        Pos::new(
-            (self.pos_bottom_right.x + self.pos_top_left.x ) / 2,
-            (self.pos_bottom_right.y + self.pos_top_left.y ) / 2)
-    }
+    fn x(&self) -> i32 { self.inner.x() }
+    fn y(&self) -> i32 { self.inner.y() }
+    fn w(&self) -> i32 { self.inner.w() }
+    fn h(&self) -> i32 { self.inner.h() }
 
     const RECT_SIDE: i32 = 10;
 
-    fn draw(&self, frame: &frame::Frame) {
+    fn draw(&self) {
         use fltk::{draw, enums::Color};
 
         draw::draw_rect_with_color(
-            frame.x() + self.x(), 
-            frame.y() + self.y(), 
+            self.x(), self.y(), 
             self.w(), self.h(),
             Color::Blue);
 
-        let draw_rect_around = |x: i32, y: i32| {
+        let draw_rect_around = |x: i32, y: i32, fill_color: Color| {
+            let (rx, ry) = (x - Self::RECT_SIDE / 2, y - Self::RECT_SIDE / 2);
 
-            let (rx, ry) = (frame.x() + x - Self::RECT_SIDE / 2, frame.y() + y - Self::RECT_SIDE / 2);
-
-            draw::draw_rect_fill(rx, ry, Self::RECT_SIDE, Self::RECT_SIDE, Color::Red);
-            draw::draw_rect_with_color(rx, ry, Self::RECT_SIDE, Self::RECT_SIDE, Color::Blue);
+            draw::draw_rect_fill(
+                rx, ry, 
+                Self::RECT_SIDE, Self::RECT_SIDE, 
+                fill_color);
+            draw::draw_rect_with_color(
+                rx, ry, 
+                Self::RECT_SIDE, Self::RECT_SIDE, 
+                Color::Blue);
         };
 
-        draw_rect_around(self.x(), self.y());
-        draw_rect_around(self.x() + self.w() / 2, self.y());
-        draw_rect_around(self.x() + self.w(), self.y());
+        let w_half = self.w() / 2;
+        let h_half = self.h() / 2;
 
-        draw_rect_around(self.x() + self.w(), self.y() + self.h() / 2);
-        draw_rect_around(self.x() + self.w() / 2, self.y() + self.h() / 2);
-        draw_rect_around(self.x(), self.y() + self.h() / 2);
+        for x_step in 0..3 {
+            for y_step in 0..3 {
+                let fill_color: Color = 
+                    if let Some(dp) = self.drag_pos {
+                        if dp == DragPos::from(x_step, y_step) {
+                            Color::Green 
+                        } else {
+                            Color::Red
+                        }
+                    } else {
+                        Color::Red
+                    };
 
-        draw_rect_around(self.x(), self.y() + self.h());
-        draw_rect_around(self.x() + self.w() / 2, self.y() + self.h());
-        draw_rect_around(self.x() + self.w(), self.y() + self.h());
+                draw_rect_around(
+                    self.x() + w_half * x_step, 
+                    self.y() + h_half * y_step,
+                    fill_color);
+            }
+        }
     }
 
-    fn start_drag(&mut self, px: i32, py: i32) {
-        let fits_rect = |rcx: i32, rcy: i32| -> bool {
-            px >= rcx - Self::RECT_SIDE 
-            && px <= rcx + Self::RECT_SIDE
-            && py >= rcy - Self::RECT_SIDE 
-            && py <= rcy + Self::RECT_SIDE
+    fn start_drag(&mut self, pos: Pos) {
+        let w_half = self.w() / 2;
+        let h_half = self.h() / 2;
+
+        let fits_rect = |rcx: i32, rcy: i32, p: Pos| -> bool {
+            p.x >= rcx - Self::RECT_SIDE 
+            && p.x <= rcx + Self::RECT_SIDE
+            && p.y >= rcy - Self::RECT_SIDE 
+            && p.y <= rcy + Self::RECT_SIDE
         };
 
-        self.drag_type = 
-            if fits_rect(self.x(), self.y()) {
-                Some(SelRectDragType::TopLeft)
-            } else if fits_rect(self.x() + self.w() / 2, self.y()) {
-                Some(SelRectDragType::TopMiddle)
-            } else if fits_rect(self.x() + self.w(), self.y()) {
-                Some(SelRectDragType::TopRight)
-            } else if fits_rect(self.x(), self.y() + self.h() / 2) {
-                Some(SelRectDragType::MiddleLeft)
-            } else if fits_rect(self.x() + self.w() / 2, self.y() + self.h() / 2) {
-                Some(SelRectDragType::Middle)
-            } else if fits_rect(self.x() + self.w(), self.y() + self.h() / 2) {
-                Some(SelRectDragType::MiddleRight)
-            } else if fits_rect(self.x(), self.y() + self.h()) {
-                Some(SelRectDragType::BottomLeft)
-            } else if fits_rect(self.x() + self.w() / 2, self.y() + self.h()) {
-                Some(SelRectDragType::BottomMiddle)
-            } else if fits_rect(self.x() + self.w(), self.y() + self.h()) {
-                Some(SelRectDragType::BottomRight)
-            } else {
-                None
-            };
+        self.drag_pos = None;
+        'out: for x_step in 0..3 {
+            for y_step in 0..3 {
+                if fits_rect(self.x() + w_half * x_step, self.y() + h_half * y_step, pos) {
+                    self.drag_pos = Some(DragPos::from(x_step, y_step));
+                    break 'out;
+                }
+            }
+        }
     }
 
     fn stop_drag(&mut self) {
-        self.drag_type = None;
+        self.drag_pos = None;
     }
 
-    fn drag(&mut self, delta: Pos)  {
-        if let Some(ref mut dt) = self.drag_type {
-            match dt {
-                SelRectDragType::TopLeft => {
-                    self.pos_top_left += delta;
-                },
-                SelRectDragType::TopMiddle => {
-                    self.pos_top_left.y += delta.y;
-                },
-                SelRectDragType::TopRight => {
-                    self.pos_top_left.y += delta.y;
-                    self.pos_bottom_right.x += delta.x;
-                },
-                SelRectDragType::MiddleLeft => {
-                    self.pos_top_left.x += delta.x;
-                },
-                SelRectDragType::Middle => {
-                    self.pos_top_left += delta;
-                    self.pos_bottom_right += delta;
-                },
-                SelRectDragType::MiddleRight => {
-                    self.pos_bottom_right.x += delta.x;
-                },
-                SelRectDragType::BottomLeft => {
-                    self.pos_top_left.x += delta.x;
-                    self.pos_bottom_right.y += delta.y;
-                },
-                SelRectDragType::BottomMiddle => {
-                    self.pos_bottom_right.y += delta.y;
-                },
-                SelRectDragType::BottomRight => {
-                    self.pos_bottom_right += delta;
-                },
-            }
-
-            if self.pos_top_left.x > self.pos_bottom_right.x {
-                std::mem::swap(&mut self.pos_top_left.x, &mut self.pos_bottom_right.x);
-                *dt = match dt {
-                    SelRectDragType::TopLeft => SelRectDragType::TopRight,
-                    SelRectDragType::TopRight => SelRectDragType::TopLeft,
-                    SelRectDragType::MiddleLeft => SelRectDragType::MiddleRight,
-                    SelRectDragType::MiddleRight => SelRectDragType::MiddleLeft,
-                    SelRectDragType::BottomLeft => SelRectDragType::BottomRight,
-                    SelRectDragType::BottomRight => SelRectDragType::BottomLeft,
-                    _ => *dt
-                };
-            }
-            if self.pos_top_left.y > self.pos_bottom_right.y {
-                std::mem::swap(&mut self.pos_top_left.y, &mut self.pos_bottom_right.y);
-                *dt = match dt {
-                    SelRectDragType::TopLeft => SelRectDragType::BottomLeft,
-                    SelRectDragType::TopMiddle => SelRectDragType::BottomMiddle,
-                    SelRectDragType::TopRight => SelRectDragType::BottomRight,
-                    SelRectDragType::BottomLeft => SelRectDragType::TopLeft,
-                    SelRectDragType::BottomMiddle => SelRectDragType::TopMiddle,
-                    SelRectDragType::BottomRight => SelRectDragType::TopRight,
-                    _ => *dt
-                };
-            }
+    fn drag(&mut self, delta: Pos) -> bool  {
+        if let Some(ref mut dt) = self.drag_pos {
+            *dt = self.inner.drag(delta, *dt);
+            return true;
         }
+        return false;
     }
 }
 
@@ -619,7 +439,7 @@ enum ImgPresMsg {
     MouseDown (Pos),
     MouseMove (Pos),
     MouseUp,
-    MouseScroll { factor_delta: f32, mouse_x: i32, mouse_y: i32 },
+    MouseScroll { factor_delta: f32, pos: Pos },
     Fit,
     SeletionOn, SelectionOff
 }

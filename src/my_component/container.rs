@@ -6,6 +6,7 @@ pub struct MyColumn {
     pack: group::Pack,
 }
 
+#[allow(unused)]
 impl MyColumn {
     pub fn new(w: i32, h: i32) -> Self {
         let mut pack = group::Pack::default()

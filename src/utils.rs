@@ -1,6 +1,8 @@
 use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}, vec::IntoIter};
 use fltk::prelude::WidgetExt;
 
+use crate::img::{Img, pixel_pos::PixelPos};
+
 // ---------------------------------- Text ------------------------------------
 
 pub struct TextBlocksIter<'text> {
@@ -99,10 +101,41 @@ impl Pos {
 		Self { x, y }
 	}
 
+    pub fn size_of<W: WidgetExt>(wid: &W) -> Self {
+		Self { x: wid.w(), y: wid.h() }
+	}
+
+    pub fn size_of_img(img: &Img) -> Self {
+        Self { x: img.w() as i32, y: img.h() as i32 }
+    }
+
+    pub fn of<W: WidgetExt>(wid: &W) -> Self {
+        Pos { x: wid.x(), y: wid.y() }
+    }
+
+    pub fn to_pixel_pos(&self) -> PixelPos {
+        assert!(self.x >= 0);
+        assert!(self.y >= 0);
+        let col = self.x as usize;
+        let row = self.y as usize;
+        PixelPos::new(row, col)
+    }
+
+    pub fn decompose(&self) -> (i32, i32) /* x, y */ {
+        (self.x, self.y)
+    }
+
     pub fn mul_f(&self, val: f32) -> Self {
         Pos::new(
             (self.x as f32 * val) as i32,
             (self.y as f32 * val) as i32,
+        )
+    }
+
+    pub fn div_f(&self, val: f32) -> Self {
+        Pos::new(
+            (self.x as f32 / val) as i32,
+            (self.y as f32 / val) as i32,
         )
     }
 
@@ -153,31 +186,312 @@ impl Neg for Pos {
 }
 
 
+pub trait Clampable where Self: Copy + Clone + PartialOrd {
+    fn clamp_min(&mut self, min_value: Self) {
+        if *self < min_value {
+            *self = min_value;
+        }
+    }
+
+    fn clamp_max(&mut self, max_value: Self) {
+        if *self > max_value {
+            *self = max_value;
+        }
+    }
+}
+
+impl Clampable for f32 {}
+impl Clampable for i32 {}
+
+
 #[derive(Clone, Copy, Debug)]
-pub struct Size { pub w: i32, pub h: i32 }
+pub struct DraggableRect { top_left: Pos, bottom_right: Pos }
 
 #[allow(unused)]
-impl Size {
-	pub fn new(w: i32, h: i32) -> Self {
-		Self { w, h }
-	}
+impl DraggableRect {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        let mut rect = DraggableRect { 
+            top_left: Pos::new(x, y), 
+            bottom_right : Pos::new(x + w, y + h)
+        };
+        rect.correct_anchors();
+        rect
+    }
 
-    pub fn of<W: WidgetExt>(wid: &W) -> Self {
-		Self { w: wid.w(), h: wid.h() }
-	}
+    pub fn tl(&self) -> Pos { self.top_left }
+    pub fn br(&self) -> Pos { self.bottom_right }
 
-    pub fn mul_f(&self, val: f32) -> Self {
-        Size::new(
-            (self.w as f32 * val) as i32,
-            (self.h as f32 * val) as i32,
-        )
+    pub fn x(&self) -> i32 { self.top_left.x }
+    pub fn y(&self) -> i32 { self.top_left.y }
+    pub fn w(&self) -> i32 { self.bottom_right.x - self.top_left.x }
+    pub fn h(&self) -> i32 { self.bottom_right.y - self.top_left.y }
+    pub fn center(&self) -> Pos { (self.top_left + self.bottom_right).div_f(2.0) }
+
+    pub fn move_to_new_top_left(&mut self, new_top_left: Pos) {
+        let delta = new_top_left - self.top_left;
+        self.move_by_delta(delta);
+    }
+
+    pub fn move_by_delta(&mut self, delta: Pos) {
+        self.top_left += delta;
+        self.bottom_right += delta;
+    }
+
+    pub fn drag(&mut self, delta: Pos, drag_pos: DragPos) -> DragPos {
+        match drag_pos.x {
+            DragPosX::Left => { self.top_left.x += delta.x; },
+            DragPosX::Right => { self.bottom_right.x += delta.x; },
+            _ => {},
+        }
+
+        match drag_pos.y {
+            DragPosY::Top => { self.top_left.y += delta.y; },
+            DragPosY::Bottom => { self.bottom_right.y += delta.y; },
+            _ => {},
+        }
+
+        if drag_pos == DragPos::new(DragPosX::Middle, DragPosY::Middle) {
+            self.top_left += delta;
+            self.bottom_right += delta;
+        }
+
+        let mut new_drag_pos = drag_pos;
+
+        if self.top_left.x > self.bottom_right.x { new_drag_pos.mirror_x(); }
+        if self.top_left.y > self.bottom_right.y { new_drag_pos.mirror_y(); }
+
+        self.correct_anchors();
+
+        new_drag_pos
+    }
+
+    pub fn fit_inside(&mut self, area: RectArea) {
+        self.top_left.x.clamp_min(area.x);
+        self.top_left.y.clamp_min(area.y);
+        self.bottom_right.x.clamp_max(area.right());
+        self.bottom_right.y.clamp_max(area.bottom());
+        
+        self.correct_anchors();
+    }
+
+    fn correct_anchors(&mut self) {
+        if self.top_left.x > self.bottom_right.x {
+            std::mem::swap(&mut self.top_left.x, &mut self.bottom_right.x);
+        }
+        
+        if self.top_left.y > self.bottom_right.y {
+            std::mem::swap(&mut self.top_left.y, &mut self.bottom_right.y);
+        }
     }
 }
 
-impl AddAssign for Size {
-    fn add_assign(&mut self, rhs: Self) {
-		self.w += rhs.w;
-		self.h += rhs.h;
+
+#[derive(Clone, Copy, Debug)]
+#[repr(i32)]
+pub enum DragPosX { Left = 0, Middle = 1, Right = 2 }
+
+#[derive(Clone, Copy, Debug)]
+#[repr(i32)]
+pub enum DragPosY { Top = 0, Middle = 1, Bottom = 2 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct DragPos { pub x: DragPosX, pub y: DragPosY }
+
+impl PartialEq for DragPos {
+    fn eq(&self, other: &Self) -> bool {
+        self.x as i32 == other.x as i32 && self.y as i32 == other.y as i32
     }
 }
 
+impl DragPos {
+    pub fn from(x: i32, y: i32) -> Self {
+        let px = match x {
+            0 => DragPosX::Left,
+            1 => DragPosX::Middle,
+            2 => DragPosX::Right,
+            _ => unreachable!()
+        };
+        
+        let py = match y {
+            0 => DragPosY::Top,
+            1 => DragPosY::Middle,
+            2 => DragPosY::Bottom,
+            _ => unreachable!()
+        };
+
+        DragPos::new(px, py)
+    }
+
+    pub fn new(x: DragPosX, y: DragPosY) -> Self {
+        DragPos { x, y }
+    }
+
+    pub fn mirror_x(&mut self) {
+        self.x = match self.x {
+            DragPosX::Left => DragPosX::Right,
+            DragPosX::Middle => self.x,
+            DragPosX::Right => DragPosX::Left,
+        }
+    }
+
+    pub fn mirror_y(&mut self) {
+        self.y = match self.y {
+            DragPosY::Top => DragPosY::Bottom,
+            DragPosY::Middle => self.y,
+            DragPosY::Bottom => DragPosY::Top,
+        }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug)]
+pub struct ScalableRect { top_left: Pos, size: Pos, scale: f32 }
+
+impl ScalableRect {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        ScalableRect { 
+            top_left: Pos::new(x, y),
+            size: Pos::new(w, h),
+            scale: 1_f32 
+        }
+    }
+
+    pub fn tl(&self) -> Pos { self.top_left }
+
+    pub fn actual_w(&self) -> i32 { self.size.x }
+    pub fn actual_h(&self) -> i32 { self.size.y }
+
+    pub fn scaled_w(&self) -> i32 { (self.size.x as f32 * self.scale) as i32 }
+    pub fn scaled_h(&self) -> i32 { (self.size.y as f32 * self.scale) as i32 }
+    pub fn scaled_br(&self) -> Pos { self.top_left + self.size.mul_f(self.scale) }
+
+    pub fn area_scaled(&self) -> RectArea { 
+        RectArea::new(
+            self.top_left.x, self.top_left.y, 
+            self.scaled_w(), self.scaled_h())
+    }
+
+    pub fn stretch_self_to_area(&mut self, area: RectArea) {
+        // ------------------------ fit by scale -------------------------------
+        self.scale = self.get_scale_to_fit(area.size());
+
+        // ------------------------ fit by position -------------------------------
+        self.top_left = {
+            let new_top_left_x = 
+                if self.scaled_w() < area.w() {
+                    area.x() + area.w() / 2 - self.scaled_w() / 2
+                } else {
+                    area.x()
+                };
+
+            let new_top_left_y = 
+                if self.scaled_h() < area.h() {
+                    area.y() + area.h() / 2 - self.scaled_h() / 2
+                } else {
+                    area.y()
+                };
+
+            Pos::new(new_top_left_x, new_top_left_y)
+        };
+    }
+
+    pub fn zoom_area(&mut self, area: RectArea, view_center: Pos) {
+        assert!(area.x >= self.tl().x);
+        assert!(area.y >= self.tl().y);
+        assert!(area.right() <=self.scaled_br().x);
+        assert!(area.bottom() <= self.scaled_br().y);
+
+        // move area center to view_center
+        self.translate(view_center - area.center());
+
+        // scale and keep view_center position
+        let delta = {
+            let new_scale = {
+                let ratio_w = self.scaled_w() as f32 / area.w() as f32;
+                let ratio_h = self.scaled_h() as f32 / area.h() as f32;
+                if ratio_w < ratio_h { ratio_w } else { ratio_h }
+            };
+            new_scale - self.scale
+        };
+
+        self.scale_keep_anchor_pos(delta, view_center);
+    }
+
+    pub fn translate(&mut self, delta: Pos) {
+        self.top_left += delta;
+    }
+
+    pub fn scale_keep_anchor_pos(&mut self, delta: f32, anchor: Pos) {
+        let relative = anchor - self.tl();
+
+        self.top_left -= relative.mul_f(delta / self.scale);
+
+        self.scale += delta;
+    }
+
+    pub fn fit_scale(&mut self, area_size: Pos) {
+        let scale_to_fit = self.get_scale_to_fit(area_size);
+        self.scale.clamp_min(scale_to_fit);
+    }
+
+    pub fn fit_pos(&mut self, area: RectArea) {
+        let area_center = area.center();
+
+        self.top_left.x = 
+            if self.scaled_w() >= area.w() {
+                self.top_left.x.clamp(area.right() - self.scaled_w(), area.x())
+            } else {
+                area_center.x - self.scaled_w() / 2
+            };
+
+        self.top_left.y = 
+            if self.scaled_h() >= area.h() {
+                self.top_left.y.clamp(area.bottom() - self.scaled_h(), area.y())
+            } else {
+                area_center.y - self.scaled_h() / 2
+            };
+    }
+
+
+    fn get_scale_to_fit(&self, area_size: Pos) -> f32 {
+        let ratio_w: f32 = area_size.x as f32 / self.actual_w() as f32;
+        let ratio_h: f32 = area_size.y as f32 / self.actual_h() as f32;
+        if ratio_w < ratio_h { ratio_w } else { ratio_h }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug)]
+pub struct RectArea {
+    pub x: i32, 
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+}
+
+impl RectArea {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        assert!(w > 0);
+        assert!(h > 0);
+
+        RectArea { x, y, w, h }
+    }
+
+    pub fn of_widget<W: WidgetExt>(w: &W) -> Self { RectArea::new(w.x(), w.y(), w.w(), w.h() ) }
+
+    pub fn of_draggable_rect(rect: &DraggableRect) -> Self { 
+        RectArea::new(rect.x(), rect.y(), rect.w(), rect.h() ) 
+    }
+
+    pub fn size(&self) -> Pos { Pos::new(self.w, self.h) }
+
+    pub fn center(&self) -> Pos { Pos::new(self.x + self.w / 2, self.y + self.h / 2) }
+
+    pub fn x(&self) -> i32 { self.x }
+    pub fn y(&self) -> i32 { self.y }
+    pub fn w(&self) -> i32 { self.w }
+    pub fn h(&self) -> i32 { self.h }
+
+    pub fn right(&self) -> i32 { self.x + self.w }
+    pub fn bottom(&self) -> i32 { self.y + self.h }
+}
