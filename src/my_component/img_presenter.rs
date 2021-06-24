@@ -178,24 +178,23 @@ impl MyImgPresenter {
     }
 
     pub fn get_selection_rect(&self) -> Result<(PixelPos, PixelPos), MyError> {
-        todo!()
-        // let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+        let rect_locked = self.img_pres_rect_arc.lock().unwrap();
 
-        // match rect_locked.as_ref() {
-        //     Some(scale_rect) => {
-        //         if let Some(ref sel_rect) = scale_rect.selection_rect {
-        //             let tl = scale_rect.scale_rect.screen_to_self(sel_rect.inner.tl());
-        //             let br = scale_rect.scale_rect.screen_to_self(sel_rect.inner.br());
+        match rect_locked.as_ref() {
+            Some(scale_rect) => {
+                if let Some(ref sel_rect) = scale_rect.selection_rect {
+                    let tl = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.tl());
+                    let br = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.br());
 
-        //             Ok((tl.to_pixel_pos(), br.to_pixel_pos()))
-        //         } else {
-        //             return Err(MyError::new("Необходимо установить режим выделения".to_string()));
-        //         }
-        //     },
-        //     None => {
-        //         return Err(MyError::new("Необходимо установить режим выделения".to_string()));
-        //     },
-        // }
+                    Ok((tl.to_pixel_pos(), br.to_pixel_pos()))
+                } else {
+                    return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+                }
+            },
+            None => {
+                return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+            },
+        }
     }
 
     pub fn has_image(&self) -> bool { self.img.is_some() }

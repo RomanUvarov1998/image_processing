@@ -371,6 +371,11 @@ impl ScalableRect {
             self.scaled_w(), self.scaled_h())
     }
 
+    pub fn self_to_pixel(&self, pos: Pos) -> Pos {
+        (pos - self.top_left).div_f(self.scale)
+    }
+
+
     pub fn stretch_self_to_area(&mut self, area: RectArea) {
         // ------------------------ fit by scale -------------------------------
         self.scale = self.get_scale_to_fit(area.size());
