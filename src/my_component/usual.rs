@@ -1,5 +1,25 @@
-use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{MenuExt, WidgetExt}};
+use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use super::{Alignable, TEXT_PADDING};
+
+
+fn set_img_and_tooltip<W: WidgetExt +  WidgetBase>(widget: &mut W, path: &str, tooltip: &str) {
+    let bytes = crate::Asset::get(path).unwrap();
+    let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
+    
+    const IMG_PADDING: i32 = 5;
+    
+    widget.set_size(img.w() + IMG_PADDING * 2, img.h() + IMG_PADDING * 2);
+
+    widget.draw(move |wid| {
+        let (x, y, w, h) = 
+            (wid.x() + IMG_PADDING, wid.y() + IMG_PADDING, 
+            wid.w() - IMG_PADDING, wid.h() - IMG_PADDING);
+
+        img.draw(x, y, w, h);
+    });
+
+    widget.set_tooltip(tooltip);
+}
 
 
 pub struct MyButton {
@@ -13,6 +33,14 @@ impl MyButton {
 
         let (w, h) = btn.measure_label();
         btn.set_size(w + TEXT_PADDING, h + TEXT_PADDING);
+
+        MyButton { btn }
+    }
+
+    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+        let mut btn = button::Button::default();
+
+        set_img_and_tooltip(&mut btn, path, tooltip);
 
         MyButton { btn }
     }
@@ -62,6 +90,38 @@ impl MyToggleButton {
 
         let (w, h) = btn.measure_label();
         btn.set_size(w + TEXT_PADDING, h + TEXT_PADDING);
+
+        MyToggleButton { btn }
+    }
+
+    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+        let mut btn = button::ToggleButton::default();
+
+        let bytes = crate::Asset::get(path).unwrap();
+        let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
+        
+        const IMG_PADDING: i32 = 5;
+        
+        btn.set_size(img.w() + IMG_PADDING * 2, img.h() + IMG_PADDING * 2);
+
+        btn.draw(move |b| {
+            let (x, y, w, h) = 
+                (b.x() + IMG_PADDING, b.y() + IMG_PADDING, 
+                b.w() - IMG_PADDING, b.h() - IMG_PADDING);
+
+            if b.is_toggled() {
+                use fltk::{draw, enums::{Color}};
+                const LINE_PADDING: i32 = 3;
+                draw::draw_rect_fill(
+                    x - LINE_PADDING, y - LINE_PADDING, 
+                    img.w() + LINE_PADDING * 2, img.h() + LINE_PADDING * 2, 
+                    Color::Blue);
+            }
+
+            img.draw(x, y, w, h);
+        });
+
+        btn.set_tooltip(tooltip);
 
         MyToggleButton { btn }
     }
@@ -185,6 +245,50 @@ impl Alignable for MyMenuBar {
 
     fn h(&self) -> i32 { self.mb.h() }
 }
+
+
+pub struct MyMenuButton {
+    btn: menu::MenuButton
+}
+
+impl MyMenuButton {
+    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+        let mut btn = menu::MenuButton::default();
+
+        set_img_and_tooltip(&mut btn, path, tooltip);
+
+        btn.set_tooltip(tooltip);
+
+        MyMenuButton { btn }
+    }
+
+    pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, sender: Sender<TMsg>, msg: TMsg)
+    where TMsg: 'static + Clone + Copy + Send + Sync
+    {
+        self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
+    }
+
+    pub fn set_active(&mut self, active: bool) {
+        if active { 
+            self.btn.activate(); 
+        } else {
+            self.btn.deactivate();
+        }
+    }
+}
+
+impl Alignable for MyMenuButton {
+    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+
+    fn x(&self) -> i32 { self.btn.x() }
+
+    fn y(&self) -> i32 { self.btn.y() }
+
+    fn w(&self) -> i32 { self.btn.w() }
+
+    fn h(&self) -> i32 { self.btn.h() }
+}
+
 
 
 pub struct MyProgressBar {

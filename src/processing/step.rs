@@ -1,10 +1,13 @@
 use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar, MyToggleButton}}, my_err::MyError};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar, MyToggleButton}}, my_err::MyError};
 use super::{FilterBase, PADDING, step_editor::StepEditor};
 
 pub struct ProcessingStep {
     main_column: MyColumn,
-    menu: MyMenuBar,
+    btn_run: MyMenuButton,
+    btn_edit: MyButton,
+    btn_delete: MyButton,
+    btn_reorder: MyMenuButton,
     btn_toggle_mode: MyToggleButton,
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
@@ -26,29 +29,35 @@ impl ProcessingStep {
 
         let mut btns_row = MyRow::new(w, 100);
 
-        let mut menu = MyMenuBar::new(main_column.w());
+        let btn_run = MyMenuButton::with_img_and_tooltip("run step.png", "Запустить");
+        let btn_edit = MyButton::with_img_and_tooltip("edit step.png", "Изменить");
+        let btn_delete = MyButton::with_img_and_tooltip("delete step.png", "Удалить");
+        let btn_reorder = MyMenuButton::with_img_and_tooltip("reorder steps.png", "Переупорядочить");
 
-        let btn_toggle_mode = MyToggleButton::with_label("Брать выделенное");
+        let btn_toggle_mode = MyToggleButton::with_img_and_tooltip("crop.png", "Брать выделенное");
 
-        menu.resize(menu.x(), menu.y(), menu.w() - btn_toggle_mode.w(), menu.h());
+        let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h(), btn_toggle_mode.h()];
 
         btns_row.resize(
             btns_row.x(), btns_row.y(), 
             btns_row.w(), 
-            std::cmp::max(menu.h(), btn_toggle_mode.h()));
+            *btns.iter().max().unwrap());
         btns_row.end();        
 
         let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
         prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w - PADDING, h - menu.h() * 2);
+            w - PADDING, h - btns_row.h() * 2);
         
         main_column.end();
         
         let mut step = ProcessingStep { 
             main_column,
-            menu,
+            btn_run,
+            btn_edit,
+            btn_delete,
+            btn_reorder,
             btn_toggle_mode,
             label_step_name,
             prog_bar,
@@ -96,19 +105,23 @@ impl ProcessingStep {
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
-        self.menu.add_emit("Запустить/Только этот шаг", self.sender, 
+        self.btn_run.add_emit("Только этот шаг", self.sender, 
             Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: false }));
-        self.menu.add_emit("Запустить/Этот шаг и все шаги ниже", self.sender, 
+        self.btn_run.add_emit("Этот шаг и все шаги ниже", self.sender, 
             Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: true }));
-        self.menu.add_emit("Изменить", self.sender, Message::StepOp(StepOp::EditStep { step_num }));
-        self.menu.add_emit("Удалить", self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
-        self.menu.add_emit("Переупорядочить/Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        self.menu.add_emit("Переупорядочить/Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
+        self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
+        self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
+        self.btn_reorder.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
+        self.btn_reorder.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
         self.step_num = step_num;
     }
 
     pub fn set_buttons_active(&mut self, active: bool) {
-        self.menu.set_active(active);
+        self.btn_run.set_active(active);
+        self.btn_edit.set_active(active);
+        self.btn_delete.set_active(active);
+        self.btn_reorder.set_active(active);
+        self.btn_toggle_mode.set_active(active);
     }
 
 

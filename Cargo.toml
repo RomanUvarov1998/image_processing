@@ -10,6 +10,7 @@ edition = "2018"
 fltk = "1.0.19"
 chrono = "0.4.19"
 jpeg-encoder = "0.1.0"
+rust-embed = "5.9.0"
 
 [profile.dev]
 opt-level = 3

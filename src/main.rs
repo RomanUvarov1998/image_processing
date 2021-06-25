@@ -15,6 +15,16 @@ mod small_dlg;
 mod utils;
 mod my_component;
 
+// ---------------------------------- Embedded images -------------------------------
+
+#[macro_use]
+extern crate rust_embed;
+
+#[derive(RustEmbed)]
+#[folder = "icons\\"]
+pub struct Asset;
+
+
 fn main() -> result::Result<(), MyError> {
     my_app::create_app()?;
 
