@@ -18,7 +18,7 @@ impl MyImgPresenter {
 
         let mut btns_row = MyRow::new(w, 100);
 
-        let mut btn_fit = MyButton::with_label("Уместить");
+        let mut btn_fit = MyButton::with_img_and_tooltip("stretch.png", "Уместить");
         btn_fit.set_active(false);
         
         let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip("crop.png", "Брать выделенное");
