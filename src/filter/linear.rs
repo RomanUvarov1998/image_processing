@@ -1,5 +1,5 @@
 use fltk::enums::ColorDepth;
-use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}, utils::{LinesIter, WordsIter}};
+use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}, utils::{LinesIter, WordsIter}};
 use super::{ByLayer, FilterIterator, filter_option::{ExtendValue, FilterWindowSize, ImgChannel, NormalizeOption, Parceable}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 
@@ -47,7 +47,7 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -80,7 +80,7 @@ impl ByLayer for LinearGaussian {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError>
     {
         let result_mat = match layer.channel() {
             ImgChannel::A => layer.matrix().clone(),
@@ -88,10 +88,10 @@ impl ByLayer for LinearGaussian {
                 layer.matrix(), 
                 self, 
                 LinearGaussian::process_window, 
-                prog_prov),
+                prog_prov)?,
         };
 
-        ImgLayer::new(result_mat, layer.channel())
+        Ok(ImgLayer::new(result_mat, layer.channel()))
     }
 }
 
@@ -202,7 +202,7 @@ impl WindowFilter for LinearCustom {
 }
 
 impl Filter for LinearCustom {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -317,18 +317,18 @@ impl ByLayer for LinearCustom {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> 
     {
         let result_mat = {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
                 _ => super::process_with_window(layer.matrix(), self, 
                     LinearCustom::process_window, 
-                    prog_prov),
+                    prog_prov)?,
             }
         };
         
-        ImgLayer::new(result_mat, layer.channel())
+        Ok(ImgLayer::new(result_mat, layer.channel()))
     }
 }
 
@@ -367,7 +367,7 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let row_sums = img.w() + 1;
             let col_sums = img.h() + 1;
@@ -428,10 +428,10 @@ impl StringFromTo for LinearMean {
 }
 
 impl ByLayer for LinearMean {
-    fn process_layer(&self, layer: &ImgLayer, prog_prov: &mut ProgressProvider) -> ImgLayer {
+    fn process_layer(&self, layer: &ImgLayer, prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> {
         let mat = match layer.channel() {
             ImgChannel::A => {
-                return layer.clone()
+                return Ok(layer.clone())
             },
             _ => {
                 layer.matrix().clone()
@@ -452,7 +452,7 @@ impl ByLayer for LinearMean {
                 sum_res[pos] = row_sum;
             }
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
         
         // sum along cols
@@ -464,7 +464,7 @@ impl ByLayer for LinearMean {
                 sum_res[pos] = col_sum;
             }
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
@@ -492,10 +492,10 @@ impl ByLayer for LinearMean {
             let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
             mat_res[ext_pos - win_half - one] = result;
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
         // create layer
-        ImgLayer::new(mat_res, layer.channel())
+        Ok(ImgLayer::new(mat_res, layer.channel()))
     }
 }

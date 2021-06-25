@@ -145,12 +145,20 @@ impl ProcessingStep {
         self.img_presenter.clear_image(); 
     }
 
-    pub fn display_result(&mut self, img: Img) -> Result<(), MyError>  {
+    pub fn display_result(&mut self, processed_img: Option<Img>) -> Result<(), MyError>  {
         self.prog_bar.hide();
 
-        self.label_step_name.set_text(&format!("{} {}", self.filter.get_description(), img.get_description()));
                         
-        self.img_presenter.set_image(img)?;
+        match processed_img {
+            Some(img) => {
+                self.label_step_name.set_text(&format!("{} {}", self.filter.get_description(), img.get_description()));
+                self.img_presenter.set_image(img)?
+            },
+            None => {
+                self.label_step_name.set_text(&format!("{}", self.filter.get_description()));
+                self.img_presenter.clear_image()
+            },
+        }
 
         Ok(())
     }

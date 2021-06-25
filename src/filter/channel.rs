@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}};
+use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}};
 use super::{filter_option::{ImgChannel, Parceable}, filter_trait::{Filter, StringFromTo}, utils::{HistBuf, count_histogram}};
 
 
@@ -16,7 +16,7 @@ impl ExtractChannel {
 }
 
 impl Filter for ExtractChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         prog_prov.reset(img.d());
 
         let mut img_res = img.clone();
@@ -28,10 +28,10 @@ impl Filter for ExtractChannel {
                 }
             }
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
         
-        img_res
+        Ok(img_res)
     }
 
     fn get_description(&self) -> String {
@@ -81,7 +81,7 @@ impl NeutralizeChannel {
 }
 
 impl Filter for NeutralizeChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         prog_prov.reset(1);
 
         let mut img_res = img.clone();
@@ -92,9 +92,9 @@ impl Filter for NeutralizeChannel {
             }
         }
 
-        prog_prov.complete_action();
+        prog_prov.complete_action()?;
         
-        img_res
+        Ok(img_res)
     }
 
     fn get_description(&self) -> String {
@@ -138,13 +138,13 @@ pub struct Rgb2Gray {
 }
 
 impl Filter for Rgb2Gray {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
                 prog_prov.reset(1);
                 let res = img.clone();
-                prog_prov.complete_action();
-                res
+                prog_prov.complete_action()?;
+                Ok(res)
             },
             ColorDepth::Rgb8 | ColorDepth::Rgba8 => {
                 let mut img_res = img.clone();
@@ -172,7 +172,7 @@ impl Filter for Rgb2Gray {
                         + g * RGB_2_GRAY_GREEN
                         + b * RGB_2_GRAY_BLUE;
 
-                    prog_prov.complete_action();
+                    prog_prov.complete_action()?;
                 }
     
                 let (new_layers, color_depth) = match img.color_depth() {
@@ -190,7 +190,7 @@ impl Filter for Rgb2Gray {
                     },
                 };
     
-                Img::new(img.w(),img.h(), new_layers, color_depth)
+                Ok(Img::new(img.w(),img.h(), new_layers, color_depth))
             },
         }
     
@@ -237,7 +237,7 @@ pub struct EqualizeHist {
 }
 
 impl Filter for EqualizeHist {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -268,7 +268,7 @@ impl Filter for EqualizeHist {
                 sum += *bin;
                 *bin = sum;
 
-                prog_prov.complete_action();
+                prog_prov.complete_action()?;
             }
 
             // equalize
@@ -276,7 +276,7 @@ impl Filter for EqualizeHist {
             for bin in buffer.iter_mut() {
                 *bin *= max_color_over_max_value;
 
-                prog_prov.complete_action();
+                prog_prov.complete_action()?;
             }
 
             // apply coeff        
@@ -284,11 +284,11 @@ impl Filter for EqualizeHist {
                 let pix_value = layer[pos] as u8 as usize;
                 layer[pos] = buffer[pix_value];
 
-                prog_prov.complete_action();
+                prog_prov.complete_action()?;
             }
         }
 
-        img_res
+        Ok(img_res)
     }
 
     fn get_description(&self) -> String {

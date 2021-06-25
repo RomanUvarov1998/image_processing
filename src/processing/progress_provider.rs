@@ -1,16 +1,22 @@
-use std::time;
-use fltk::app::Sender;
+use std::{sync::mpsc::Receiver, time};
+use fltk::app::{Sender};
 use crate::message::{Message, Processing};
+
+
+pub struct HaltError;
+
+pub struct HaltMessage;
 
 pub struct ProgressProvider {
     sender: Sender<Message>,
     pr_data: Option<ProgressData>,
-    step_num: Option<usize>
+    step_num: Option<usize>,
+    halt_msg_receiver: Option<Receiver<HaltMessage>>
 }
 
 impl ProgressProvider {
-    pub fn new(sender: Sender<Message>) -> Self {
-        ProgressProvider { sender, pr_data: None, step_num: None }
+    pub fn new(sender: Sender<Message>, receiver: Receiver<HaltMessage>) -> Self {
+        ProgressProvider { sender, pr_data: None, step_num: None, halt_msg_receiver: Some(receiver) }
     }
 
     pub fn set_step_num(&mut self, step_num: usize) {
@@ -20,16 +26,24 @@ impl ProgressProvider {
     pub fn reset(&mut self, actions_count: usize) {
         // to not to panic if previous progress was not completed, otherwise destructor
         // will panic if not all steps are completed
+        self.drop_progress_data();
+        
+        self.pr_data = Some(ProgressData::new(actions_count));
+    }
+
+    pub fn drop_progress_data(&mut self) {
         if let Some(ref mut pd) = self.pr_data {
             pd.finish();
         }
-
-        self.pr_data = Some(ProgressData::new(actions_count));
     }
 
     const MS_DELAY: u128 = 100;
 
-    pub fn complete_action(&mut self) {          
+    pub fn complete_action(&mut self) -> Result<(), HaltError> { 
+        if let Ok(_) = self.halt_msg_receiver.as_ref().unwrap().try_recv() {
+            return Err(HaltError);
+        }
+
         match self.pr_data {
             Some(ref mut data) => {
                 data.completed_actions_count += 1;
@@ -43,11 +57,15 @@ impl ProgressProvider {
                 
                     self.sender.send(Message::Processing(Processing::StepProgress{ step_num, cur_percents }));
                 }
+
+                return Ok(());
             },
             None => panic!("No process data!"),
         }      
+    }
 
-        self.print_completed_actions_count();
+    pub fn take_receiver(&mut self) -> Receiver<HaltMessage> {
+        self.halt_msg_receiver.take().unwrap()
     }
 
     #[allow(unused)]

@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}, utils::{LinesIter}};
 use super::{ByLayer, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -90,7 +90,7 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -153,18 +153,18 @@ impl ByLayer for MedianFilter {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError>
     {
         let result_mat = {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
                 _ => super::process_with_window(layer.matrix(), self, 
                     Self::process_window, 
-                    prog_prov),
+                    prog_prov)?,
             }
         };
         
-        ImgLayer::new(result_mat, layer.channel())
+        Ok(ImgLayer::new(result_mat, layer.channel()))
     }
 }   
 
@@ -195,7 +195,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let fil_size_half = self.w() / 2;
             let mean_filter = 
@@ -315,12 +315,12 @@ impl ByLayer for HistogramLocalContrast {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> 
     {
         let mat = {
             match layer.channel() {
                 ImgChannel::A => {
-                    return layer.clone();
+                    return Ok(layer.clone());
                 },
                 _ => layer.matrix(),
             }
@@ -335,7 +335,7 @@ impl ByLayer for HistogramLocalContrast {
         
         let mat_ext_filtered = {
             let layer_ext = ImgLayer::new(mat_ext.clone(), layer.channel());
-            let layer_ext_filtered = self.mean_filter.process_layer(&layer_ext, prog_prov);
+            let layer_ext_filtered = self.mean_filter.process_layer(&layer_ext, prog_prov)?;
             layer_ext_filtered.matrix().clone()
         };
 
@@ -354,7 +354,7 @@ impl ByLayer for HistogramLocalContrast {
             
             mat_hist[pos_im] = self.process_window(&mut pixel_buf[..]);
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
         //-------------------------------- create C matrix ---------------------------------
@@ -365,7 +365,7 @@ impl ByLayer for HistogramLocalContrast {
             val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
             mat_c[pos] = f64::abs(val);
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
         for m_pos in mat_hist.get_pixels_area_iter(win_half, win_half + mat.size_vec()) {
@@ -389,7 +389,7 @@ impl ByLayer for HistogramLocalContrast {
             
             mat_c[m_pos] = mat_c[m_pos].powf(c_power);
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
         //-------------------------------- create result ---------------------------------         
@@ -408,10 +408,10 @@ impl ByLayer for HistogramLocalContrast {
 
             mat_res[pos - win_half] = val;
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
 
-        ImgLayer::new(mat_res, layer.channel())
+        Ok(ImgLayer::new(mat_res, layer.channel()))
     }
 }
 
@@ -430,7 +430,7 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -490,12 +490,12 @@ impl ByLayer for CutBrightness {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> 
     {
         let mut mat_res = {
             match layer.channel() {
                 ImgChannel::A => {
-                    return layer.clone();
+                    return Ok(layer.clone());
                 },
                 _ => Matrix2D::empty_size_of(layer.matrix()),
             }
@@ -513,9 +513,9 @@ impl ByLayer for CutBrightness {
 
                 mat_res[pos] = result as f64;
 
-            prog_prov.complete_action();
+            prog_prov.complete_action()?;
         }
         
-        ImgLayer::new(mat_res, layer.channel())
+        Ok(ImgLayer::new(mat_res, layer.channel()))
     }
 }

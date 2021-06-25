@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::ProgressProvider};
+use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::{HaltError, ProgressProvider}};
 
 use self::filter_trait::WindowFilter;
 
@@ -49,7 +49,7 @@ fn process_with_window<T: WindowFilter>(
     filter: &T, 
     buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, 
     prog_prov: &mut ProgressProvider) 
-    -> Matrix2D
+    -> Result<Matrix2D, HaltError>
 {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
@@ -77,10 +77,10 @@ fn process_with_window<T: WindowFilter>(
         
         res[pos_im - fil_half_size] = filter_result;
 
-        prog_prov.complete_action();
+        prog_prov.complete_action()?;
     }
 
-    res
+    Ok(res)
 }
 
 
@@ -90,20 +90,20 @@ trait ByLayer {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> ImgLayer;
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError>;
 }
 
 fn process_each_layer<F: ByLayer>(
     img: &Img, 
     filter: &F, 
-    prog_prov: &mut ProgressProvider) -> Img 
+    prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> 
 {
     let mut res_layers = Vec::<ImgLayer>::with_capacity(img.d());
 
     for layer in img.get_layers_iter() {
-        let res_layer = filter.process_layer(layer, prog_prov);        
+        let res_layer = filter.process_layer(layer, prog_prov)?;        
         res_layers.push(res_layer);
     }        
 
-    Img::new(img.w(), img.h(), res_layers, img.color_depth())
+    Ok(Img::new(img.w(), img.h(), res_layers, img.color_depth()))
 }

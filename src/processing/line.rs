@@ -1,8 +1,8 @@
 use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}, window};
-use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
-use super::{FilterBase, PADDING, ProcessingData, progress_provider::ProgressProvider, step::ProcessingStep, step_editor::StepEditor};
+use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use super::{FilterBase, PADDING, ProcessingData, progress_provider::{HaltMessage, ProgressProvider}, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine<'wind> {
@@ -15,6 +15,7 @@ pub struct ProcessingLine<'wind> {
     processing_thread_handle: JoinHandle<()>,
     // graphical parts
     wind_size_prev: (i32, i32),
+    btn_halt_processing: MyButton,
     img_presenter: MyImgPresenter,
     main_row: MyRow,
     init_img_col: MyColumn,
@@ -62,13 +63,20 @@ impl<'wind> ProcessingLine<'wind> {
         main_menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         main_menu.end();
 
+        let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
+        let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
+        btn_halt_processing.widget().set_callback(move |_| {
+            halt_msg_sender.send(HaltMessage).unwrap_or(());
+        });
+        btn_halt_processing.set_active(false);
+
         let lbl_init_img = MyLabel::new("Исходное изображение");
 
         let mut whole_proc_prog_bar = MyProgressBar::new(w / 2, 30);
         whole_proc_prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w / 2, h - lbl_init_img.h() - main_menu.h() - whole_proc_prog_bar.h());
+            w / 2, h - btn_halt_processing.h() - lbl_init_img.h() - main_menu.h() - whole_proc_prog_bar.h());
         
         init_img_col.end();
 
@@ -95,8 +103,11 @@ impl<'wind> ProcessingLine<'wind> {
         let processing_data_arc_copy = processing_data_arc.clone();
         let processing_thread_handle: JoinHandle<()> = thread::Builder::new().name("Processing".to_string()).spawn(move || 
         {
+            let mut receiver = halt_msg_receiver;
             loop {
                 thread::park(); 
+    
+                let mut prog_prov = ProgressProvider::new(sender_copy.clone(), receiver);
 
                 let step_num = {
                     use std::sync::MutexGuard;
@@ -107,14 +118,21 @@ impl<'wind> ProcessingLine<'wind> {
                     let pd: &mut ProcessingData = guard
                         .as_mut()
                         .expect("Expected Some(processing data), but None was there");
-    
-                    let mut prog_prov = ProgressProvider::new(sender_copy.clone());
+
                     prog_prov.set_step_num(pd.step_num);
     
-                    pd.result_img = Some(pd.filter_copy.filter(&pd.init_img, &mut prog_prov));
+                    pd.result_img = match pd.filter_copy.filter(&pd.init_img, &mut prog_prov) {
+                        Ok(img) => Some(img),
+                        Err(_) => {
+                            prog_prov.drop_progress_data();
+                            None
+                        },
+                    };
 
                     pd.step_num
                 };
+
+                receiver = prog_prov.take_receiver();
 
                 sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num }));
             }
@@ -132,6 +150,7 @@ impl<'wind> ProcessingLine<'wind> {
             processing_thread_handle,
             // graphical parts
             wind_size_prev,
+            btn_halt_processing,
             img_presenter,
             main_row,
             init_img_col,
@@ -256,6 +275,7 @@ impl<'wind> ProcessingLine<'wind> {
                                 step.set_buttons_active(active);
                             }
                             owner.main_menu.set_active(active);
+                            owner.btn_halt_processing.set_active(!active);
                         };
 
                         match msg {
@@ -282,7 +302,7 @@ impl<'wind> ProcessingLine<'wind> {
                                 self.steps[step_num].display_progress(cur_percents);
                             },
                             Processing::StepIsCompleted { step_num } => {
-                                let processing_continued: bool = match self.on_step_completed(step_num) {
+                                let processing_continues: bool = match self.on_step_completed(step_num) {
                                     Ok(continued) => continued,
                                     Err(err) => {
                                         show_err_msg(&self.parent_window, err);
@@ -290,7 +310,7 @@ impl<'wind> ProcessingLine<'wind> {
                                     },
                                 };
 
-                                if !processing_continued {
+                                if !processing_continues {
                                     set_all_controls_active(self, true);
                                     self.whole_proc_prog_bar.hide();
                                 }
@@ -367,28 +387,33 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
-        let (result_img, should_continue) = {
+        let (result_img, processing_continues) = {
             let mut guard = self.processing_data_arc.lock()
                 .expect("Couldn't lock processing data from the main thread");
     
             let mut pd_locked = guard.take()
                 .expect("No processing_data detected");
     
-            let result_img = pd_locked.take_result()
-                .expect("No result image in processing_data");
+            let result_img = pd_locked.take_result();
 
-            let should_continue = pd_locked.do_until_end && step_num < self.steps.len() - 1;
+            let processing_continues = pd_locked.do_until_end && step_num < self.steps.len() - 1;
 
-            (result_img, should_continue)
+            (result_img, processing_continues)
         };
+
+        let processing_was_halted: bool = result_img.is_none();
 
         self.steps[step_num].display_result(result_img)?;
 
-        if should_continue {
-            self.try_start_step(step_num + 1, should_continue)?;
+        if processing_was_halted {
+            return Ok(false);
+        }
+
+        if processing_continues {
+            self.try_start_step(step_num + 1, processing_continues)?;
         }
         
-        Ok(should_continue)
+        Ok(processing_continues)
     }
 
 

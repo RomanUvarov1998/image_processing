@@ -1,4 +1,4 @@
-use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, progress_provider::ProgressProvider}};
+use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
@@ -7,7 +7,7 @@ pub trait StringFromTo {
 }
 
 pub trait Filter : StringFromTo + Send {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Img;
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError>;
     fn get_description(&self) -> String;
     fn get_save_name(&self) -> String;
     fn get_copy(&self) -> FilterBase;
