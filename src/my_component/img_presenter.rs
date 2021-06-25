@@ -58,6 +58,8 @@ impl MyImgPresenter {
         self.frame_img.draw(|_| {});
         self.frame_img.redraw(); 
 
+        self.reset_presenter();
+
         {
             let mut rect_locked = self.img_pres_rect_arc.lock().unwrap();
             rect_locked.take();
@@ -78,11 +80,8 @@ impl MyImgPresenter {
         }
 
         let img_pres_rect_arc = self.img_pres_rect_arc.clone();
-        {
-            let mut rect_locked = img_pres_rect_arc.lock().unwrap();
-            let scale_rect = &mut rect_locked.as_mut().unwrap().scale_rect;
-            scale_rect.stretch_self_to_area(RectArea::of_widget(&self.frame_img).to_origin());
-        }
+
+        self.reset_presenter();
 
         self.frame_img.draw(move |f| {
             let mut rect_locked = img_pres_rect_arc.lock().unwrap();
@@ -209,6 +208,19 @@ impl MyImgPresenter {
     }
 
     pub fn redraw(&mut self) { self.frame_img.redraw(); }
+
+    fn reset_presenter(&mut self) {
+        {
+            let mut rect_locked = self.img_pres_rect_arc.lock().unwrap();
+
+            if let Some(scale_rect) = rect_locked.as_mut() {
+                scale_rect.scale_rect.stretch_self_to_area(RectArea::of_widget(&self.frame_img).to_origin());
+                scale_rect.selection_rect = None;
+            }
+        }
+
+        self.btn_toggle_selection.set_toggle(false);
+    }
 }
 
 impl Alignable for MyImgPresenter {
