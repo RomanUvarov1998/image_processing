@@ -1,5 +1,5 @@
 use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar, MyToggleButton}}, my_err::MyError};
+use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
 use super::{FilterBase, PADDING, step_editor::StepEditor};
 
 pub struct ProcessingStep {
@@ -8,7 +8,6 @@ pub struct ProcessingStep {
     btn_edit: MyButton,
     btn_delete: MyButton,
     btn_reorder: MyMenuButton,
-    btn_toggle_mode: MyToggleButton,
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
@@ -34,9 +33,7 @@ impl ProcessingStep {
         let btn_delete = MyButton::with_img_and_tooltip("delete step.png", "Удалить");
         let btn_reorder = MyMenuButton::with_img_and_tooltip("reorder steps.png", "Переупорядочить");
 
-        let btn_toggle_mode = MyToggleButton::with_img_and_tooltip("crop.png", "Брать выделенное");
-
-        let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h(), btn_toggle_mode.h()];
+        let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h()];
 
         btns_row.resize(
             btns_row.x(), btns_row.y(), 
@@ -58,7 +55,6 @@ impl ProcessingStep {
             btn_edit,
             btn_delete,
             btn_reorder,
-            btn_toggle_mode,
             label_step_name,
             prog_bar,
             img_presenter, 
@@ -96,7 +92,7 @@ impl ProcessingStep {
     pub fn edit_filter_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
         if step_editor.edit_with_dlg(app, &mut self.filter) {
             let filter_description: String = self.filter.get_description();
-            let img_description: String = match self.img_presenter.image() {
+            let img_description: String = match self.img_presenter.image_ref() {
                 Some(img) => img.get_description(),
                 None => String::new(),
             };
@@ -121,28 +117,19 @@ impl ProcessingStep {
         self.btn_edit.set_active(active);
         self.btn_delete.set_active(active);
         self.btn_reorder.set_active(active);
-        self.btn_toggle_mode.set_active(active);
     }
 
 
     pub fn get_data_copy(&self) -> Result<Img, MyError> {
-        match self.img_presenter.image() {
-            Some(img_ref) => {
-                if self.btn_toggle_mode.widget().is_toggled() {
-                    let (tl, br) = self.img_presenter.get_selection_rect()?;
-                    println!("going to crop {:?} -> {:?}", tl, br);
-                    Ok(img_ref.croped_copy(tl, br))
-                } else {
-                    Ok(img_ref.clone())
-                }
-            },
+        match self.img_presenter.image_copy() {
+            Some(img) => Ok(img),
             None => Err(MyError::new("Шаг не содержит изображения".to_string())),
         }
     }
 
     pub fn has_image(&self) -> bool { self.img_presenter.has_image() }
     
-    pub fn image<'own>(&'own self) -> Option<&'own Img> { self.img_presenter.image() }
+    pub fn image_ref<'own>(&'own self) -> Option<&'own Img> { self.img_presenter.image_ref() }
     
     pub fn filter<'own>(&'own self) -> &'own FilterBase { &self.filter }
 

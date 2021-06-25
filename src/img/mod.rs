@@ -284,7 +284,6 @@ impl Img {
     pub fn layer<'own>(&'own self, ind: usize) -> &'own ImgLayer { &self.layers[ind] }
 
     pub fn croped_copy(&self, top_left: PixelPos, bottom_right: PixelPos) -> Img {
-        println!("{:?} -> {:?}, in {} x {}", top_left, bottom_right, self.w(), self.h());
         assert!(bottom_right.col <= self.w());
         assert!(bottom_right.row <= self.h());
 
@@ -295,7 +294,7 @@ impl Img {
         
         for pos in PixelsIterator::for_rect_area(top_left, bottom_right) {
             for ch_num in 0..self.d() {
-                img.layer_mut(ch_num)[pos] = self.layer(ch_num)[pos];
+                img.layer_mut(ch_num)[pos - top_left] = self.layer(ch_num)[pos];
             }
         }
 

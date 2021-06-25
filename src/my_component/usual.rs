@@ -130,6 +130,10 @@ impl MyToggleButton {
         self.btn.toggle(value);
     }
 
+    pub fn is_toggled(&self) -> bool {
+        self.btn.is_toggled()
+    }
+
     pub fn set_active(&mut self, active: bool) {
         if active {
             self.btn.activate();

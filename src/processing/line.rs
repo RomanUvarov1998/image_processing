@@ -338,8 +338,8 @@ impl<'wind> ProcessingLine<'wind> {
             return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
         }
 
-        let img_copy = if step_num == 0 {
-            self.img_presenter.image().unwrap().clone()
+        let img_copy: Img = if step_num == 0 {
+            self.img_presenter.image_copy().unwrap()
         } else {
             match self.steps[step_num - 1].get_data_copy() {
                 Ok(img_copy) => img_copy,
@@ -659,7 +659,7 @@ impl<'wind> ProcessingLine<'wind> {
             let mut file_path = proj_path.clone();
             file_path.push_str(&format!("/{}.bmp", step_num + 1));
 
-            self.steps[step_num].image().unwrap().try_save(&file_path)?;
+            self.steps[step_num].image_ref().unwrap().try_save(&file_path)?;
         }
 
         Ok(true)

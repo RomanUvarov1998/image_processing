@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Mutex}};
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{Img, pixel_pos::PixelPos}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
+use crate::{img::{Img}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
 
 
@@ -20,8 +20,8 @@ impl MyImgPresenter {
 
         let mut btn_fit = MyButton::with_label("Уместить");
         btn_fit.set_active(false);
-
-        let mut btn_toggle_selection = MyToggleButton::with_label("Выделение");
+        
+        let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip("crop.png", "Брать выделенное");
         btn_toggle_selection.set_active(false);
 
         btns_row.resize(
@@ -177,29 +177,34 @@ impl MyImgPresenter {
         Ok(())
     }
 
-    pub fn get_selection_rect(&self) -> Result<(PixelPos, PixelPos), MyError> {
-        let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+    pub fn has_image(&self) -> bool { self.img.is_some() }
 
-        match rect_locked.as_ref() {
-            Some(scale_rect) => {
-                if let Some(ref sel_rect) = scale_rect.selection_rect {
+    pub fn image_ref<'own>(&'own self) -> Option<&'own Img> { self.img.as_ref() }
+
+    pub fn image_copy(&self) -> Option<Img> { 
+        match self.img {
+            Some(ref img) => {
+                if self.btn_toggle_selection.is_toggled() {
+                    let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+
+                    let scale_rect = rect_locked.as_ref()
+                        .expect("Selection mode btn is ON but there is scale_rect is None");
+                    let sel_rect = scale_rect.selection_rect.as_ref()
+                        .expect("Selection mode btn is ON but there is sel_rect is None");
+
                     let tl = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.tl());
                     let br = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.br());
 
-                    Ok((tl.to_pixel_pos(), br.to_pixel_pos()))
+                    let cropped = img.croped_copy(tl.to_pixel_pos(), br.to_pixel_pos());
+
+                    Some(cropped)
                 } else {
-                    return Err(MyError::new("Необходимо установить режим выделения".to_string()));
+                    Some(img.clone())
                 }
             },
-            None => {
-                return Err(MyError::new("Необходимо установить режим выделения".to_string()));
-            },
+            None => None,
         }
     }
-
-    pub fn has_image(&self) -> bool { self.img.is_some() }
-
-    pub fn image<'own>(&'own self) -> Option<&'own Img> { self.img.as_ref() }
 
     pub fn redraw(&mut self) { self.frame_img.redraw(); }
 }
