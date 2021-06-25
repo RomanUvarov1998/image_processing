@@ -1,7 +1,7 @@
 use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}, window};
-use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuBar, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
 use super::{FilterBase, PADDING, ProcessingData, progress_provider::{HaltMessage, ProgressProvider}, step::ProcessingStep, step_editor::StepEditor};
 
 
@@ -15,11 +15,16 @@ pub struct ProcessingLine<'wind> {
     processing_thread_handle: JoinHandle<()>,
     // graphical parts
     wind_size_prev: (i32, i32),
-    btn_halt_processing: MyButton,
     img_presenter: MyImgPresenter,
     main_row: MyRow,
     init_img_col: MyColumn,
-    main_menu: MyMenuBar,
+
+    btn_project: MyMenuButton,
+    btn_import: MyMenuButton,
+    btn_add_step: MyMenuButton,
+    btn_export: MyMenuButton,
+    btn_halt_processing: MyButton,
+
     lbl_init_img: MyLabel,
     whole_proc_prog_bar: MyProgressBar,
     processing_col: MyColumn,
@@ -37,6 +42,46 @@ impl<'wind> ProcessingLine<'wind> {
             
         let mut init_img_col = MyColumn::new(w / 2, h);
 
+        let mut btns_row = MyRow::new(w / 2, 100);
+
+        let mut btn_project = MyMenuButton::with_label("Проект");
+        btn_project.add_emit("Зарузить", sender, Message::Project(Project::LoadProject));
+        btn_project.add_emit("Сохранить как", sender, Message::Project(Project::SaveProject));
+
+        let mut btn_import = MyMenuButton::with_img_and_tooltip("import.png", "Импорт");
+        btn_import.add_emit("Файл", sender, 
+            Message::Project(Project::Import(ImportType::FromFile)));
+        btn_import.add_emit("Системный буфер обмена", sender, 
+            Message::Project(Project::Import(ImportType::FromSystemClipoard)));
+            
+        let mut btn_add_step = MyMenuButton::with_img_and_tooltip("add step.png", "Добавить шаг");
+        btn_add_step.add_emit("Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
+        btn_add_step.add_emit("Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
+        btn_add_step.add_emit("Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
+        btn_add_step.add_emit("Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
+        btn_add_step.add_emit("Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
+        btn_add_step.add_emit("Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
+        btn_add_step.add_emit("Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
+
+        let mut btn_export = MyMenuButton::with_img_and_tooltip("export.png", "Экспорт");
+        btn_export.add_emit("Сохранить результаты", sender, Message::Project(Project::SaveResults));
+
+        let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
+        let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
+        btn_halt_processing.widget().set_callback(move |_| {
+            halt_msg_sender.send(HaltMessage).unwrap_or(());
+        });
+        btn_halt_processing.set_active(false);
+        
+        let btns_heights = [btn_project.h(), btn_import.h(), btn_add_step.h(), btn_export.h(), btn_halt_processing.h()];
+
+        btns_row.resize(btns_row.x(), btns_row.y(), btns_row.w(), *btns_heights.iter().max().unwrap());
+        btns_row.end();
+
+        /*
         let mut main_menu = MyMenuBar::new(init_img_col.w());
         main_menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
         main_menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
@@ -62,13 +107,8 @@ impl<'wind> ProcessingLine<'wind> {
 
         main_menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
         main_menu.end();
+         */
 
-        let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
-        let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
-        btn_halt_processing.widget().set_callback(move |_| {
-            halt_msg_sender.send(HaltMessage).unwrap_or(());
-        });
-        btn_halt_processing.set_active(false);
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
 
@@ -76,19 +116,19 @@ impl<'wind> ProcessingLine<'wind> {
         whole_proc_prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w / 2, h - btn_halt_processing.h() - lbl_init_img.h() - main_menu.h() - whole_proc_prog_bar.h());
+            w / 2, h - btn_halt_processing.h() - lbl_init_img.h() - btns_row.h() - whole_proc_prog_bar.h());
         
         init_img_col.end();
 
-        let mut processing_col = MyColumn::new(w / 2, h - main_menu.h());
+        let mut processing_col = MyColumn::new(w / 2, h - btns_row.h());
 
         let scroll_area = group::Scroll::default()
-            .with_pos(x, y + main_menu.h())
-            .with_size(w / 2, h - main_menu.h());
+            .with_pos(x, y + btns_row.h())
+            .with_size(w / 2, h - btns_row.h());
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x, y + main_menu.h())
-            .with_size(w / 2 - PADDING, h - main_menu.h());
+            .with_pos(x, y + btns_row.h())
+            .with_size(w / 2 - PADDING, h - btns_row.h());
 
         scroll_pack.end();
         scroll_area.end();
@@ -150,11 +190,16 @@ impl<'wind> ProcessingLine<'wind> {
             processing_thread_handle,
             // graphical parts
             wind_size_prev,
-            btn_halt_processing,
             img_presenter,
             main_row,
             init_img_col,
-            main_menu,
+            
+            btn_project,
+            btn_import,
+            btn_add_step,
+            btn_export,
+            btn_halt_processing,
+
             lbl_init_img,
             whole_proc_prog_bar,
             processing_col,
@@ -274,7 +319,11 @@ impl<'wind> ProcessingLine<'wind> {
                             for step in owner.steps.iter_mut() {
                                 step.set_buttons_active(active);
                             }
-                            owner.main_menu.set_active(active);
+
+                            owner.btn_project.set_active(active);
+                            owner.btn_import.set_active(active);
+                            owner.btn_add_step.set_active(active);
+                            owner.btn_export.set_active(active);
                             owner.btn_halt_processing.set_active(!active);
                         };
 

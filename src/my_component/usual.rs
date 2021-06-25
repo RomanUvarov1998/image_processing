@@ -1,7 +1,6 @@
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use super::{Alignable, TEXT_PADDING};
 
-
 fn set_img_and_tooltip<W: WidgetExt +  WidgetBase>(widget: &mut W, path: &str, tooltip: &str) {
     let bytes = crate::Asset::get(path).unwrap();
     let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
@@ -26,6 +25,7 @@ pub struct MyButton {
     btn: button::Button,
 }
 
+#[allow(unused)]
 impl MyButton {
     pub fn with_label<'label>(label: &'label str) -> Self {
         let mut btn = button::Button::default();
@@ -178,6 +178,7 @@ pub struct MyLabel {
     label: frame::Frame,
 }
 
+#[allow(unused)]
 impl MyLabel {
     pub fn new<'text>(text: &'text str) -> Self {
         let mut label = frame::Frame::default();
@@ -216,6 +217,7 @@ pub struct MyMenuBar {
     mb: menu::MenuBar
 }
 
+#[allow(unused)]
 impl MyMenuBar {
     pub fn new(w: i32) -> Self {
         MyMenuBar {
@@ -259,16 +261,38 @@ pub struct MyMenuButton {
     btn: menu::MenuButton
 }
 
+#[allow(unused)]
 impl MyMenuButton {
     pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
         let mut btn = menu::MenuButton::default();
 
-        set_img_and_tooltip(&mut btn, path, tooltip);
+        let bytes = crate::Asset::get(path).unwrap();
+        let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
+        
+        const IMG_PADDING: i32 = 5;
+        
+        btn.set_size(img.w() + IMG_PADDING * 2 + Self::ARROW_WIDTH, img.h() + IMG_PADDING * 2);
+
+        btn.draw(move |wid| {
+            img.draw(wid.x() + IMG_PADDING, wid.y() + IMG_PADDING, img.w(), img.h());
+        });
 
         btn.set_tooltip(tooltip);
 
         MyMenuButton { btn }
     }
+
+    pub fn with_label<'label>(label: &'label str) -> Self {
+        let mut btn = menu::MenuButton::default();
+        btn.set_label(label);
+
+        let (w, h) = btn.measure_label();
+        btn.set_size(w + TEXT_PADDING + Self::ARROW_WIDTH, h + TEXT_PADDING);
+
+        MyMenuButton { btn }
+    }
+
+    const ARROW_WIDTH: i32 = 30;
 
     pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, sender: Sender<TMsg>, msg: TMsg)
     where TMsg: 'static + Clone + Copy + Send + Sync
@@ -303,6 +327,7 @@ pub struct MyProgressBar {
     bar: misc::Progress
 }
 
+#[allow(unused)]
 impl MyProgressBar {
     pub fn new(w: i32, h: i32) -> Self {
         let mut bar = misc::Progress::default()
