@@ -488,6 +488,12 @@ impl RectArea {
         RectArea::new(rect.x(), rect.y(), rect.w(), rect.h() ) 
     }
 
+    pub fn to_origin(mut self) -> Self {
+        self.x = 0;
+        self.y = 0;
+        self
+    }
+
     pub fn size(&self) -> Pos { Pos::new(self.w, self.h) }
 
     pub fn center(&self) -> Pos { Pos::new(self.x + self.w / 2, self.y + self.h / 2) }

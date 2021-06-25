@@ -78,6 +78,11 @@ impl MyImgPresenter {
         }
 
         let img_pres_rect_arc = self.img_pres_rect_arc.clone();
+        {
+            let mut rect_locked = img_pres_rect_arc.lock().unwrap();
+            let scale_rect = &mut rect_locked.as_mut().unwrap().scale_rect;
+            scale_rect.stretch_self_to_area(RectArea::of_widget(&self.frame_img).to_origin());
+        }
 
         self.frame_img.draw(move |f| {
             let mut rect_locked = img_pres_rect_arc.lock().unwrap();
@@ -120,10 +125,7 @@ impl MyImgPresenter {
         // data to move into closure
 		let mut was_mouse_down = false;
         self.frame_img.handle(move |f, ev| {
-            let mouse_pos = {
-                let (x, y) = (fltk::app::event_x(), fltk::app::event_y());
-                Pos::new(x, y)
-            };
+            let mouse_pos = Pos::new(fltk::app::event_x(), fltk::app::event_y());
 
             use fltk::app::MouseWheel;
 
@@ -242,23 +244,27 @@ impl ImgPresRect {
 
 
     fn consume_msg(&mut self, msg: ImgPresMsg, frame: &frame::Frame) {
+        let frame_pos = Pos::of(frame);
+        let frame_size = Pos::size_of(frame);
+        let frame_center = Pos::center_of(frame) - frame_pos;
+        let frame_area = RectArea::of_widget(frame).to_origin();
+
         match msg {
-            ImgPresMsg::MouseDown (pos) => self.start_drag(pos),
-            ImgPresMsg::MouseMove (cur) => self.drag(cur),
-            ImgPresMsg::MouseUp => self.stop_drag(frame),
-            ImgPresMsg::MouseScroll { factor_delta, pos } => 
-                self.scale(pos, factor_delta, frame),
+            ImgPresMsg::MouseDown (pos) => self.start_drag(pos - frame_pos),
+            ImgPresMsg::MouseMove (cur) => self.drag(cur - frame_pos),
+            ImgPresMsg::MouseUp => self.stop_drag(frame_area),
+            ImgPresMsg::MouseScroll { factor_delta, pos } => self.scale(pos - frame_pos, factor_delta),
             ImgPresMsg::Fit => {
                 if let Some(ref sel_rect) = self.selection_rect {
                     self.scale_rect.zoom_area(
                         RectArea::of_draggable_rect(&sel_rect.inner),
-                        Pos::center_of(frame));
+                        frame_center);
                 } else {
-                    self.scale_rect.stretch_self_to_area(RectArea::of_widget(frame));
+                    self.scale_rect.stretch_self_to_area(frame_area);
                 }
             },
             ImgPresMsg::SeletionOn => {
-                self.selection_rect = Some(SelectionRect::middle_third_of(frame));
+                self.selection_rect = Some(SelectionRect::middle_third_of(frame_size));
             },
             ImgPresMsg::SelectionOff => {
                 self.selection_rect = None;
@@ -293,20 +299,19 @@ impl ImgPresRect {
         }
     }
 
-    fn scale(&mut self, anchor: Pos, delta: f32, frame: &frame::Frame) {
+    fn scale(&mut self, anchor: Pos, delta: f32) {
         self.scale_rect.scale_keep_anchor_pos(delta, anchor);
-        self.scale_rect.fit_scale(Pos::size_of(frame));
     }
 
-    fn stop_drag(&mut self, frame: &frame::Frame) {
+    fn stop_drag(&mut self, wiew_area: RectArea) {
         self.prev_pos = None;
 
-        self.scale_rect.fit_scale(Pos::size_of(frame));
-        self.scale_rect.fit_pos(RectArea::of_widget(frame));
+        self.scale_rect.fit_scale(wiew_area.size());
+        self.scale_rect.fit_pos(wiew_area);
 
         if let Some(ref mut sel_rect) = self.selection_rect {
             sel_rect.stop_drag();
-            sel_rect.inner.fit_inside(RectArea::of_widget(frame));
+            sel_rect.inner.fit_inside(wiew_area);
             sel_rect.inner.fit_inside(self.scale_rect.area_scaled());
         }
     }
@@ -320,10 +325,10 @@ impl ImgPresRect {
         draw::push_clip(f.x(), f.y(), f.w(), f.h());
         
         let im_pos = self.scale_rect.tl();
-        img.draw(im_pos.x, im_pos.y, im_w, im_h);
+        img.draw(f.x() + im_pos.x, f.y() + im_pos.y, im_w, im_h);
 
         if let Some(ref rect) = self.selection_rect {
-            rect.draw();
+            rect.draw(f.x(), f.y());
         }
         
         draw::pop_clip();
@@ -338,9 +343,9 @@ struct SelectionRect {
 }
 
 impl SelectionRect {
-    fn middle_third_of(frame: &frame::Frame) -> Self {
-        let w = frame.x() + frame.w() / 3;
-        let h = frame.y() + frame.h() / 3;
+    fn middle_third_of(area_size: Pos) -> Self {
+        let w = area_size.x / 3;
+        let h = area_size.y / 3;
         let x = w;
         let y = h;
         
@@ -357,11 +362,11 @@ impl SelectionRect {
 
     const RECT_SIDE: i32 = 10;
 
-    fn draw(&self) {
+    fn draw(&self, ox: i32, oy: i32) {
         use fltk::{draw, enums::Color};
 
         draw::draw_rect_with_color(
-            self.x(), self.y(), 
+            ox + self.x(), oy + self.y(), 
             self.w(), self.h(),
             Color::Blue);
 
@@ -395,8 +400,8 @@ impl SelectionRect {
                     };
 
                 draw_rect_around(
-                    self.x() + w_half * x_step, 
-                    self.y() + h_half * y_step,
+                    ox + self.x() + w_half * x_step, 
+                    oy + self.y() + h_half * y_step,
                     fill_color);
             }
         }
