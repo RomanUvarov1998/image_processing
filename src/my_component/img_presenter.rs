@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}};
+use std::{cell::{RefCell}, rc::Rc};
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
 use crate::{img::{Img}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
@@ -8,7 +8,7 @@ pub struct MyImgPresenter {
     btn_fit: MyButton,
     btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
-    img_pres_rect_arc: Arc<Mutex<Option<ImgPresRect>>>,
+    img_pres_rect_rc: Option<Rc<RefCell<ImgPresRect>>>,
     img: Option<Img>,
 }
 
@@ -40,91 +40,116 @@ impl MyImgPresenter {
 
         let img = None;
 
-        let img_pres_rect_arc = Arc::new(Mutex::new(None));
-
-        MyImgPresenter { btn_fit, btn_toggle_selection, frame_img, img, img_pres_rect_arc }
+        MyImgPresenter { 
+            btn_fit, btn_toggle_selection, 
+            frame_img, img, img_pres_rect_rc: None 
+        }
     }
 
     pub fn clear_image(&mut self) {
         self.img = None;
 
         self.btn_fit.set_active(false);
-        self.btn_fit.widget().set_callback(move |_| { });
+        self.btn_fit.widget_mut().set_callback(move |_| { });
 
         self.btn_toggle_selection.set_active(false);
         self.btn_toggle_selection.widget_mut().set_callback(move |_| { });
+        self.btn_toggle_selection.set_toggle(false);
 
         self.frame_img.handle(|_, _| { false });
         self.frame_img.draw(|_| {});
-        self.frame_img.redraw(); 
 
-        self.reset_presenter();
-
-        {
-            let mut rect_locked = self.img_pres_rect_arc.lock().unwrap();
-            rect_locked.take();
+        if let Some(ref rc) = self.img_pres_rect_rc {
+            assert_eq!(Rc::strong_count(rc), 1);
+            self.img_pres_rect_rc = None;
         }
+
+        self.frame_img.redraw(); 
     }
 
     pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
-        // data to move into closure
-        let (sender, receiver) = std::sync::mpsc::channel::<ImgPresMsg>();
-
-        // ------------------------------------ frame drawing ----------------------------------------
-        // data to move into closure
-        let mut drawable = img.get_drawable_copy()?;
-
-        {
-            let mut mutex = self.img_pres_rect_arc.lock().unwrap();
-            mutex.replace(ImgPresRect::new(&img, &mut self.frame_img));
+        if let Some(_) = self.img_pres_rect_rc {
+            self.clear_image();
         }
 
-        let img_pres_rect_arc = self.img_pres_rect_arc.clone();
+        let pres_rect = ImgPresRect::new(
+            Pos::size_of_img(&img), 
+            RectArea::of_widget(&self.frame_img).with_zero_origin());
+        let presenter_rc: Rc<RefCell<ImgPresRect>> = Rc::new(RefCell::new(pres_rect));
 
-        self.reset_presenter();
+        let (sender, receiver) = std::sync::mpsc::channel::<ImgPresMsg>();
 
-        self.frame_img.draw(move |f| {
-            let mut rect_locked = img_pres_rect_arc.lock().unwrap();
+        self.set_draw_cbk(&img, Rc::clone(&presenter_rc), receiver)?;
 
+        self.img_pres_rect_rc = Some(presenter_rc);
+
+        self.set_btn_toggle_cbk(sender.clone());
+        self.set_btn_fit_cbk(sender.clone());
+        self.set_frame_handle_cbk(sender);
+		
+        self.img = Some(img);
+
+        self.frame_img.redraw(); 
+
+        Ok(())
+    }
+
+    fn set_draw_cbk(&mut self, img: &Img, presenter_rc: Rc<RefCell<ImgPresRect>>, receiver: std::sync::mpsc::Receiver<ImgPresMsg>) -> Result<(), MyError> {
+        let mut drawable = img.get_drawable_copy()?;
+        
+        self.frame_img.draw(move |frame| 
+        {
+            let view_area = RectArea::of_widget(frame);
+            let view_area_size = view_area.size();
+            let draw_position = Pos::of(frame);
+
+            let mut presenter_rc_mut = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
             while let Ok(msg) = receiver.try_recv() {
-                rect_locked.as_mut().unwrap().consume_msg(msg, f);
+                presenter_rc_mut.consume_msg(msg, view_area_size);
             }
+            drop(presenter_rc_mut);
 
-			rect_locked.as_mut().unwrap().draw_img(&mut drawable, f);
+            use fltk::draw;
+            draw::push_clip(view_area.x(), view_area.y(), view_area.w(), view_area.h());
+            
+            let presenter_rc = presenter_rc.try_borrow().expect("Couldn't get & to presenter from frame.draw()");
+            presenter_rc.draw_img(&mut drawable, draw_position);
+            drop(presenter_rc);
+
+            draw::pop_clip();
         });
 
-        // ------------------------------------ btn toggle selection ----------------------------------------
-        // data to move into closure
-        let sender_for_btn = sender.clone();
+        Ok(())
+    }
+
+    fn set_btn_toggle_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut frame_copy = self.frame_img.clone();
 
         self.btn_toggle_selection.widget_mut().set_callback(move |btn| { 
             let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
-            sender_for_btn.send(msg).unwrap_or(());
+            sender.send(msg).unwrap_or(());
             frame_copy.redraw();
         });
         self.btn_toggle_selection.set_active(true);
+    }
 
-        // ------------------------------------ btn fit ----------------------------------------
-        // data to move into closure
-        let sender_for_btn = sender.clone();
+    fn set_btn_fit_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut frame_copy = self.frame_img.clone();  
         let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();  
 
-        self.btn_fit.widget().set_callback(move |_| {
-            sender_for_btn.send(ImgPresMsg::Fit).unwrap_or(());
-            sender_for_btn.send(ImgPresMsg::SelectionOff).unwrap_or(());
+        self.btn_fit.widget_mut().set_callback(move |_| {
+            sender.send(ImgPresMsg::Fit).unwrap_or(());
+            sender.send(ImgPresMsg::SelectionOff).unwrap_or(());
             btn_toggle_selection_copy.toggle(false);
             frame_copy.redraw();
         });
         self.btn_fit.set_active(true);
+    }
 
-
-        // ------------------------------------ frame handling ----------------------------------------
-        // data to move into closure
-		let mut was_mouse_down = false;
+    fn set_frame_handle_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
+        let mut was_mouse_down = false;
         self.frame_img.handle(move |f, ev| {
-            let mouse_pos = Pos::new(fltk::app::event_x(), fltk::app::event_y());
+            let mouse_pos = Pos::new(fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
 
             use fltk::app::MouseWheel;
 
@@ -170,13 +195,8 @@ impl MyImgPresenter {
 
             event_handled
         });
-
-        self.img = Some(img);
-
-        self.frame_img.redraw(); 
-
-        Ok(())
     }
+
 
     pub fn has_image(&self) -> bool { self.img.is_some() }
 
@@ -186,17 +206,23 @@ impl MyImgPresenter {
         match self.img {
             Some(ref img) => {
                 if self.btn_toggle_selection.is_toggled() {
-                    let rect_locked = self.img_pres_rect_arc.lock().unwrap();
+                    let presenter_rc_mut = self.img_pres_rect_rc
+                        .as_ref()
+                        .expect("image_copy(): Presenter rect is None")
+                        .try_borrow()
+                        .expect("Couldn't get & to presenter from image_copy()");
 
-                    let scale_rect = rect_locked.as_ref()
-                        .expect("Selection mode btn is ON but there is scale_rect is None");
-                    let sel_rect = scale_rect.selection_rect.as_ref()
-                        .expect("Selection mode btn is ON but there is sel_rect is None");
+                    let scale_rect: &ScalableRect = &presenter_rc_mut.scale_rect;
+                    let sel_rect: &SelectionRect = presenter_rc_mut.selection_rect
+                        .as_ref()
+                        .expect("Selection mode btn is ON but there sel_rect is None");
 
-                    let tl = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.tl());
-                    let br = scale_rect.scale_rect.self_to_pixel(sel_rect.inner.br());
+                    let tl: Pos = scale_rect.self_to_pixel(sel_rect.inner.tl());
+                    let br: Pos = scale_rect.self_to_pixel(sel_rect.inner.br());
 
-                    let cropped = img.croped_copy(tl.to_pixel_pos(), br.to_pixel_pos());
+                    drop(presenter_rc_mut);
+
+                    let cropped: Img = img.croped_copy(tl.to_pixel_pos(), br.to_pixel_pos());
 
                     Some(cropped)
                 } else {
@@ -208,19 +234,6 @@ impl MyImgPresenter {
     }
 
     pub fn redraw(&mut self) { self.frame_img.redraw(); }
-
-    fn reset_presenter(&mut self) {
-        {
-            let mut rect_locked = self.img_pres_rect_arc.lock().unwrap();
-
-            if let Some(scale_rect) = rect_locked.as_mut() {
-                scale_rect.scale_rect.stretch_self_to_area(RectArea::of_widget(&self.frame_img).to_origin());
-                scale_rect.selection_rect = None;
-            }
-        }
-
-        self.btn_toggle_selection.set_toggle(false);
-    }
 }
 
 impl Alignable for MyImgPresenter {
@@ -243,9 +256,9 @@ struct ImgPresRect {
 }
 
 impl ImgPresRect {
-    fn new(img: &Img, frame: &frame::Frame) -> Self {
-        let mut rect = ScalableRect::new(0, 0, img.w() as i32, img.h() as i32);
-        rect.stretch_self_to_area(RectArea::of_widget(frame));
+    fn new(img_size: Pos, frame_area: RectArea) -> Self {
+        let mut rect = ScalableRect::new(0, 0, img_size.x, img_size.y);
+        rect.stretch_self_to_area(frame_area);
         
         ImgPresRect { 
             scale_rect: rect,
@@ -255,28 +268,28 @@ impl ImgPresRect {
     }
 
 
-    fn consume_msg(&mut self, msg: ImgPresMsg, frame: &frame::Frame) {
-        let frame_pos = Pos::of(frame);
-        let frame_size = Pos::size_of(frame);
-        let frame_center = Pos::center_of(frame) - frame_pos;
-        let frame_area = RectArea::of_widget(frame).to_origin();
+    fn consume_msg(&mut self, msg: ImgPresMsg, current_view_area_size: Pos) {
+        let view_area = RectArea::new(
+            0, 0, 
+            current_view_area_size.x, current_view_area_size.y);
 
         match msg {
-            ImgPresMsg::MouseDown (pos) => self.start_drag(pos - frame_pos),
-            ImgPresMsg::MouseMove (cur) => self.drag(cur - frame_pos),
-            ImgPresMsg::MouseUp => self.stop_drag(frame_area),
-            ImgPresMsg::MouseScroll { factor_delta, pos } => self.scale(pos - frame_pos, factor_delta),
+            ImgPresMsg::MouseDown (pos) => self.start_drag(pos),
+            ImgPresMsg::MouseMove (cur) => self.drag(cur),
+            ImgPresMsg::MouseUp => self.stop_drag(view_area),
+            ImgPresMsg::MouseScroll { factor_delta, pos } => self.scale(pos, factor_delta),
             ImgPresMsg::Fit => {
                 if let Some(ref sel_rect) = self.selection_rect {
+                    let center = current_view_area_size.div_f(2_f32);
                     self.scale_rect.zoom_area(
                         RectArea::of_draggable_rect(&sel_rect.inner),
-                        frame_center);
+                        center);
                 } else {
-                    self.scale_rect.stretch_self_to_area(frame_area);
+                    self.scale_rect.stretch_self_to_area(view_area);
                 }
             },
             ImgPresMsg::SeletionOn => {
-                self.selection_rect = Some(SelectionRect::middle_third_of(frame_size));
+                self.selection_rect = Some(SelectionRect::middle_third_of(current_view_area_size));
             },
             ImgPresMsg::SelectionOff => {
                 self.selection_rect = None;
@@ -329,21 +342,18 @@ impl ImgPresRect {
     }
 
 
-    fn draw_img(&mut self, img: &mut fltk::image::RgbImage, f: &frame::Frame) {
+    fn draw_img(&self, img: &mut fltk::image::RgbImage, draw_position: Pos) {
 		let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
         img.scale(im_w, im_h, true, true);
 
-        use fltk::draw;
-        draw::push_clip(f.x(), f.y(), f.w(), f.h());
         
         let im_pos = self.scale_rect.tl();
-        img.draw(f.x() + im_pos.x, f.y() + im_pos.y, im_w, im_h);
+        img.draw(draw_position.x + im_pos.x, draw_position.y + im_pos.y, im_w, im_h);
 
         if let Some(ref rect) = self.selection_rect {
-            rect.draw(f.x(), f.y());
+            rect.draw(draw_position.x, draw_position.y);
         }
         
-        draw::pop_clip();
     }
 }
 

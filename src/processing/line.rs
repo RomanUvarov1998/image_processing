@@ -71,7 +71,7 @@ impl<'wind> ProcessingLine<'wind> {
 
         let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
         let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
-        btn_halt_processing.widget().set_callback(move |_| {
+        btn_halt_processing.widget_mut().set_callback(move |_| {
             halt_msg_sender.send(HaltMessage).unwrap_or(());
         });
         btn_halt_processing.set_active(false);
@@ -80,35 +80,6 @@ impl<'wind> ProcessingLine<'wind> {
 
         btns_row.resize(btns_row.x(), btns_row.y(), btns_row.w(), *btns_heights.iter().max().unwrap());
         btns_row.end();
-
-        /*
-        let mut main_menu = MyMenuBar::new(init_img_col.w());
-        main_menu.add_emit("Проект/Зарузить", sender, Message::Project(Project::LoadProject));
-        main_menu.add_emit("Проект/Сохранить как", sender, Message::Project(Project::SaveProject));
-
-        main_menu.add_emit("Импорт/Файл", sender, 
-            Message::Project(Project::Import(ImportType::FromFile)));
-        main_menu.add_emit("Импорт/Системный буфер обмена", sender, 
-            Message::Project(Project::Import(ImportType::FromSystemClipoard)));
-
-        main_menu.add_emit("Добавить шаг/Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
-
-        main_menu.add_emit("Добавить шаг/Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
-        main_menu.add_emit("Добавить шаг/Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
-        main_menu.add_emit("Добавить шаг/Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
-        main_menu.add_emit("Добавить шаг/Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
-        main_menu.add_emit("Добавить шаг/Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
-        main_menu.add_emit("Добавить шаг/Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
-        main_menu.add_emit("Добавить шаг/Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
-
-        main_menu.add_emit("Добавить шаг/Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
-
-        main_menu.add_emit("Добавить шаг/Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
-
-        main_menu.add_emit("Экспорт/Сохранить результаты", sender, Message::Project(Project::SaveResults));
-        main_menu.end();
-         */
-
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
 

@@ -59,7 +59,7 @@ impl MyButton {
         }
     }
 
-    pub fn widget<'own>(&'own mut self) -> &'own mut button::Button {
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut button::Button {
         &mut self.btn
     }
 }

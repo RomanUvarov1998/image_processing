@@ -185,6 +185,11 @@ impl Neg for Pos {
     }
 }
 
+impl Default for Pos {
+    fn default() -> Self {
+        Pos::new(0, 0)
+    }
+}
 
 pub trait Clampable where Self: Copy + Clone + PartialOrd {
     fn clamp_min(&mut self, min_value: Self) {
@@ -349,6 +354,9 @@ pub struct ScalableRect { top_left: Pos, size: Pos, scale: f32 }
 
 impl ScalableRect {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        assert!(w >= 0);
+        assert!(h >= 0);
+
         ScalableRect { 
             top_left: Pos::new(x, y),
             size: Pos::new(w, h),
@@ -465,7 +473,6 @@ impl ScalableRect {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 pub struct RectArea {
     pub x: i32, 
@@ -474,6 +481,7 @@ pub struct RectArea {
     pub h: i32,
 }
 
+#[allow(unused)]
 impl RectArea {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         assert!(w > 0);
@@ -488,13 +496,15 @@ impl RectArea {
         RectArea::new(rect.x(), rect.y(), rect.w(), rect.h() ) 
     }
 
-    pub fn to_origin(mut self) -> Self {
+    pub fn with_zero_origin(mut self) -> Self {
         self.x = 0;
         self.y = 0;
         self
     }
 
     pub fn size(&self) -> Pos { Pos::new(self.w, self.h) }
+
+    pub fn tl(&self) -> Pos { Pos::new(self.x, self.y) }
 
     pub fn center(&self) -> Pos { Pos::new(self.x + self.w / 2, self.y + self.h / 2) }
 
