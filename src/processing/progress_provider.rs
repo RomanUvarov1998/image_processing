@@ -7,16 +7,16 @@ pub struct HaltError;
 
 pub struct HaltMessage;
 
-pub struct ProgressProvider {
-    sender: Sender<Message>,
+pub struct ProgressProvider<'own> {
+    sender: &'own Sender<Message>,
     pr_data: Option<ProgressData>,
     step_num: Option<usize>,
-    halt_msg_receiver: Option<Receiver<HaltMessage>>
+    halt_msg_receiver: &'own Receiver<HaltMessage>
 }
 
-impl ProgressProvider {
-    pub fn new(sender: Sender<Message>, receiver: Receiver<HaltMessage>) -> Self {
-        ProgressProvider { sender, pr_data: None, step_num: None, halt_msg_receiver: Some(receiver) }
+impl<'own> ProgressProvider<'own> {
+    pub fn new(sender: &'own Sender<Message>, halt_msg_receiver: &'own Receiver<HaltMessage>) -> Self {
+        ProgressProvider { sender, pr_data: None, step_num: None, halt_msg_receiver }
     }
 
     pub fn set_step_num(&mut self, step_num: usize) {
@@ -24,23 +24,13 @@ impl ProgressProvider {
     }
 
     pub fn reset(&mut self, actions_count: usize) {
-        // to not to panic if previous progress was not completed, otherwise destructor
-        // will panic if not all steps are completed
-        self.drop_progress_data();
-        
         self.pr_data = Some(ProgressData::new(actions_count));
-    }
-
-    pub fn drop_progress_data(&mut self) {
-        if let Some(ref mut pd) = self.pr_data {
-            pd.finish();
-        }
     }
 
     const MS_DELAY: u128 = 100;
 
     pub fn complete_action(&mut self) -> Result<(), HaltError> { 
-        if let Ok(_) = self.halt_msg_receiver.as_ref().unwrap().try_recv() {
+        if let Ok(_) = self.halt_msg_receiver.try_recv() {
             return Err(HaltError);
         }
 
@@ -64,8 +54,9 @@ impl ProgressProvider {
         }      
     }
 
-    pub fn take_receiver(&mut self) -> Receiver<HaltMessage> {
-        self.halt_msg_receiver.take().unwrap()
+    pub fn completed(&self) -> bool {
+        let pd = self.pr_data.as_ref().unwrap();
+        pd.all_actions_count == pd.completed_actions_count
     }
 
     #[allow(unused)]
@@ -92,18 +83,5 @@ impl ProgressData {
             all_actions_count, completed_actions_count: 0,
             prev_time: time::Instant::now(),
         }
-    }
-
-    fn finish(&mut self) {
-        self.completed_actions_count = self.all_actions_count;
-    }
-}
-
-impl Drop for ProgressData {
-    fn drop(&mut self) {
-        assert_eq!(
-            self.all_actions_count, self.completed_actions_count, 
-            "not all actions are completed {} of {}!", 
-            self.completed_actions_count, self.all_actions_count);
     }
 }

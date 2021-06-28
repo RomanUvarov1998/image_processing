@@ -1,8 +1,8 @@
-use std::{fs::{self, File}, io::{Read, Write}, sync::{Arc, Mutex}, thread::{self, JoinHandle}, usize};
+use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}, window};
 use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
-use super::{FilterBase, PADDING, processing_data::ProcessingData, progress_provider::{HaltMessage, ProgressProvider}, step::ProcessingStep, step_editor::StepEditor};
+use super::{FilterBase, PADDING, processing_data::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine<'wind> {
@@ -11,8 +11,7 @@ pub struct ProcessingLine<'wind> {
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
     step_editor: StepEditor,
-    processing_data_arc: Arc<Mutex<Option<ProcessingData>>>,
-    processing_thread_handle: JoinHandle<()>,
+    background_worker: BackgroundWorker,
     // graphical parts
     wind_size_prev: (i32, i32),
     img_presenter: MyImgPresenter,
@@ -109,45 +108,7 @@ impl<'wind> ProcessingLine<'wind> {
 
         wind_parent.end();
 
-        let sender_copy = sender.clone();
-        let processing_data_arc: Arc<Mutex<Option<ProcessingData>>> = Arc::new(Mutex::new(Option::<ProcessingData>::None));
-        let processing_data_arc_copy = processing_data_arc.clone();
-        let processing_thread_handle: JoinHandle<()> = thread::Builder::new().name("Processing".to_string()).spawn(move || 
-        {
-            let mut receiver = halt_msg_receiver;
-            loop {
-                thread::park(); 
-    
-                let mut prog_prov = ProgressProvider::new(sender_copy.clone(), receiver);
-
-                let step_num = {
-                    use std::sync::MutexGuard;
-                    let mut guard: MutexGuard<Option<ProcessingData>> = processing_data_arc_copy
-                        .try_lock()
-                        .expect("Couldn't lock the processing data");
-    
-                    let pd: &mut ProcessingData = guard
-                        .as_mut()
-                        .expect("Expected Some(processing data), but None was there");
-
-                    prog_prov.set_step_num(pd.step_num);
-    
-                    pd.result_img = match pd.filter_copy.filter(&pd.init_img, &mut prog_prov) {
-                        Ok(img) => Some(img),
-                        Err(_) => {
-                            prog_prov.drop_progress_data();
-                            None
-                        },
-                    };
-
-                    pd.step_num
-                };
-
-                receiver = prog_prov.take_receiver();
-
-                sender_copy.send(Message::Processing(Processing::StepIsCompleted { step_num }));
-            }
-        }).unwrap();
+        let background_worker = BackgroundWorker::new(sender.clone(), halt_msg_receiver);
 
         let wind_size_prev = (wind_parent.w(), wind_parent.h());
 
@@ -157,8 +118,7 @@ impl<'wind> ProcessingLine<'wind> {
             x, y, w, h,
             receiver,
             step_editor: StepEditor::new(),
-            processing_data_arc,
-            processing_thread_handle,
+            background_worker,
             // graphical parts
             wind_size_prev,
             img_presenter,
@@ -378,7 +338,7 @@ impl<'wind> ProcessingLine<'wind> {
             return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
         }
 
-        let img_copy: Img = if step_num == 0 {
+        let init_img: Img = if step_num == 0 {
             self.img_presenter.image_copy().unwrap()
         } else {
             match self.steps[step_num - 1].get_data_copy() {
@@ -391,39 +351,21 @@ impl<'wind> ProcessingLine<'wind> {
             
         let filter_copy = self.steps[step_num].filter().get_copy();
 
-        {
-            use std::sync::MutexGuard;
-            let mut guard: MutexGuard<Option<ProcessingData>> = self.processing_data_arc.lock()
-                .expect("Couldn't lock processing data from the main thread");
-
-            guard.replace(ProcessingData::new(step_num, filter_copy, img_copy, do_until_end));
-        }
-
         self.steps[step_num].start_processing();
 
-        self.processing_thread_handle.thread().unpark();
+        self.background_worker.put_task(step_num, filter_copy, init_img, do_until_end);
 
         Ok(())
     }
 
     fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
-        let (result_img, processing_continues) = {
-            let mut guard = self.processing_data_arc.lock()
-                .expect("Couldn't lock processing data from the main thread");
-    
-            let mut pd_locked = guard.take()
-                .expect("No processing_data detected");
-    
-            let result_img = pd_locked.take_result();
+        let task_result = self.background_worker.take_result();
 
-            let processing_continues = pd_locked.do_until_end && step_num < self.steps.len() - 1;
+        let processing_continues = task_result.do_until_end && step_num < self.steps.len() - 1;
 
-            (result_img, processing_continues)
-        };
+        let processing_was_halted: bool = task_result.img.is_none();
 
-        let processing_was_halted: bool = result_img.is_none();
-
-        self.steps[step_num].display_result(result_img)?;
+        self.steps[step_num].display_result(task_result.img)?;
 
         if processing_was_halted {
             return Ok(false);
