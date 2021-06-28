@@ -4,7 +4,7 @@ pub mod line;
 pub mod progress_provider;
 mod step;
 mod step_editor;
-mod processing_data;
+mod background_worker;
 
 const PADDING: i32 = 20;
 
