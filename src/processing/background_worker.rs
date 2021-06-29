@@ -21,9 +21,7 @@ impl BackgroundWorker {
             loop {
                 let mut guard = inner_arc.guarded.lock().expect("Couldn't lock");
 
-                println!("waiting...");
                 guard = inner_arc.cv.wait_while(guard, |g| g.has_task() == false).expect("Couldn't wait");
-                println!("notified");
 
                 let task = guard.take_task();
 
@@ -49,9 +47,7 @@ impl BackgroundWorker {
                 guard.put_result(task_result);
 
                 drop(guard);
-                println!("released guard");
 
-                println!("sent message");
                 progress_tx.send(Message::Processing(Processing::StepIsCompleted { step_num }));
             }
         })
@@ -61,7 +57,6 @@ impl BackgroundWorker {
     }
 
     pub fn put_task(&mut self, step_num: usize, filter_copy: FilterBase, img: Img, do_until_end: bool) {
-        println!("taking task");
         let task = Task { step_num, filter_copy, img, do_until_end };
 
         let mut guard = self.inner.guarded.lock().expect("Couldn't lock");
@@ -72,7 +67,6 @@ impl BackgroundWorker {
     }
 
     pub fn take_result(&mut self) -> TaskResult {
-        println!("giving result");
         let mut guard = self.inner.guarded.lock().expect("Couldn't lock");
         guard.take_task_result()
     }
