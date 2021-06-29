@@ -1,7 +1,3 @@
-use std::{
-    result
-};
-
 mod my_err;
 use my_err::MyError;
 
@@ -25,7 +21,7 @@ extern crate rust_embed;
 pub struct Asset;
 
 
-fn main() -> result::Result<(), MyError> {
+fn main() -> Result<(), MyError> {
     my_app::create_app()?;
 
     Ok(())
