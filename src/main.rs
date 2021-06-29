@@ -23,6 +23,7 @@ fn main() -> Result<(), MyError> {
     const WIN_HEIGHT: i32 = 480;
     
     let app = App::default().with_scheme(Scheme::Plastic);
+    
     let mut wind = Window::default()
         .with_size(WIN_WIDTH, WIN_HEIGHT)
         .center_screen()
@@ -35,7 +36,9 @@ fn main() -> Result<(), MyError> {
     use crate::processing::line::ProcessingLine;
     let mut steps_line = ProcessingLine::new(&mut wind, 0, 0, WIN_WIDTH, WIN_HEIGHT);
 
-    steps_line.run(app)?;
+    while app.wait() {
+        steps_line.process_event_loop(app)?;
+    }
 
     Ok(())
 }

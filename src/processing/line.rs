@@ -139,170 +139,168 @@ impl<'wind> ProcessingLine<'wind> {
         }
     }
 
-    pub fn run(&mut self, app: app::App) -> Result<(), MyError> {
-        while app.wait() {
-            if let Some(msg) = self.receiver.recv() {
-                match msg {
-                    Message::Project(msg) => {
-                        match msg {
-                            Project::Import (import_type) => {
-                                match self.try_inport_initial_img(import_type) {
-                                    Ok(_) => {}
-                                    Err(err) => show_err_msg(&self.parent_window, err)
-                                };
-                                self.parent_window.redraw();
-                            },
-                            Project::SaveProject => {
-                                match self.try_save_project() {
-                                    Ok(done) => if done {
-                                        show_info_msg(&self.parent_window, "Проект успешно сохранен");
-                                    },
-                                    Err(err) => show_err_msg(&self.parent_window, err),
-                                }
-                            },
-                            Project::LoadProject => {
-                                match self.try_load_project() {
-                                    Ok(done) => if done { 
-                                        show_info_msg(&self.parent_window, "Проект успешно загружен"); 
-                                    },
-                                    Err(err) => show_err_msg(&self.parent_window, err),
-                                }
-                            },
-                            Project::SaveResults => {
-                                match self.try_save_results() {
-                                    Ok(_) => show_info_msg(&self.parent_window, "Результаты успешно сохранены"),
-                                    Err(err) => show_err_msg(&self.parent_window, err),
-                                }
+    pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
+        if let Some(msg) = self.receiver.recv() {
+            match msg {
+                Message::Project(msg) => {
+                    match msg {
+                        Project::Import (import_type) => {
+                            match self.try_inport_initial_img(import_type) {
+                                Ok(_) => {}
+                                Err(err) => show_err_msg(&self.parent_window, err)
+                            };
+                            self.parent_window.redraw();
+                        },
+                        Project::SaveProject => {
+                            match self.try_save_project() {
+                                Ok(done) => if done {
+                                    show_info_msg(&self.parent_window, "Проект успешно сохранен");
+                                },
+                                Err(err) => show_err_msg(&self.parent_window, err),
                             }
-                        };
-                        self.parent_window.redraw();
-                    },
-                    Message::AddStep(msg) => {
-                        let mut filter = match msg {
-                            AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
-                            AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
-                            AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
-                            AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
-                            AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
-                            AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
-                            AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
-                            AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
-                            AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
-                            AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
-                        };
-                        if self.step_editor.edit_with_dlg(app, &mut filter) {
-                            self.add_step(filter);
-                        }
-                        self.parent_window.redraw();
-                    },
-                    Message::StepOp(msg) => {
-                        match msg {
-                            StepOp::EditStep { step_num } => {
-                                self.steps[step_num].edit_filter_with_dlg(app, &mut self.step_editor);
-                            },
-                            StepOp::DeleteStep { step_num } => self.delete_step(step_num),
-                            StepOp::MoveStep { step_num, direction } => {
-                                match direction {
-                                    message::MoveStep::Up => {
-                                        if step_num > 0 {                                            
-                                            self.scroll_pack.begin();
-
-                                            for step in self.steps[step_num - 1..].iter_mut() {
-                                                step.remove_self_from(&mut self.scroll_pack);
-                                            }
-
-                                            self.steps.swap(step_num - 1, step_num);
-
-                                            for step in self.steps[step_num - 1..].iter_mut() {
-                                                step.draw_self_on(&mut self.scroll_pack);
-                                            }
-
-                                            self.scroll_pack.end();
-                                        }
-                                    },
-                                    message::MoveStep::Down => {                                        
-                                        if step_num < self.steps.len() - 1 {                                            
-                                            self.scroll_pack.begin();
-
-                                            for step in self.steps[step_num..].iter_mut() {
-                                                step.remove_self_from(&mut self.scroll_pack);
-                                            }
-
-                                            self.steps.swap(step_num, step_num + 1);
-
-                                            for step in self.steps[step_num..].iter_mut() {
-                                                step.draw_self_on(&mut self.scroll_pack);
-                                            }
-
-                                            self.scroll_pack.end();
-                                        }
-                                    },
-                                };
-                                for step_num in 0..self.steps.len() {
-                                    self.steps[step_num].update_btn_emits(step_num);
-                                }
-                            },
-                        }
-                        self.parent_window.redraw();
-                    },
-                    Message::Processing(msg) => {
-                        let set_all_controls_active = |owner: &mut Self, active: bool| {
-                            for step in owner.steps.iter_mut() {
-                                step.set_buttons_active(active);
+                        },
+                        Project::LoadProject => {
+                            match self.try_load_project() {
+                                Ok(done) => if done { 
+                                    show_info_msg(&self.parent_window, "Проект успешно загружен"); 
+                                },
+                                Err(err) => show_err_msg(&self.parent_window, err),
                             }
-
-                            owner.btn_project.set_active(active);
-                            owner.btn_import.set_active(active);
-                            owner.btn_add_step.set_active(active);
-                            owner.btn_export.set_active(active);
-                            owner.btn_halt_processing.set_active(!active);
-                        };
-
-                        match msg {
-                            Processing::StepsChainIsStarted { step_num, do_until_end } => {
-                                match self.try_start_step(step_num, do_until_end) {
-                                    Ok(_) => {
-                                        set_all_controls_active(self, false);
-        
-                                        self.whole_proc_prog_bar.show();
-                                        let whole_prog_min = step_num * 100 / self.steps.len();
-                                        self.whole_proc_prog_bar.set_value(whole_prog_min);
-        
-                                        for step in &mut self.steps[step_num..] {
-                                            step.clear_result();
-                                        }
-                                    }
-                                    Err(err) => show_err_msg(&self.parent_window, err)
-                                };
-                            },
-                            Processing::StepProgress { step_num, cur_percents } => {
-                                let whole_prog = (step_num * 100 + cur_percents) / self.steps.len();
-                                self.whole_proc_prog_bar.set_value(whole_prog);
-
-                                self.steps[step_num].display_progress(cur_percents);
-                            },
-                            Processing::StepIsCompleted { step_num } => {
-                                let processing_continues: bool = match self.on_step_completed(step_num) {
-                                    Ok(continued) => continued,
-                                    Err(err) => {
-                                        show_err_msg(&self.parent_window, err);
-                                        false
-                                    },
-                                };
-
-                                if !processing_continues {
-                                    set_all_controls_active(self, true);
-                                    self.whole_proc_prog_bar.hide();
-                                }
-                            },
-                        };
-                        self.parent_window.redraw();
+                        },
+                        Project::SaveResults => {
+                            match self.try_save_results() {
+                                Ok(_) => show_info_msg(&self.parent_window, "Результаты успешно сохранены"),
+                                Err(err) => show_err_msg(&self.parent_window, err),
+                            }
+                        }
+                    };
+                    self.parent_window.redraw();
+                },
+                Message::AddStep(msg) => {
+                    let mut filter = match msg {
+                        AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
+                        AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
+                        AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
+                        AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
+                        AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
+                        AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
+                        AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
+                        AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
+                        AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
+                        AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+                    };
+                    if self.step_editor.edit_with_dlg(app, &mut filter) {
+                        self.add_step(filter);
                     }
-                };
-            }            
-                  
-            self.auto_resize();
-        }
+                    self.parent_window.redraw();
+                },
+                Message::StepOp(msg) => {
+                    match msg {
+                        StepOp::EditStep { step_num } => {
+                            self.steps[step_num].edit_filter_with_dlg(app, &mut self.step_editor);
+                        },
+                        StepOp::DeleteStep { step_num } => self.delete_step(step_num),
+                        StepOp::MoveStep { step_num, direction } => {
+                            match direction {
+                                message::MoveStep::Up => {
+                                    if step_num > 0 {                                            
+                                        self.scroll_pack.begin();
+
+                                        for step in self.steps[step_num - 1..].iter_mut() {
+                                            step.remove_self_from(&mut self.scroll_pack);
+                                        }
+
+                                        self.steps.swap(step_num - 1, step_num);
+
+                                        for step in self.steps[step_num - 1..].iter_mut() {
+                                            step.draw_self_on(&mut self.scroll_pack);
+                                        }
+
+                                        self.scroll_pack.end();
+                                    }
+                                },
+                                message::MoveStep::Down => {                                        
+                                    if step_num < self.steps.len() - 1 {                                            
+                                        self.scroll_pack.begin();
+
+                                        for step in self.steps[step_num..].iter_mut() {
+                                            step.remove_self_from(&mut self.scroll_pack);
+                                        }
+
+                                        self.steps.swap(step_num, step_num + 1);
+
+                                        for step in self.steps[step_num..].iter_mut() {
+                                            step.draw_self_on(&mut self.scroll_pack);
+                                        }
+
+                                        self.scroll_pack.end();
+                                    }
+                                },
+                            };
+                            for step_num in 0..self.steps.len() {
+                                self.steps[step_num].update_btn_emits(step_num);
+                            }
+                        },
+                    }
+                    self.parent_window.redraw();
+                },
+                Message::Processing(msg) => {
+                    let set_all_controls_active = |owner: &mut Self, active: bool| {
+                        for step in owner.steps.iter_mut() {
+                            step.set_buttons_active(active);
+                        }
+
+                        owner.btn_project.set_active(active);
+                        owner.btn_import.set_active(active);
+                        owner.btn_add_step.set_active(active);
+                        owner.btn_export.set_active(active);
+                        owner.btn_halt_processing.set_active(!active);
+                    };
+
+                    match msg {
+                        Processing::StepsChainIsStarted { step_num, do_until_end } => {
+                            match self.try_start_step(step_num, do_until_end) {
+                                Ok(_) => {
+                                    set_all_controls_active(self, false);
+    
+                                    self.whole_proc_prog_bar.show();
+                                    let whole_prog_min = step_num * 100 / self.steps.len();
+                                    self.whole_proc_prog_bar.set_value(whole_prog_min);
+    
+                                    for step in &mut self.steps[step_num..] {
+                                        step.clear_result();
+                                    }
+                                }
+                                Err(err) => show_err_msg(&self.parent_window, err)
+                            };
+                        },
+                        Processing::StepProgress { step_num, cur_percents } => {
+                            let whole_prog = (step_num * 100 + cur_percents) / self.steps.len();
+                            self.whole_proc_prog_bar.set_value(whole_prog);
+
+                            self.steps[step_num].display_progress(cur_percents);
+                        },
+                        Processing::StepIsCompleted { step_num } => {
+                            let processing_continues: bool = match self.on_step_completed(step_num) {
+                                Ok(continued) => continued,
+                                Err(err) => {
+                                    show_err_msg(&self.parent_window, err);
+                                    false
+                                },
+                            };
+
+                            if !processing_continues {
+                                set_all_controls_active(self, true);
+                                self.whole_proc_prog_bar.hide();
+                            }
+                        },
+                    };
+                    self.parent_window.redraw();
+                }
+            };
+        }            
+              
+        self.auto_resize();
     
         Ok(())
     }
