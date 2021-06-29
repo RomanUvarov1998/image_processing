@@ -301,7 +301,7 @@ impl<'wind> ProcessingLine<'wind> {
                 };
             }            
                   
-            self.auto_resize()?;
+            self.auto_resize();
         }
     
         Ok(())
@@ -379,19 +379,21 @@ impl<'wind> ProcessingLine<'wind> {
     }
 
 
-    fn auto_resize(&mut self) -> Result<(), MyError> {
+    fn auto_resize(&mut self) {
         let ww = self.parent_window.w();
         let wh = self.parent_window.h(); 
 
-        if self.wind_size_prev.0 == ww && self.wind_size_prev.1 == wh { return Ok(()); }
+        if self.wind_size_prev.0 == ww && self.wind_size_prev.1 == wh { return; }
         
         self.main_row.widget_mut().set_size(ww, wh);
         self.init_img_col.widget_mut().set_size(ww / 2, wh);
 
         self.processing_col.widget_mut().set_size(ww / 2, wh);
         self.processing_col.widget_mut().set_pos(self.x + ww / 2, self.y);
+
         self.scroll_area.set_size(ww / 2, wh);
         self.scroll_area.set_pos(self.x + ww / 2, self.y);
+
         self.scroll_pack.set_size(ww / 2 - PADDING, wh);
         self.scroll_pack.set_pos(self.x + ww / 2, self.y);
 
@@ -403,9 +405,7 @@ impl<'wind> ProcessingLine<'wind> {
 
         self.wind_size_prev = (ww, wh);
 
-        self.parent_window.redraw();      
-
-        Ok(())
+        self.parent_window.redraw();
     }
 
     
