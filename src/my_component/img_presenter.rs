@@ -5,6 +5,8 @@ use super::Alignable;
 
 
 pub struct MyImgPresenter {
+    column: MyColumn,
+    btns_row: MyRow,
     btn_fit: MyButton,
     btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
@@ -25,24 +27,22 @@ impl MyImgPresenter {
         btn_toggle_selection.set_active(false);
 
         btns_row.resize(
-            btns_row.x(), btns_row.y(), 
             btns_row.w(), 
             std::cmp::max(btn_fit.h(), btn_toggle_selection.h()));
         btns_row.end();
 
         let mut frame_img = frame::Frame::default()
-            .with_size(w, h - btn_fit.h() - btn_toggle_selection.h());
+            .with_size(w, h - btns_row.h() - column.widget().spacing() * 3);
         use fltk::enums::{FrameType, Align};
         frame_img.set_frame(FrameType::EmbossedBox);
         frame_img.set_align(Align::Center); 
         
         column.end();
 
-        let img = None;
-
         MyImgPresenter { 
-            btn_fit, btn_toggle_selection, 
-            frame_img, img, img_pres_rect_rc: None 
+            column,
+            btns_row, btn_fit, btn_toggle_selection, 
+            frame_img, img: None, img_pres_rect_rc: None 
         }
     }
 
@@ -112,8 +112,8 @@ impl MyImgPresenter {
             use fltk::draw;
             draw::push_clip(view_area.x(), view_area.y(), view_area.w(), view_area.h());
             
-            let presenter_rc = presenter_rc.try_borrow().expect("Couldn't get & to presenter from frame.draw()");
-            presenter_rc.draw_img(&mut drawable, draw_position);
+            let mut presenter_rc = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
+            presenter_rc.draw_img(&mut drawable, draw_position, view_area_size);
             drop(presenter_rc);
 
             draw::pop_clip();
@@ -237,7 +237,10 @@ impl MyImgPresenter {
 }
 
 impl Alignable for MyImgPresenter {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.frame_img.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { 
+        self.frame_img.set_size(w, h - self.btns_row.h() - self.column.widget().spacing() * 3);
+        self.frame_img.redraw(); 
+    }
 
     fn x(&self) -> i32 { self.frame_img.x() }
 
@@ -342,7 +345,10 @@ impl ImgPresRect {
     }
 
 
-    fn draw_img(&self, img: &mut fltk::image::RgbImage, draw_position: Pos) {
+    fn draw_img(&mut self, img: &mut fltk::image::RgbImage, draw_position: Pos, view_size: Pos) {
+        self.scale_rect.fit_scale(view_size);
+        self.scale_rect.fit_pos(RectArea::new(0, 0, view_size.x, view_size.y));
+
 		let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
         img.scale(im_w, im_h, true, true);
 

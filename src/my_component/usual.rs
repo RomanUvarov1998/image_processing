@@ -65,7 +65,7 @@ impl MyButton {
 }
 
 impl Alignable for MyButton {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
 
     fn x(&self) -> i32 { self.btn.x() }
 
@@ -162,7 +162,7 @@ impl MyToggleButton {
 }
 
 impl Alignable for MyToggleButton {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
 
     fn x(&self) -> i32 { self.btn.x() }
 
@@ -201,7 +201,7 @@ impl MyLabel {
 }
 
 impl Alignable for MyLabel {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.label.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.label.set_size(w, h); }
 
     fn x(&self) -> i32 { self.label.x() }
 
@@ -245,7 +245,7 @@ impl MyMenuBar {
 }
 
 impl Alignable for MyMenuBar {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.mb.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.mb.set_size(w, h); }
 
     fn x(&self) -> i32 { self.mb.x() }
 
@@ -310,7 +310,7 @@ impl MyMenuButton {
 }
 
 impl Alignable for MyMenuButton {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.btn.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
 
     fn x(&self) -> i32 { self.btn.x() }
 
@@ -357,7 +357,7 @@ impl MyProgressBar {
 }
 
 impl Alignable for MyProgressBar {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.bar.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.bar.set_size(w, h); }
 
     fn x(&self) -> i32 { self.bar.x() }
 

@@ -40,7 +40,7 @@ fn main() -> Result<(), MyError> {
     wind.show();
 
     while app.wait() {
-        if steps_line.auto_resize(RectArea::of_widget(&wind)) {
+        if steps_line.auto_resize(RectArea::of_widget(&wind).with_zero_origin()) {
             wind.redraw();
         }
         steps_line.process_event_loop(app)?;

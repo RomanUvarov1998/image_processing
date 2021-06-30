@@ -30,7 +30,7 @@ impl MyColumn {
 }
 
 impl Alignable for MyColumn {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.pack.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.pack.set_size(w, h); }
 
     fn x(&self) -> i32 { self.pack.x() }
 
@@ -46,6 +46,7 @@ pub struct MyRow {
     pack: group::Pack
 }
 
+#[allow(unused)]
 impl MyRow {
     pub fn new(w: i32, h: i32) -> Self {
         let mut pack = group::Pack::default()
@@ -74,7 +75,7 @@ impl MyRow {
 }
 
 impl Alignable for MyRow {
-    fn resize(&mut self, x: i32, y: i32, w: i32, h: i32) { self.pack.resize(x, y, w, h); }
+    fn resize(&mut self, w: i32, h: i32) { self.pack.set_size(w, h); }
 
     fn x(&self) -> i32 { self.pack.x() }
 

@@ -36,7 +36,6 @@ impl ProcessingStep {
         let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h()];
 
         btns_row.resize(
-            btns_row.x(), btns_row.y(), 
             btns_row.w(), 
             *btns.iter().max().unwrap());
         btns_row.end();        

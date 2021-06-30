@@ -15,6 +15,7 @@ pub struct ProcessingLine {
     main_row: MyRow,
     init_img_col: MyColumn,
 
+    btns_row: MyRow,
     btn_project: MyMenuButton,
     btn_import: MyMenuButton,
     btn_add_step: MyMenuButton,
@@ -72,7 +73,7 @@ impl ProcessingLine {
         
         let btns_heights = [btn_project.h(), btn_import.h(), btn_add_step.h(), btn_export.h(), btn_halt_processing.h()];
 
-        btns_row.resize(btns_row.x(), btns_row.y(), btns_row.w(), *btns_heights.iter().max().unwrap());
+        btns_row.resize(btns_row.w(), *btns_heights.iter().max().unwrap());
         btns_row.end();
 
         let lbl_init_img = MyLabel::new("Исходное изображение");
@@ -81,19 +82,19 @@ impl ProcessingLine {
         whole_proc_prog_bar.hide();
             
         let img_presenter = MyImgPresenter::new(
-            w / 2, h - btn_halt_processing.h() - lbl_init_img.h() - btns_row.h() - whole_proc_prog_bar.h());
+            w / 2, h - lbl_init_img.h() - btns_row.h());
         
         init_img_col.end();
 
         let mut processing_col = MyColumn::new(w / 2, h - btns_row.h());
 
         let scroll_area = group::Scroll::default()
-            .with_pos(x, y + btns_row.h())
-            .with_size(w / 2, h - btns_row.h());
+            .with_pos(x, y)
+            .with_size(w / 2, h);
 
         let scroll_pack = group::Pack::default()
-            .with_pos(x, y + btns_row.h())
-            .with_size(w / 2 - PADDING, h - btns_row.h());
+            .with_pos(x, y)
+            .with_size(w / 2 - PADDING, h);
 
         scroll_pack.end();
         scroll_area.end();
@@ -103,7 +104,7 @@ impl ProcessingLine {
 
         let background_worker = BackgroundWorker::new(sender.clone(), halt_msg_receiver);
 
-        ProcessingLine {
+        let mut line = ProcessingLine {
             steps: Vec::<ProcessingStep>::new(),
             x, y, w, h,
             receiver,
@@ -113,6 +114,7 @@ impl ProcessingLine {
             main_row,
             init_img_col,
             
+            btns_row,
             btn_project,
             btn_import,
             btn_add_step,
@@ -124,7 +126,11 @@ impl ProcessingLine {
             processing_col,
             scroll_area,
             scroll_pack,
-        }
+        };
+
+        line.auto_resize(RectArea::new(line.x, line.y, line.w, line.h));
+
+        line
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
@@ -376,25 +382,21 @@ impl ProcessingLine {
         self.w = area.w();
         self.h = area.h();
 
-        let ww = self.w;
-        let wh = self.h;
+        self.main_row.resize(self.w, self.h);
 
-        self.main_row.widget_mut().set_size(ww, wh);
-        self.init_img_col.widget_mut().set_size(ww / 2, wh);
+        self.init_img_col.resize(self.w / 2, self.h);
 
-        self.processing_col.widget_mut().set_size(ww / 2, wh);
-        self.processing_col.widget_mut().set_pos(self.x + ww / 2, self.y);
+        self.processing_col.resize(self.w / 2, self.h);
 
-        self.scroll_area.set_size(ww / 2, wh);
-        self.scroll_area.set_pos(self.x + ww / 2, self.y);
+        self.scroll_area.set_size(self.w / 2, self.h);
 
-        self.scroll_pack.set_size(ww / 2 - PADDING, wh);
-        self.scroll_pack.set_pos(self.x + ww / 2, self.y);
+        self.scroll_pack.set_size(self.w / 2 - PADDING, self.h);
 
-        self.img_presenter.redraw();
+        let img_pres_y = self.btns_row.h() + self.lbl_init_img.h();
+        self.img_presenter.resize(self.w / 2, self.h - img_pres_y);
 
         for step in self.steps.iter_mut() {
-            step.auto_resize(ww / 2);
+            step.auto_resize(self.w / 2);
         }
 
         return true;
