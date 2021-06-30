@@ -147,11 +147,8 @@ impl ProcessingLine {
                             }
                         },
                         Project::LoadProject => {
-                            match self.try_load_project() {
-                                Ok(done) => if done { 
-                                    show_info_msg(self.center(), "Проект успешно загружен"); 
-                                },
-                                Err(err) => show_err_msg(self.center(), err),
+                            if let Err(err) = self.try_load_project() {
+                                show_err_msg(self.center(), err);
                             }
                         },
                         Project::SaveResults => {
@@ -513,7 +510,7 @@ impl ProcessingLine {
         Ok(true)
     }
     
-    fn try_load_project(&mut self) -> Result<bool, MyError> {
+    fn try_load_project(&mut self) -> Result<(), MyError> {
         if self.steps.len() > 0 {
             if confirm_with_dlg(self.center(),
                 "Есть несохраненный проект. Открыть вместо него?") 
@@ -522,7 +519,7 @@ impl ProcessingLine {
                     self.delete_step(0);
                 }
             } else {
-                return Ok(false);
+                return Ok(());
             }
         } 
         
@@ -539,7 +536,7 @@ impl ProcessingLine {
         };
 
         if proj_path.is_empty() {
-            return Ok(false);
+            return Ok(());
         }
 
         let mut file = match File::open(&proj_path) {
@@ -576,7 +573,7 @@ impl ProcessingLine {
             }
         }
 
-        Ok(true)
+        Ok(())
     }
 
     fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, MyError> {
