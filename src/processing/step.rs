@@ -1,6 +1,6 @@
 use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
 use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
-use super::{FilterBase, PADDING, step_editor::StepEditor};
+use super::{FilterBase, PADDING};
 
 pub struct ProcessingStep {
     main_column: MyColumn,
@@ -89,15 +89,13 @@ impl ProcessingStep {
         self.img_presenter.clear_image();
     }
 
-    pub fn edit_filter_with_dlg(&mut self, app: app::App, step_editor: &mut StepEditor) {
-        if step_editor.edit_with_dlg(app, &mut self.filter) {
-            let filter_description: String = self.filter.get_description();
-            let img_description: String = match self.img_presenter.image_ref() {
-                Some(img) => img.get_description(),
-                None => String::new(),
-            };
-            self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
-        }
+    pub fn update_step_description(&mut self) {
+        let filter_description: String = self.filter.get_description();
+        let img_description: String = match self.img_presenter.image_ref() {
+            Some(img) => img.get_description(),
+            None => String::new(),
+        };
+        self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
@@ -132,6 +130,7 @@ impl ProcessingStep {
     pub fn image_ref<'own>(&'own self) -> Option<&'own Img> { self.img_presenter.image_ref() }
     
     pub fn filter<'own>(&'own self) -> &'own FilterBase { &self.filter }
+    pub fn filter_mut<'own>(&'own mut self) -> &'own mut FilterBase { &mut self.filter }
 
 
     pub fn start_processing(&mut self) {
@@ -150,15 +149,11 @@ impl ProcessingStep {
 
                         
         match processed_img {
-            Some(img) => {
-                self.label_step_name.set_text(&format!("{} {}", self.filter.get_description(), img.get_description()));
-                self.img_presenter.set_image(img)?
-            },
-            None => {
-                self.label_step_name.set_text(&format!("{}", self.filter.get_description()));
-                self.img_presenter.clear_image()
-            },
+            Some(img) => self.img_presenter.set_image(img)?,
+            None => self.img_presenter.clear_image(),
         }
+
+        self.update_step_description();
 
         Ok(())
     }

@@ -1,19 +1,16 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}, window};
-use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils};
+use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
+use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos, RectArea}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
 
 
-pub struct ProcessingLine<'wind> {
-    parent_window: &'wind mut window::Window,
+pub struct ProcessingLine {
     steps: Vec<ProcessingStep>,
     x: i32, y: i32, w: i32, h: i32,
     receiver: Receiver<Message>,
-    step_editor: StepEditor,
     background_worker: BackgroundWorker,
     // graphical parts
-    wind_size_prev: (i32, i32),
     img_presenter: MyImgPresenter,
     main_row: MyRow,
     init_img_col: MyColumn,
@@ -31,10 +28,8 @@ pub struct ProcessingLine<'wind> {
     scroll_pack: group::Pack,    
 }
 
-impl<'wind> ProcessingLine<'wind> {
-    pub fn new(wind_parent: &'wind mut window::Window, x: i32, y: i32, w: i32, h: i32) -> Self {
-        wind_parent.begin();
-
+impl ProcessingLine {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         let (sender, receiver) = app::channel::<Message>();
 
         let mut main_row = MyRow::new(w, h).with_pos(x, y);
@@ -106,21 +101,14 @@ impl<'wind> ProcessingLine<'wind> {
 
         main_row.end();
 
-        wind_parent.end();
-
         let background_worker = BackgroundWorker::new(sender.clone(), halt_msg_receiver);
 
-        let wind_size_prev = (wind_parent.w(), wind_parent.h());
-
         ProcessingLine {
-            parent_window: wind_parent,
             steps: Vec::<ProcessingStep>::new(),
             x, y, w, h,
             receiver,
-            step_editor: StepEditor::new(),
             background_worker,
             // graphical parts
-            wind_size_prev,
             img_presenter,
             main_row,
             init_img_col,
@@ -147,58 +135,37 @@ impl<'wind> ProcessingLine<'wind> {
                         Project::Import (import_type) => {
                             match self.try_inport_initial_img(import_type) {
                                 Ok(_) => {}
-                                Err(err) => show_err_msg(&self.parent_window, err)
+                                Err(err) => show_err_msg(self.center(), err)
                             };
-                            self.parent_window.redraw();
                         },
                         Project::SaveProject => {
                             match self.try_save_project() {
                                 Ok(done) => if done {
-                                    show_info_msg(&self.parent_window, "Проект успешно сохранен");
+                                    show_info_msg(self.center(), "Проект успешно сохранен");
                                 },
-                                Err(err) => show_err_msg(&self.parent_window, err),
+                                Err(err) => show_err_msg(self.center(), err),
                             }
                         },
                         Project::LoadProject => {
                             match self.try_load_project() {
                                 Ok(done) => if done { 
-                                    show_info_msg(&self.parent_window, "Проект успешно загружен"); 
+                                    show_info_msg(self.center(), "Проект успешно загружен"); 
                                 },
-                                Err(err) => show_err_msg(&self.parent_window, err),
+                                Err(err) => show_err_msg(self.center(), err),
                             }
                         },
                         Project::SaveResults => {
                             match self.try_save_results() {
-                                Ok(_) => show_info_msg(&self.parent_window, "Результаты успешно сохранены"),
-                                Err(err) => show_err_msg(&self.parent_window, err),
+                                Ok(_) => show_info_msg(self.center(), "Результаты успешно сохранены"),
+                                Err(err) => show_err_msg(self.center(), err),
                             }
                         }
                     };
-                    self.parent_window.redraw();
                 },
-                Message::AddStep(msg) => {
-                    let mut filter = match msg {
-                        AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
-                        AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
-                        AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
-                        AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
-                        AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
-                        AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
-                        AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
-                        AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
-                        AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
-                        AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
-                    };
-                    if self.step_editor.edit_with_dlg(app, &mut filter) {
-                        self.add_step(filter);
-                    }
-                    self.parent_window.redraw();
-                },
+                Message::AddStep(msg) => self.add_step_with_dlg(msg, app),
                 Message::StepOp(msg) => {
                     match msg {
-                        StepOp::EditStep { step_num } => {
-                            self.steps[step_num].edit_filter_with_dlg(app, &mut self.step_editor);
-                        },
+                        StepOp::EditStep { step_num } => self.edit_step_with_dlg(step_num, app),
                         StepOp::DeleteStep { step_num } => self.delete_step(step_num),
                         StepOp::MoveStep { step_num, direction } => {
                             match direction {
@@ -242,7 +209,6 @@ impl<'wind> ProcessingLine<'wind> {
                             }
                         },
                     }
-                    self.parent_window.redraw();
                 },
                 Message::Processing(msg) => {
                     let set_all_controls_active = |owner: &mut Self, active: bool| {
@@ -271,7 +237,7 @@ impl<'wind> ProcessingLine<'wind> {
                                         step.clear_result();
                                     }
                                 }
-                                Err(err) => show_err_msg(&self.parent_window, err)
+                                Err(err) => show_err_msg(self.center(), err)
                             };
                         },
                         Processing::StepProgress { step_num, cur_percents } => {
@@ -284,7 +250,7 @@ impl<'wind> ProcessingLine<'wind> {
                             let processing_continues: bool = match self.on_step_completed(step_num) {
                                 Ok(continued) => continued,
                                 Err(err) => {
-                                    show_err_msg(&self.parent_window, err);
+                                    show_err_msg(self.center(), err);
                                     false
                                 },
                             };
@@ -295,23 +261,50 @@ impl<'wind> ProcessingLine<'wind> {
                             }
                         },
                     };
-                    self.parent_window.redraw();
                 }
             };
         }            
               
-        self.auto_resize();
-    
         Ok(())
     }
 
+    fn center(&self) -> Pos { Pos::new(self.x + self.w / 2, self.y + self.h / 2) }
 
-    fn add_step(&mut self, filter: FilterBase) -> () {
+
+    fn add_step_with_dlg(&mut self, msg: AddStep, app: app::App) -> () {
+        let mut filter = match msg {
+            AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
+            AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
+            AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
+            AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
+            AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
+            AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
+            AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
+            AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
+            AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
+            AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+        };
+
+        let mut step_editor = StepEditor::new();
+        if !step_editor.edit_with_dlg(app, &mut filter) { return; }
+    }
+
+    fn add_step(&mut self, filter: FilterBase) {
         self.scroll_pack.begin();
 
         self.steps.push(ProcessingStep::new(self.w, self.h, self.steps.len(), filter));
 
         self.scroll_pack.end();
+    }
+
+    fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {
+        let step = &mut self.steps[step_num];
+
+        let mut step_editor = StepEditor::new();
+
+        if step_editor.edit_with_dlg(app, step.filter_mut()) { 
+            step.update_step_description();
+        }
     }
 
     fn delete_step(&mut self, step_num: usize) {
@@ -376,13 +369,19 @@ impl<'wind> ProcessingLine<'wind> {
         Ok(processing_continues)
     }
 
+    pub fn auto_resize(&mut self, area: RectArea) -> bool {
+        if self.x == area.x() && self.y == area.y() && self.w == area.w() && self.h == area.h() {
+            return false;
+        }
 
-    fn auto_resize(&mut self) {
-        let ww = self.parent_window.w();
-        let wh = self.parent_window.h(); 
+        self.x = area.x();
+        self.y = area.y();
+        self.w = area.w();
+        self.h = area.h();
 
-        if self.wind_size_prev.0 == ww && self.wind_size_prev.1 == wh { return; }
-        
+        let ww = self.w;
+        let wh = self.h;
+
         self.main_row.widget_mut().set_size(ww, wh);
         self.init_img_col.widget_mut().set_size(ww / 2, wh);
 
@@ -401,15 +400,13 @@ impl<'wind> ProcessingLine<'wind> {
             step.auto_resize(ww / 2);
         }
 
-        self.wind_size_prev = (ww, wh);
-
-        self.parent_window.redraw();
+        return true;
     }
 
     
     fn try_inport_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
         if self.img_presenter.has_image() {
-            if small_dlg::confirm_with_dlg(&self.parent_window, "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
+            if small_dlg::confirm_with_dlg(self.center(), "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step in self.steps.iter_mut() {
                     step.clear_result();
                 }
@@ -518,7 +515,7 @@ impl<'wind> ProcessingLine<'wind> {
     
     fn try_load_project(&mut self) -> Result<bool, MyError> {
         if self.steps.len() > 0 {
-            if confirm_with_dlg(self.parent_window,
+            if confirm_with_dlg(self.center(),
                 "Есть несохраненный проект. Открыть вместо него?") 
             {
                 while self.steps.len() > 0 {
@@ -572,7 +569,7 @@ impl<'wind> ProcessingLine<'wind> {
                         "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
                         filter_name, err.to_string());
 
-                    if !confirm_with_dlg(self.parent_window, &question) {
+                    if !confirm_with_dlg(self.center(), &question) {
                         break 'out;
                     }
                 },
