@@ -67,7 +67,7 @@ impl ProcessingLine {
         let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
         let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
         btn_halt_processing.widget_mut().set_callback(move |_| {
-            halt_msg_sender.send(HaltMessage).unwrap_or(());
+            halt_msg_sender.send(HaltMessage).unwrap();
         });
         btn_halt_processing.set_active(false);
         

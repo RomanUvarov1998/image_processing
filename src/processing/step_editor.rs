@@ -65,7 +65,7 @@ impl StepEditor {
         self.btn_save.set_emit(sender, StepEditMessage::TrySave);
 
         let filter_settings: String = filter.content_to_string();
-        self.text_editor.buffer().unwrap().set_text(&filter_settings);
+        self.text_editor.buffer().expect("Text editor has no TextBuffer").set_text(&filter_settings);
 
         // if window is closed by user, "Close" message helps exit the message loop
         self.wind.handle(move |_, event| {
@@ -90,10 +90,10 @@ impl StepEditor {
             if let Some(msg) = receiver.recv() {
                 match msg {
                     StepEditMessage::TrySave => {
-                        let text = match self.text_editor.buffer() {
-                            Some(ref buf) => buf.text(),
-                            None => continue
-                        };
+                        let text = self.text_editor.buffer()
+                            .expect("Text editor has no TextBuffer")
+                            .text();
+                            
                         match filter.try_set_from_string(&text) {
                             Ok(_) => {
                                 self.wind.hide();

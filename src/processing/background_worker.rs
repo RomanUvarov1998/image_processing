@@ -25,8 +25,10 @@ impl BackgroundWorker {
 
                 let task = guard.take_task();
 
-                let mut prog_prov = ProgressProvider::new(&progress_tx, &halt_msg_rx);
-                prog_prov.set_step_num(task.step_num);
+                let mut prog_prov = ProgressProvider::new(
+                    &progress_tx, 
+                    &halt_msg_rx, 
+                    task.step_num);
                 
                 let img_result = match task.filter_copy.filter(&task.img, &mut prog_prov) {
                     Ok(img) => {

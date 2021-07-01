@@ -271,7 +271,7 @@ impl StringFromTo for LinearCustom {
         for mut row in rows.clone() {
             coeffs.append(&mut row);
         }
-        let width = rows.last().unwrap().len();
+        let width = rows.last().expect("rows count appeared to be 0").len();
         let height = rows.len();
 
         self.width = width;

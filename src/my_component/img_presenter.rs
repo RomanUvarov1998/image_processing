@@ -127,7 +127,7 @@ impl MyImgPresenter {
 
         self.btn_toggle_selection.widget_mut().set_callback(move |btn| { 
             let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
-            sender.send(msg).unwrap_or(());
+            sender.send(msg).unwrap();
             frame_copy.redraw();
         });
         self.btn_toggle_selection.set_active(true);
@@ -138,8 +138,8 @@ impl MyImgPresenter {
         let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();  
 
         self.btn_fit.widget_mut().set_callback(move |_| {
-            sender.send(ImgPresMsg::Fit).unwrap_or(());
-            sender.send(ImgPresMsg::SelectionOff).unwrap_or(());
+            sender.send(ImgPresMsg::Fit).unwrap();
+            sender.send(ImgPresMsg::SelectionOff).unwrap();
             btn_toggle_selection_copy.toggle(false);
             frame_copy.redraw();
         });
@@ -165,17 +165,17 @@ impl MyImgPresenter {
 			let event_handled = match ev {
                 Event::Push => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap_or(());
+                    sender.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap();
 					true
                 },
                 Event::Released => {
                     was_mouse_down = false;
-                    sender.send(ImgPresMsg::MouseUp).unwrap_or(());
+                    sender.send(ImgPresMsg::MouseUp).unwrap();
 					true
                 },
                 Event::MouseWheel => {
                     if was_mouse_down {
-                        sender.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap_or(());
+                        sender.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap();
 						true
                     } else {
 						false
@@ -183,7 +183,7 @@ impl MyImgPresenter {
                 },
                 Event::Drag => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap_or(());
+                    sender.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap();
                     true
                 },
                 _ => false

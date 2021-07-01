@@ -9,22 +9,23 @@ pub struct HaltMessage;
 
 pub struct ProgressProvider<'own> {
     sender: &'own Sender<Message>,
-    pr_data: Option<ProgressData>,
-    step_num: Option<usize>,
+    pr_data: ProgressData,
+    step_num: usize,
     halt_msg_receiver: &'own Receiver<HaltMessage>
 }
 
 impl<'own> ProgressProvider<'own> {
-    pub fn new(sender: &'own Sender<Message>, halt_msg_receiver: &'own Receiver<HaltMessage>) -> Self {
-        ProgressProvider { sender, pr_data: None, step_num: None, halt_msg_receiver }
-    }
-
-    pub fn set_step_num(&mut self, step_num: usize) {
-        self.step_num = Some(step_num);
+    pub fn new(sender: &'own Sender<Message>, halt_msg_receiver: &'own Receiver<HaltMessage>, step_num: usize) -> Self {
+        ProgressProvider { 
+            sender, 
+            pr_data: ProgressData::new(), 
+            step_num, 
+            halt_msg_receiver 
+        }
     }
 
     pub fn reset(&mut self, actions_count: usize) {
-        self.pr_data = Some(ProgressData::new(actions_count));
+        self.pr_data.all_actions_count = actions_count;
     }
 
     const MS_DELAY: u128 = 100;
@@ -34,38 +35,30 @@ impl<'own> ProgressProvider<'own> {
             return Err(HaltError);
         }
 
-        match self.pr_data {
-            Some(ref mut data) => {
-                data.completed_actions_count += 1;
+        self.pr_data.completed_actions_count += 1;
 
-                if data.prev_time.elapsed().as_millis() > Self::MS_DELAY {
-                    data.prev_time = time::Instant::now();
-                
-                    let cur_percents = data.completed_actions_count * 100 / data.all_actions_count;
-                
-                    let step_num = self.step_num.unwrap();
-                
-                    self.sender.send(Message::Processing(Processing::StepProgress{ step_num, cur_percents }));
-                }
+        if self.pr_data.prev_time.elapsed().as_millis() > Self::MS_DELAY {
+            self.pr_data.prev_time = time::Instant::now();
+        
+            let cur_percents = self.pr_data.completed_actions_count * 100 / self.pr_data.all_actions_count;
+        
+            let step_num = self.step_num;
+        
+            self.sender.send(Message::Processing(Processing::StepProgress{ step_num, cur_percents }));
+        }
 
-                return Ok(());
-            },
-            None => panic!("No process data!"),
-        }      
+        return Ok(());
     }
 
     pub fn completed(&self) -> bool {
-        let pd = self.pr_data.as_ref().unwrap();
-        pd.all_actions_count == pd.completed_actions_count
+        self.pr_data.all_actions_count == self.pr_data.completed_actions_count
     }
 
     #[allow(unused)]
     pub fn print_completed_actions_count(&self) {
-        if let Some(ref pd) = self.pr_data {
-            if (pd.completed_actions_count > pd.all_actions_count) {
-                println!("completed {} actions of {}", pd.completed_actions_count, pd.all_actions_count);
-                panic!("data.completed_actions_count > data.all_actions_count");
-            }
+        if (self.pr_data.completed_actions_count > self.pr_data.all_actions_count) {
+            println!("completed {} actions of {}", self.pr_data.completed_actions_count, self.pr_data.all_actions_count);
+            panic!("data.completed_actions_count > data.all_actions_count");
         }
     }
 }
@@ -78,9 +71,10 @@ struct ProgressData {
 }
 
 impl ProgressData {
-    fn new(all_actions_count: usize) -> Self {
+    fn new() -> Self {
         ProgressData {
-            all_actions_count, completed_actions_count: 0,
+            all_actions_count: 0, 
+            completed_actions_count: 0,
             prev_time: time::Instant::now(),
         }
     }
