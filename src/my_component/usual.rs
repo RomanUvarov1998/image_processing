@@ -1,23 +1,40 @@
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
 use super::{Alignable, TEXT_PADDING};
 
-fn set_img_and_tooltip<W: WidgetExt +  WidgetBase>(widget: &mut W, path: &str, tooltip: &str) {
-    let bytes = crate::Asset::get(path).unwrap();
-    let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
+const IMG_PADDING: i32 = 5;
+
+enum ImgPadding {
+    Sides { left: i32, top: i32, right: i32, bottom: i32 },
+    All (i32)
+}
+
+trait MyComponentWithImage {
+    fn set_image_from_asset(&mut self, path: &str, padding: ImgPadding)
+    where
+        Self: WidgetExt + WidgetBase
+    {
+        let bytes = crate::Asset::get(path)
+            .expect(&format!("Couldn't load image from embedded asset by path '{}'", path));
+        let mut img = fltk::image::PngImage::from_data(&bytes[..])
+            .expect(&format!("Couldn't load image from embedded bytes by path '{}'", path));
+
+        let (pl, pt, pr, pb) = match padding {
+            ImgPadding::Sides { left, top, right, bottom } => (left, top, right, bottom),
+            ImgPadding::All(p) => (p, p, p, p),
+        };
     
-    const IMG_PADDING: i32 = 5;
-    
-    widget.set_size(img.w() + IMG_PADDING * 2, img.h() + IMG_PADDING * 2);
+        self.set_size(
+            pl + img.w() + pr, 
+            pt + img.h() + pb);
 
-    widget.draw(move |wid| {
-        let (x, y, w, h) = 
-            (wid.x() + IMG_PADDING, wid.y() + IMG_PADDING, 
-            wid.w() - IMG_PADDING, wid.h() - IMG_PADDING);
-
-        img.draw(x, y, w, h);
-    });
-
-    widget.set_tooltip(tooltip);
+        self.draw(move |wid| {
+            img.draw(
+                wid.x() + pl, 
+                wid.y() + pt, 
+                img.w(), 
+                img.h());
+        });
+    }
 }
 
 
@@ -39,8 +56,8 @@ impl MyButton {
 
     pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
         let mut btn = button::Button::default();
-
-        set_img_and_tooltip(&mut btn, path, tooltip);
+        btn.set_image_from_asset(path, ImgPadding::All(IMG_PADDING));
+        btn.set_tooltip(tooltip);
 
         MyButton { btn }
     }
@@ -76,6 +93,8 @@ impl Alignable for MyButton {
     fn h(&self) -> i32 { self.btn.h() }
 }
 
+impl MyComponentWithImage for button::Button {}
+
 
 #[derive(Clone)]
 pub struct MyToggleButton {
@@ -96,31 +115,7 @@ impl MyToggleButton {
 
     pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
         let mut btn = button::ToggleButton::default();
-
-        let bytes = crate::Asset::get(path).unwrap();
-        let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
-        
-        const IMG_PADDING: i32 = 5;
-        
-        btn.set_size(img.w() + IMG_PADDING * 2, img.h() + IMG_PADDING * 2);
-
-        btn.draw(move |b| {
-            let (x, y, w, h) = 
-                (b.x() + IMG_PADDING, b.y() + IMG_PADDING, 
-                b.w() - IMG_PADDING, b.h() - IMG_PADDING);
-
-            if b.is_toggled() {
-                use fltk::{draw, enums::{Color}};
-                const LINE_PADDING: i32 = 3;
-                draw::draw_rect_fill(
-                    x - LINE_PADDING, y - LINE_PADDING, 
-                    img.w() + LINE_PADDING * 2, img.h() + LINE_PADDING * 2, 
-                    Color::Blue);
-            }
-
-            img.draw(x, y, w, h);
-        });
-
+        btn.set_image_from_asset(path, ImgPadding::All(IMG_PADDING));
         btn.set_tooltip(tooltip);
 
         MyToggleButton { btn }
@@ -173,6 +168,7 @@ impl Alignable for MyToggleButton {
     fn h(&self) -> i32 { self.btn.h() }
 }
 
+impl MyComponentWithImage for button::ToggleButton {}
 
 pub struct MyLabel {
     label: frame::Frame,
@@ -266,16 +262,13 @@ impl MyMenuButton {
     pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
         let mut btn = menu::MenuButton::default();
 
-        let bytes = crate::Asset::get(path).unwrap();
-        let mut img = fltk::image::PngImage::from_data(&bytes[..]).unwrap();
-        
-        const IMG_PADDING: i32 = 5;
-        
-        btn.set_size(img.w() + IMG_PADDING * 2 + Self::ARROW_WIDTH, img.h() + IMG_PADDING * 2);
-
-        btn.draw(move |wid| {
-            img.draw(wid.x() + IMG_PADDING, wid.y() + IMG_PADDING, img.w(), img.h());
-        });
+        btn.set_image_from_asset(
+            path, 
+            ImgPadding::Sides { 
+                left: IMG_PADDING, 
+                top: IMG_PADDING, 
+                right: IMG_PADDING + Self::ARROW_WIDTH, 
+                bottom: IMG_PADDING });
 
         btn.set_tooltip(tooltip);
 
@@ -321,6 +314,7 @@ impl Alignable for MyMenuButton {
     fn h(&self) -> i32 { self.btn.h() }
 }
 
+impl MyComponentWithImage for menu::MenuButton {}
 
 
 pub struct MyProgressBar {
