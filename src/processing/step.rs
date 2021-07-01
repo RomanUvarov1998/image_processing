@@ -20,7 +20,7 @@ impl ProcessingStep {
     pub fn new(w: i32, h: i32, step_num: usize, filter: FilterBase) -> Self {
         let name: String = filter.get_description();
 
-        let mut main_column = MyColumn::new(w, 100);
+        let mut main_column = MyColumn::new(w, h);
 
         let label_step_name = MyLabel::new(&name);
 
@@ -65,13 +65,6 @@ impl ProcessingStep {
         step.update_btn_emits(step_num);
 
         step
-    }
-
-
-    pub fn auto_resize(&mut self, new_width: i32) {
-        self.label_step_name.set_width(new_width);
-        self.prog_bar.set_width(new_width);
-        self.img_presenter.redraw();
     }
 
 
@@ -156,4 +149,20 @@ impl ProcessingStep {
 
         Ok(())
     }
+}
+
+impl Alignable for ProcessingStep {
+    fn resize(&mut self, w: i32, h: i32) {
+        self.label_step_name.resize(w, self.label_step_name.h());
+        self.prog_bar.resize(w, self.prog_bar.h());
+        self.img_presenter.resize(w, h - self.label_step_name.h() - self.prog_bar.h());
+    }
+
+    fn x(&self) -> i32 { self.main_column.x() }
+
+    fn y(&self) -> i32 { self.main_column.y() }
+
+    fn w(&self) -> i32 { self.main_column.w() }
+
+    fn h(&self) -> i32 { self.main_column.h() }
 }

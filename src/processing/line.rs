@@ -1,13 +1,12 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos, RectArea}};
+use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine {
     steps: Vec<ProcessingStep>,
-    x: i32, y: i32, w: i32, h: i32,
     rx: Receiver<Msg>,
     background_worker: BackgroundWorker,
     // graphical parts
@@ -106,7 +105,6 @@ impl ProcessingLine {
 
         let mut line = ProcessingLine {
             steps: Vec::<ProcessingStep>::new(),
-            x, y, w, h,
             rx,
             background_worker,
             // graphical parts
@@ -128,7 +126,7 @@ impl ProcessingLine {
             scroll_pack,
         };
 
-        line.auto_resize(RectArea::new(line.x, line.y, line.w, line.h));
+        line.resize(w, h);
 
         line
     }
@@ -141,26 +139,26 @@ impl ProcessingLine {
                         Project::Import (import_type) => {
                             match self.try_import_initial_img(import_type) {
                                 Ok(_) => {}
-                                Err(err) => show_err_msg(self.center(), err)
+                                Err(err) => show_err_msg(self.get_center_pos(), err)
                             };
                         },
                         Project::SaveProject => {
                             match self.try_save_project() {
                                 Ok(done) => if done {
-                                    show_info_msg(self.center(), "Проект успешно сохранен");
+                                    show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
                                 },
-                                Err(err) => show_err_msg(self.center(), err),
+                                Err(err) => show_err_msg(self.get_center_pos(), err),
                             }
                         },
                         Project::LoadProject => {
                             if let Err(err) = self.try_load_project() {
-                                show_err_msg(self.center(), err);
+                                show_err_msg(self.get_center_pos(), err);
                             }
                         },
                         Project::SaveResults => {
                             match self.try_save_results() {
-                                Ok(_) => show_info_msg(self.center(), "Результаты успешно сохранены"),
-                                Err(err) => show_err_msg(self.center(), err),
+                                Ok(_) => show_info_msg(self.get_center_pos(), "Результаты успешно сохранены"),
+                                Err(err) => show_err_msg(self.get_center_pos(), err),
                             }
                         }
                     };
@@ -240,7 +238,7 @@ impl ProcessingLine {
                                         step.clear_result();
                                     }
                                 }
-                                Err(err) => show_err_msg(self.center(), err)
+                                Err(err) => show_err_msg(self.get_center_pos(), err)
                             };
                         },
                         Proc::Progress { step_num, cur_percents } => {
@@ -253,7 +251,7 @@ impl ProcessingLine {
                             let processing_continues: bool = match self.on_step_completed(step_num) {
                                 Ok(continued) => continued,
                                 Err(err) => {
-                                    show_err_msg(self.center(), err);
+                                    show_err_msg(self.get_center_pos(), err);
                                     false
                                 },
                             };
@@ -271,7 +269,11 @@ impl ProcessingLine {
         Ok(())
     }
 
-    fn center(&self) -> Pos { Pos::new(self.x + self.w / 2, self.y + self.h / 2) }
+    fn get_center_pos(&self) -> Pos { 
+        Pos::new(
+            self.main_row.x() + self.main_row.w() / 2, 
+            self.main_row.y() + self.main_row.h() / 2) 
+    }
 
 
     fn add_step_with_dlg(&mut self, msg: AddStep, app: app::App) -> () {
@@ -297,7 +299,7 @@ impl ProcessingLine {
     fn add_step(&mut self, filter: FilterBase) {
         self.scroll_pack.begin();
 
-        self.steps.push(ProcessingStep::new(self.w, self.h, self.steps.len(), filter));
+        self.steps.push(ProcessingStep::new(self.w(), self.h(), self.steps.len(), filter));
 
         self.scroll_pack.end();
     }
@@ -374,40 +376,10 @@ impl ProcessingLine {
         Ok(processing_continues)
     }
 
-    pub fn auto_resize(&mut self, area: RectArea) -> bool {
-        if self.x == area.x() && self.y == area.y() && self.w == area.w() && self.h == area.h() {
-            return false;
-        }
-
-        self.x = area.x();
-        self.y = area.y();
-        self.w = area.w();
-        self.h = area.h();
-
-        self.main_row.resize(self.w, self.h);
-
-        self.init_img_col.resize(self.w / 2, self.h);
-
-        self.processing_col.resize(self.w / 2, self.h);
-
-        self.scroll_area.set_size(self.w / 2, self.h);
-
-        self.scroll_pack.set_size(self.w / 2 - PADDING, self.h);
-
-        let img_pres_y = self.btns_row.h() + self.lbl_init_img.h();
-        self.img_presenter.resize(self.w / 2, self.h - img_pres_y);
-
-        for step in self.steps.iter_mut() {
-            step.auto_resize(self.w / 2);
-        }
-
-        return true;
-    }
-
     
     fn try_import_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
         if self.img_presenter.has_image() {
-            if small_dlg::confirm_with_dlg(self.center(), "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
+            if small_dlg::confirm_with_dlg(self.get_center_pos(), "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step in self.steps.iter_mut() {
                     step.clear_result();
                 }
@@ -516,7 +488,7 @@ impl ProcessingLine {
     
     fn try_load_project(&mut self) -> Result<(), MyError> {
         if self.steps.len() > 0 {
-            if confirm_with_dlg(self.center(),
+            if confirm_with_dlg(self.get_center_pos(),
                 "Есть несохраненный проект. Открыть вместо него?") 
             {
                 while self.steps.len() > 0 {
@@ -570,7 +542,7 @@ impl ProcessingLine {
                         "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
                         filter_name, err.to_string());
 
-                    if !confirm_with_dlg(self.center(), &question) {
+                    if !confirm_with_dlg(self.get_center_pos(), &question) {
                         break 'out;
                     }
                 },
@@ -647,4 +619,33 @@ impl ProcessingLine {
 
         Ok(true)
     }
+}
+
+impl Alignable for ProcessingLine {
+    fn resize(&mut self, w: i32, h: i32) {
+        self.main_row.resize(w, h);
+
+        self.init_img_col.resize(w / 2, h);
+
+        self.processing_col.resize(w / 2, h);
+
+        self.scroll_area.set_size(w / 2, h);
+
+        self.scroll_pack.set_size(w / 2 - PADDING, self.scroll_pack.h());
+
+        let img_pres_y = self.btns_row.h() + self.lbl_init_img.h();
+        self.img_presenter.resize(w / 2, h - img_pres_y);
+
+        for step in self.steps.iter_mut() {
+            step.resize(w / 2, h);
+        }
+    }
+
+    fn x(&self) -> i32 { self.main_row.x() }
+
+    fn y(&self) -> i32 { self.main_row.y() }
+
+    fn w(&self) -> i32 { self.main_row.w() }
+
+    fn h(&self) -> i32 { self.main_row.h() }
 }

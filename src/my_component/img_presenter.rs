@@ -232,8 +232,6 @@ impl MyImgPresenter {
             None => None,
         }
     }
-
-    pub fn redraw(&mut self) { self.frame_img.redraw(); }
 }
 
 impl Alignable for MyImgPresenter {

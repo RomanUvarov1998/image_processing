@@ -17,7 +17,7 @@ pub struct Asset;
 
 use my_err::MyError;
 
-use crate::utils::RectArea;
+use crate::{my_component::Alignable};
 fn main() -> Result<(), MyError> {
     use fltk::{prelude::*, app::{App, Scheme}, enums::Damage, window::Window};
 
@@ -39,10 +39,18 @@ fn main() -> Result<(), MyError> {
     wind.end();
     wind.show();
 
+    let (mut window_w_prev, mut window_h_prev) = (wind.w(), wind.h());
+
     while app.wait() {
-        if steps_line.auto_resize(RectArea::of_widget(&wind).with_zero_origin()) {
+        let (window_w, window_h) = (wind.w(), wind.h());
+
+        if window_w != window_w_prev || window_h != window_h_prev {
+            steps_line.resize(window_w, window_h);
+            window_w_prev = window_w;
+            window_h_prev = window_h;
             wind.redraw();
         }
+        
         steps_line.process_event_loop(app)?;
     }
 
