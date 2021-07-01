@@ -60,9 +60,9 @@ impl StepEditor {
     }
 
     pub fn edit_with_dlg(&mut self, app: app::App, filter: &mut Box<dyn Filter>) -> bool {
-        let (sender, receiver) = app::channel::<StepEditMessage>();
+        let (tx, rx) = app::channel::<StepEditMessage>();
 
-        self.btn_save.set_emit(sender, StepEditMessage::TrySave);
+        self.btn_save.set_emit(tx, StepEditMessage::TrySave);
 
         let filter_settings: String = filter.content_to_string();
         self.text_editor.buffer().expect("Text editor has no TextBuffer").set_text(&filter_settings);
@@ -71,7 +71,7 @@ impl StepEditor {
         self.wind.handle(move |_, event| {
             match event {
                 fltk::enums::Event::Hide => {
-                    sender.send(StepEditMessage::Exit);
+                    tx.send(StepEditMessage::Exit);
                     return true;
                 },
                 _ => {}
@@ -87,7 +87,7 @@ impl StepEditor {
         loop {
             if !app.wait() { break; }
 
-            if let Some(msg) = receiver.recv() {
+            if let Some(msg) = rx.recv() {
                 match msg {
                     StepEditMessage::TrySave => {
                         let text = self.text_editor.buffer()

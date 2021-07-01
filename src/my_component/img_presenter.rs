@@ -77,15 +77,15 @@ impl MyImgPresenter {
             RectArea::of_widget(&self.frame_img).with_zero_origin());
         let presenter_rc: Rc<RefCell<ImgPresRect>> = Rc::new(RefCell::new(pres_rect));
 
-        let (sender, receiver) = std::sync::mpsc::channel::<ImgPresMsg>();
+        let (tx, rx) = std::sync::mpsc::channel::<ImgPresMsg>();
 
-        self.set_draw_cbk(&img, Rc::clone(&presenter_rc), receiver)?;
+        self.set_draw_cbk(&img, Rc::clone(&presenter_rc), rx)?;
 
         self.img_pres_rect_rc = Some(presenter_rc);
 
-        self.set_btn_toggle_cbk(sender.clone());
-        self.set_btn_fit_cbk(sender.clone());
-        self.set_frame_handle_cbk(sender);
+        self.set_btn_toggle_cbk(tx.clone());
+        self.set_btn_fit_cbk(tx.clone());
+        self.set_frame_handle_cbk(tx);
 		
         self.img = Some(img);
 
@@ -94,7 +94,7 @@ impl MyImgPresenter {
         Ok(())
     }
 
-    fn set_draw_cbk(&mut self, img: &Img, presenter_rc: Rc<RefCell<ImgPresRect>>, receiver: std::sync::mpsc::Receiver<ImgPresMsg>) -> Result<(), MyError> {
+    fn set_draw_cbk(&mut self, img: &Img, presenter_rc: Rc<RefCell<ImgPresRect>>, rx_draw: std::sync::mpsc::Receiver<ImgPresMsg>) -> Result<(), MyError> {
         let mut drawable = img.get_drawable_copy()?;
         
         self.frame_img.draw(move |frame| 
@@ -104,7 +104,7 @@ impl MyImgPresenter {
             let draw_position = Pos::of(frame);
 
             let mut presenter_rc_mut = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
-            while let Ok(msg) = receiver.try_recv() {
+            while let Ok(msg) = rx_draw.try_recv() {
                 presenter_rc_mut.consume_msg(msg, view_area_size);
             }
             drop(presenter_rc_mut);
@@ -122,31 +122,31 @@ impl MyImgPresenter {
         Ok(())
     }
 
-    fn set_btn_toggle_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
+    fn set_btn_toggle_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut frame_copy = self.frame_img.clone();
 
         self.btn_toggle_selection.widget_mut().set_callback(move |btn| { 
             let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
-            sender.send(msg).unwrap();
+            tx.send(msg).unwrap();
             frame_copy.redraw();
         });
         self.btn_toggle_selection.set_active(true);
     }
 
-    fn set_btn_fit_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
+    fn set_btn_fit_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut frame_copy = self.frame_img.clone();  
         let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();  
 
         self.btn_fit.widget_mut().set_callback(move |_| {
-            sender.send(ImgPresMsg::Fit).unwrap();
-            sender.send(ImgPresMsg::SelectionOff).unwrap();
+            tx.send(ImgPresMsg::Fit).unwrap();
+            tx.send(ImgPresMsg::SelectionOff).unwrap();
             btn_toggle_selection_copy.toggle(false);
             frame_copy.redraw();
         });
         self.btn_fit.set_active(true);
     }
 
-    fn set_frame_handle_cbk(&mut self, sender: std::sync::mpsc::Sender<ImgPresMsg>) {
+    fn set_frame_handle_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut was_mouse_down = false;
         self.frame_img.handle(move |f, ev| {
             let mouse_pos = Pos::new(fltk::app::event_x() - f.x(), fltk::app::event_y() - f.y());
@@ -165,17 +165,17 @@ impl MyImgPresenter {
 			let event_handled = match ev {
                 Event::Push => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap();
+                    tx.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap();
 					true
                 },
                 Event::Released => {
                     was_mouse_down = false;
-                    sender.send(ImgPresMsg::MouseUp).unwrap();
+                    tx.send(ImgPresMsg::MouseUp).unwrap();
 					true
                 },
                 Event::MouseWheel => {
                     if was_mouse_down {
-                        sender.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap();
+                        tx.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap();
 						true
                     } else {
 						false
@@ -183,7 +183,7 @@ impl MyImgPresenter {
                 },
                 Event::Drag => {
                     was_mouse_down = true;
-                    sender.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap();
+                    tx.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap();
                     true
                 },
                 _ => false

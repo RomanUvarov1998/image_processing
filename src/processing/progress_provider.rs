@@ -1,6 +1,6 @@
 use std::{sync::mpsc::Receiver, time};
 use fltk::app::{Sender};
-use crate::message::{Message, Processing};
+use crate::message::{Msg, Proc};
 
 
 pub struct HaltError;
@@ -8,20 +8,20 @@ pub struct HaltError;
 pub struct HaltMessage;
 
 pub struct ProgressProvider<'own> {
-    sender: &'own Sender<Message>,
+    tx_progress: &'own Sender<Msg>,
     step_num: usize,
-    halt_msg_receiver: &'own Receiver<HaltMessage>,
+    rx_halt: &'own Receiver<HaltMessage>,
     actions_total: usize,
     actions_completed: usize,
     prev_time: time::Instant,
 }
 
 impl<'own> ProgressProvider<'own> {
-    pub fn new(sender: &'own Sender<Message>, halt_msg_receiver: &'own Receiver<HaltMessage>, step_num: usize) -> Self {
+    pub fn new(tx_progress: &'own Sender<Msg>, rx_halt: &'own Receiver<HaltMessage>, step_num: usize) -> Self {
         ProgressProvider { 
-            sender, 
+            tx_progress, 
             step_num, 
-            halt_msg_receiver,
+            rx_halt,
             actions_total: 0,
             actions_completed: 0,
             prev_time: time::Instant::now(),
@@ -36,7 +36,7 @@ impl<'own> ProgressProvider<'own> {
     const MS_DELAY: u128 = 100;
 
     pub fn complete_action(&mut self) -> Result<(), HaltError> { 
-        if let Ok(_) = self.halt_msg_receiver.try_recv() {
+        if let Ok(_) = self.rx_halt.try_recv() {
             return Err(HaltError);
         }
 
@@ -44,9 +44,7 @@ impl<'own> ProgressProvider<'own> {
 
         if self.prev_time.elapsed().as_millis() > Self::MS_DELAY {
             self.prev_time = time::Instant::now();
-            let cur_percents = self.actions_completed * 100 / self.actions_total;
-            let step_num = self.step_num;
-            self.sender.send(Message::Processing(Processing::StepProgress{ step_num, cur_percents }));
+            self.send_progress_msg();
         }
 
         return Ok(());
@@ -54,5 +52,10 @@ impl<'own> ProgressProvider<'own> {
 
     pub fn all_actions_completed(&self) -> bool {
         self.actions_total == self.actions_completed
+    }
+
+    fn send_progress_msg(&mut self) {
+        let cur_percents = self.actions_completed * 100 / self.actions_total;
+        self.tx_progress.send(Msg::Proc(Proc::Progress{ step_num: self.step_num, cur_percents }));
     }
 }

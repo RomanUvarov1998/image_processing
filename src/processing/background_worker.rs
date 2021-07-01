@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Condvar, Mutex}, thread::{self, JoinHandle}};
 
-use crate::{img::Img, message::{Message, Processing}};
+use crate::{img::Img, message::{Msg, Proc}};
 use super::{FilterBase, progress_provider::{HaltMessage, ProgressProvider}};
 
 
@@ -10,7 +10,7 @@ pub struct BackgroundWorker {
 }
 
 impl BackgroundWorker {
-    pub fn new(progress_tx: fltk::app::Sender<Message>, halt_msg_rx: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
+    pub fn new(progress_tx: fltk::app::Sender<Msg>, halt_msg_rx: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
         let inner = Arc::new(Inner::new());
 
         let inner_arc = Arc::clone(&inner);
@@ -50,7 +50,7 @@ impl BackgroundWorker {
 
                 drop(guard);
 
-                progress_tx.send(Message::Processing(Processing::StepIsCompleted { step_num }));
+                progress_tx.send(Msg::Proc(Proc::Completed { step_num }));
             }
         })
             .expect("Couldn't create a processing thread");

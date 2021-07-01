@@ -1,5 +1,5 @@
 use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
-use crate::{img::Img, message::{self, Message, Processing, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
+use crate::{img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
 use super::{FilterBase, PADDING};
 
 pub struct ProcessingStep {
@@ -13,7 +13,7 @@ pub struct ProcessingStep {
     img_presenter: MyImgPresenter,
     filter: FilterBase,
     step_num: usize,
-    sender: Sender<Message>
+    tx: Sender<Msg>
 }
 
 impl ProcessingStep {
@@ -24,7 +24,7 @@ impl ProcessingStep {
 
         let label_step_name = MyLabel::new(&name);
 
-        let (sender, _) = app::channel::<Message>();
+        let (tx, _) = app::channel::<Msg>();
 
         let mut btns_row = MyRow::new(w, 100);
 
@@ -59,7 +59,7 @@ impl ProcessingStep {
             img_presenter, 
             filter,
             step_num,
-            sender
+            tx
         };
 
         step.update_btn_emits(step_num);
@@ -98,14 +98,14 @@ impl ProcessingStep {
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
-        self.btn_run.add_emit("Только этот шаг", self.sender, 
-            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: false }));
-        self.btn_run.add_emit("Этот шаг и все шаги ниже", self.sender, 
-            Message::Processing(Processing::StepsChainIsStarted { step_num, do_until_end: true }));
-        self.btn_edit.set_emit(self.sender, Message::StepOp(StepOp::EditStep { step_num }));
-        self.btn_delete.set_emit(self.sender, Message::StepOp(StepOp::DeleteStep { step_num }));
-        self.btn_reorder.add_emit("Сдвинуть вверх", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Up } ));
-        self.btn_reorder.add_emit("Сдвинуть вниз", self.sender, Message::StepOp(StepOp::MoveStep { step_num, direction: message::MoveStep::Down } ));
+        self.btn_run.add_emit("Только этот шаг", self.tx, 
+            Msg::Proc(Proc::ChainIsStarted { step_num, do_until_end: false }));
+        self.btn_run.add_emit("Этот шаг и все шаги ниже", self.tx, 
+            Msg::Proc(Proc::ChainIsStarted { step_num, do_until_end: true }));
+        self.btn_edit.set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
+        self.btn_delete.set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
+        self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Up } ));
+        self.btn_reorder.add_emit("Сдвинуть вниз", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Down } ));
         self.step_num = step_num;
     }
 

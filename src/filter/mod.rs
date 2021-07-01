@@ -3,7 +3,7 @@ pub mod utils;
 pub mod filter_option;
 pub mod linear;
 pub mod non_linear;
-pub mod channel;
+pub mod color_channel;
 
 use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::{HaltError, ProgressProvider}};
 

@@ -54,7 +54,7 @@ impl<'text> LinesIter<'text> {
             left.push_str(line);
         }
         while let Some(line) = self.iter.next() {
-            if separate_by_newline{
+            if separate_by_newline {
                 left.push_str("\n");
             }
             left.push_str(line);

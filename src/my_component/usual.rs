@@ -62,10 +62,10 @@ impl MyButton {
         MyButton { btn }
     }
 
-    pub fn set_emit<TMsg>(&mut self, sender: Sender<TMsg>, msg: TMsg) 
+    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg) 
         where TMsg: 'static + Clone + Copy + Send + Sync
     {
-        self.btn.emit(sender, msg);
+        self.btn.emit(tx, msg);
     }
 
     pub fn set_active(&mut self, active: bool) {
@@ -141,10 +141,10 @@ impl MyToggleButton {
         }
     }
 
-    pub fn set_emit<TMsg>(&mut self, sender: Sender<TMsg>, msg: TMsg) 
+    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg) 
         where TMsg: 'static + Clone + Copy + Send + Sync
     {
-        self.btn.emit(sender, msg);
+        self.btn.emit(tx, msg);
     }
 
     pub fn widget_mut<'own>(&'own mut self) -> &'own mut button::ToggleButton {
@@ -221,10 +221,10 @@ impl MyMenuBar {
         }
     }
 
-    pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, sender: Sender<TMsg>, msg: TMsg)
+    pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, tx: Sender<TMsg>, msg: TMsg)
         where TMsg: 'static + Clone + Copy + Send + Sync
     {
-        self.mb.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
+        self.mb.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
     }
 
     pub fn end(&mut self) { 
@@ -287,10 +287,10 @@ impl MyMenuButton {
 
     const ARROW_WIDTH: i32 = 30;
 
-    pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, sender: Sender<TMsg>, msg: TMsg)
+    pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, tx: Sender<TMsg>, msg: TMsg)
     where TMsg: 'static + Clone + Copy + Send + Sync
     {
-        self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, sender, msg);
+        self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
     }
 
     pub fn set_active(&mut self, active: bool) {

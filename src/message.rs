@@ -7,43 +7,43 @@ pub enum Project {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum ImportType { FromFile, FromSystemClipoard }
+pub enum ImportType { File, SystemClipoard }
 
 #[derive(Debug, Copy, Clone)]
 pub enum MoveStep { Up, Down }
 
 #[derive(Debug, Copy, Clone)]
 pub enum AddStep {
-    AddStepLinCustom, 
-    AddStepLinMean, 
-    AddStepLinGauss, 
-    AddStepMed, 
-    AddStepHistogramLocalContrast, 
-    AddStepCutBrightness, 
-    AddStepHistogramEqualizer, 
-    AddStepRgb2Gray, 
-    AddStepNeutralizeChannel, 
-    AddStepExtractChannel, 
+    LinCustom, 
+    LinMean, 
+    LinGauss, 
+    Median, 
+    HistogramLocalContrast, 
+    CutBrightness, 
+    HistogramEqualizer, 
+    Rgb2Gray, 
+    NeutralizeChannel, 
+    ExtractChannel, 
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum StepOp {
-    EditStep { step_num: usize }, 
-    MoveStep { step_num: usize, direction: MoveStep }, 
-    DeleteStep { step_num: usize },
+    Edit { step_num: usize }, 
+    Move { step_num: usize, direction: MoveStep }, 
+    Delete { step_num: usize },
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum Processing {
-    StepsChainIsStarted { step_num: usize, do_until_end: bool },
-    StepProgress { step_num: usize, cur_percents: usize },
-    StepIsCompleted { step_num: usize },
+pub enum Proc {
+    ChainIsStarted { step_num: usize, do_until_end: bool },
+    Progress { step_num: usize, cur_percents: usize },
+    Completed { step_num: usize },
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum Message {
+pub enum Msg {
     Project(Project),
     AddStep(AddStep),
     StepOp(StepOp),
-    Processing(Processing),
+    Proc(Proc),
 }

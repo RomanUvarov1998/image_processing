@@ -1,14 +1,14 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{filter::{channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Message, Processing, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos, RectArea}};
+use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos, RectArea}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
 
 
 pub struct ProcessingLine {
     steps: Vec<ProcessingStep>,
     x: i32, y: i32, w: i32, h: i32,
-    receiver: Receiver<Message>,
+    rx: Receiver<Msg>,
     background_worker: BackgroundWorker,
     // graphical parts
     img_presenter: MyImgPresenter,
@@ -31,7 +31,7 @@ pub struct ProcessingLine {
 
 impl ProcessingLine {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
-        let (sender, receiver) = app::channel::<Message>();
+        let (tx, rx) = app::channel::<Msg>();
 
         let mut main_row = MyRow::new(w, h).with_pos(x, y);
             
@@ -40,34 +40,34 @@ impl ProcessingLine {
         let mut btns_row = MyRow::new(w / 2, 100);
 
         let mut btn_project = MyMenuButton::with_label("Проект");
-        btn_project.add_emit("Зарузить", sender, Message::Project(Project::LoadProject));
-        btn_project.add_emit("Сохранить как", sender, Message::Project(Project::SaveProject));
+        btn_project.add_emit("Зарузить", tx, Msg::Project(Project::LoadProject));
+        btn_project.add_emit("Сохранить как", tx, Msg::Project(Project::SaveProject));
 
         let mut btn_import = MyMenuButton::with_img_and_tooltip("import.png", "Импорт");
-        btn_import.add_emit("Файл", sender, 
-            Message::Project(Project::Import(ImportType::FromFile)));
-        btn_import.add_emit("Системный буфер обмена", sender, 
-            Message::Project(Project::Import(ImportType::FromSystemClipoard)));
+        btn_import.add_emit("Файл", tx, 
+            Msg::Project(Project::Import(ImportType::File)));
+        btn_import.add_emit("Системный буфер обмена", tx, 
+            Msg::Project(Project::Import(ImportType::SystemClipoard)));
             
         let mut btn_add_step = MyMenuButton::with_img_and_tooltip("add step.png", "Добавить шаг");
-        btn_add_step.add_emit("Цветной => ч\\/б", sender, Message::AddStep(AddStep::AddStepRgb2Gray));
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", sender, Message::AddStep(AddStep::AddStepLinMean));
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", sender, Message::AddStep(AddStep::AddStepLinGauss));
-        btn_add_step.add_emit("Линейный фильтр (другой)", sender, Message::AddStep(AddStep::AddStepLinCustom));
-        btn_add_step.add_emit("Медианный фильтр", sender, Message::AddStep(AddStep::AddStepMed));
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", sender, Message::AddStep(AddStep::AddStepHistogramLocalContrast));
-        btn_add_step.add_emit("Обрезание яркости", sender, Message::AddStep(AddStep::AddStepCutBrightness));
-        btn_add_step.add_emit("Эквализация гистограммы", sender, Message::AddStep(AddStep::AddStepHistogramEqualizer));
-        btn_add_step.add_emit("Убрать канал", sender, Message::AddStep(AddStep::AddStepNeutralizeChannel));
-        btn_add_step.add_emit("Выделить канал", sender, Message::AddStep(AddStep::AddStepExtractChannel));
+        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::AddStep(AddStep::Rgb2Gray));
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::AddStep(AddStep::LinMean));
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::AddStep(AddStep::LinGauss));
+        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::AddStep(AddStep::LinCustom));
+        btn_add_step.add_emit("Медианный фильтр", tx, Msg::AddStep(AddStep::Median));
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::AddStep(AddStep::HistogramLocalContrast));
+        btn_add_step.add_emit("Обрезание яркости", tx, Msg::AddStep(AddStep::CutBrightness));
+        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::AddStep(AddStep::HistogramEqualizer));
+        btn_add_step.add_emit("Убрать канал", tx, Msg::AddStep(AddStep::NeutralizeChannel));
+        btn_add_step.add_emit("Выделить канал", tx, Msg::AddStep(AddStep::ExtractChannel));
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip("export.png", "Экспорт");
-        btn_export.add_emit("Сохранить результаты", sender, Message::Project(Project::SaveResults));
+        btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
 
-        let (halt_msg_sender, halt_msg_receiver) = std::sync::mpsc::channel::<HaltMessage>();
+        let (tx_halt, rx_halt) = std::sync::mpsc::channel::<HaltMessage>();
         let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
         btn_halt_processing.widget_mut().set_callback(move |_| {
-            halt_msg_sender.send(HaltMessage).unwrap();
+            tx_halt.send(HaltMessage).unwrap();
         });
         btn_halt_processing.set_active(false);
         
@@ -102,12 +102,12 @@ impl ProcessingLine {
 
         main_row.end();
 
-        let background_worker = BackgroundWorker::new(sender.clone(), halt_msg_receiver);
+        let background_worker = BackgroundWorker::new(tx.clone(), rx_halt);
 
         let mut line = ProcessingLine {
             steps: Vec::<ProcessingStep>::new(),
             x, y, w, h,
-            receiver,
+            rx,
             background_worker,
             // graphical parts
             img_presenter,
@@ -134,12 +134,12 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
-        if let Some(msg) = self.receiver.recv() {
+        if let Some(msg) = self.rx.recv() {
             match msg {
-                Message::Project(msg) => {
+                Msg::Project(msg) => {
                     match msg {
                         Project::Import (import_type) => {
-                            match self.try_inport_initial_img(import_type) {
+                            match self.try_import_initial_img(import_type) {
                                 Ok(_) => {}
                                 Err(err) => show_err_msg(self.center(), err)
                             };
@@ -165,12 +165,12 @@ impl ProcessingLine {
                         }
                     };
                 },
-                Message::AddStep(msg) => self.add_step_with_dlg(msg, app),
-                Message::StepOp(msg) => {
+                Msg::AddStep(msg) => self.add_step_with_dlg(msg, app),
+                Msg::StepOp(msg) => {
                     match msg {
-                        StepOp::EditStep { step_num } => self.edit_step_with_dlg(step_num, app),
-                        StepOp::DeleteStep { step_num } => self.delete_step(step_num),
-                        StepOp::MoveStep { step_num, direction } => {
+                        StepOp::Edit { step_num } => self.edit_step_with_dlg(step_num, app),
+                        StepOp::Delete { step_num } => self.delete_step(step_num),
+                        StepOp::Move { step_num, direction } => {
                             match direction {
                                 message::MoveStep::Up => {
                                     if step_num > 0 {                                            
@@ -213,7 +213,7 @@ impl ProcessingLine {
                         },
                     }
                 },
-                Message::Processing(msg) => {
+                Msg::Proc(msg) => {
                     let set_all_controls_active = |owner: &mut Self, active: bool| {
                         for step in owner.steps.iter_mut() {
                             step.set_buttons_active(active);
@@ -227,7 +227,7 @@ impl ProcessingLine {
                     };
 
                     match msg {
-                        Processing::StepsChainIsStarted { step_num, do_until_end } => {
+                        Proc::ChainIsStarted { step_num, do_until_end } => {
                             match self.try_start_step(step_num, do_until_end) {
                                 Ok(_) => {
                                     set_all_controls_active(self, false);
@@ -243,13 +243,13 @@ impl ProcessingLine {
                                 Err(err) => show_err_msg(self.center(), err)
                             };
                         },
-                        Processing::StepProgress { step_num, cur_percents } => {
+                        Proc::Progress { step_num, cur_percents } => {
                             let whole_prog = (step_num * 100 + cur_percents) / self.steps.len();
                             self.whole_proc_prog_bar.set_value(whole_prog);
 
                             self.steps[step_num].display_progress(cur_percents);
                         },
-                        Processing::StepIsCompleted { step_num } => {
+                        Proc::Completed { step_num } => {
                             let processing_continues: bool = match self.on_step_completed(step_num) {
                                 Ok(continued) => continued,
                                 Err(err) => {
@@ -276,20 +276,22 @@ impl ProcessingLine {
 
     fn add_step_with_dlg(&mut self, msg: AddStep, app: app::App) -> () {
         let mut filter = match msg {
-            AddStep::AddStepLinCustom => Box::new(LinearCustom::default()) as FilterBase,
-            AddStep::AddStepLinMean => Box::new(LinearMean::default()) as FilterBase,
-            AddStep::AddStepLinGauss => Box::new(LinearGaussian::default()) as FilterBase,
-            AddStep::AddStepMed => Box::new(MedianFilter::default()) as FilterBase,
-            AddStep::AddStepHistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
-            AddStep::AddStepCutBrightness => Box::new(CutBrightness::default()) as FilterBase,
-            AddStep::AddStepHistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
-            AddStep::AddStepRgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
-            AddStep::AddStepNeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
-            AddStep::AddStepExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+            AddStep::LinCustom => Box::new(LinearCustom::default()) as FilterBase,
+            AddStep::LinMean => Box::new(LinearMean::default()) as FilterBase,
+            AddStep::LinGauss => Box::new(LinearGaussian::default()) as FilterBase,
+            AddStep::Median => Box::new(MedianFilter::default()) as FilterBase,
+            AddStep::HistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
+            AddStep::CutBrightness => Box::new(CutBrightness::default()) as FilterBase,
+            AddStep::HistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
+            AddStep::Rgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
+            AddStep::NeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
+            AddStep::ExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
         };
 
         let mut step_editor = StepEditor::new();
         if !step_editor.edit_with_dlg(app, &mut filter) { return; }
+
+        self.add_step(filter);
     }
 
     fn add_step(&mut self, filter: FilterBase) {
@@ -403,7 +405,7 @@ impl ProcessingLine {
     }
 
     
-    fn try_inport_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
+    fn try_import_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
         if self.img_presenter.has_image() {
             if small_dlg::confirm_with_dlg(self.center(), "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
                 for step in self.steps.iter_mut() {
@@ -415,7 +417,7 @@ impl ProcessingLine {
         }
 
         let init_image = match import_type {
-            ImportType::FromFile => {
+            ImportType::File => {
                 let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
                 dlg.show();
                 let path_buf = dlg.filename();
@@ -431,7 +433,7 @@ impl ProcessingLine {
         
                 Img::from(sh_im)
             },
-            ImportType::FromSystemClipoard => {
+            ImportType::SystemClipoard => {
                 match app::event_clipboard_image() {
                     Some(rgb_img) => Img::from(rgb_img),
                     None => { return Err(MyError::new("Не удалось загрузить изображение из системного буфера".to_string())); },
