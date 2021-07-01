@@ -9,23 +9,28 @@ pub struct HaltMessage;
 
 pub struct ProgressProvider<'own> {
     sender: &'own Sender<Message>,
-    pr_data: ProgressData,
     step_num: usize,
-    halt_msg_receiver: &'own Receiver<HaltMessage>
+    halt_msg_receiver: &'own Receiver<HaltMessage>,
+    actions_total: usize,
+    actions_completed: usize,
+    prev_time: time::Instant,
 }
 
 impl<'own> ProgressProvider<'own> {
     pub fn new(sender: &'own Sender<Message>, halt_msg_receiver: &'own Receiver<HaltMessage>, step_num: usize) -> Self {
         ProgressProvider { 
             sender, 
-            pr_data: ProgressData::new(), 
             step_num, 
-            halt_msg_receiver 
+            halt_msg_receiver,
+            actions_total: 0,
+            actions_completed: 0,
+            prev_time: time::Instant::now(),
         }
     }
 
     pub fn reset(&mut self, actions_count: usize) {
-        self.pr_data.all_actions_count = actions_count;
+        self.actions_completed = 0;
+        self.actions_total = actions_count;
     }
 
     const MS_DELAY: u128 = 100;
@@ -35,47 +40,19 @@ impl<'own> ProgressProvider<'own> {
             return Err(HaltError);
         }
 
-        self.pr_data.completed_actions_count += 1;
+        self.actions_completed += 1;
 
-        if self.pr_data.prev_time.elapsed().as_millis() > Self::MS_DELAY {
-            self.pr_data.prev_time = time::Instant::now();
-        
-            let cur_percents = self.pr_data.completed_actions_count * 100 / self.pr_data.all_actions_count;
-        
+        if self.prev_time.elapsed().as_millis() > Self::MS_DELAY {
+            self.prev_time = time::Instant::now();
+            let cur_percents = self.actions_completed * 100 / self.actions_total;
             let step_num = self.step_num;
-        
             self.sender.send(Message::Processing(Processing::StepProgress{ step_num, cur_percents }));
         }
 
         return Ok(());
     }
 
-    pub fn completed(&self) -> bool {
-        self.pr_data.all_actions_count == self.pr_data.completed_actions_count
-    }
-
-    #[allow(unused)]
-    pub fn print_completed_actions_count(&self) {
-        if (self.pr_data.completed_actions_count > self.pr_data.all_actions_count) {
-            println!("completed {} actions of {}", self.pr_data.completed_actions_count, self.pr_data.all_actions_count);
-            panic!("data.completed_actions_count > data.all_actions_count");
-        }
-    }
-}
-
-
-struct ProgressData {
-    all_actions_count: usize,
-    completed_actions_count: usize,
-    prev_time: time::Instant,
-}
-
-impl ProgressData {
-    fn new() -> Self {
-        ProgressData {
-            all_actions_count: 0, 
-            completed_actions_count: 0,
-            prev_time: time::Instant::now(),
-        }
+    pub fn all_actions_completed(&self) -> bool {
+        self.actions_total == self.actions_completed
     }
 }

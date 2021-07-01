@@ -32,7 +32,7 @@ impl BackgroundWorker {
                 
                 let img_result = match task.filter_copy.filter(&task.img, &mut prog_prov) {
                     Ok(img) => {
-                        assert!(prog_prov.completed());
+                        assert!(prog_prov.all_actions_completed());
                         Some(img)
                     },
                     Err(_) => None
