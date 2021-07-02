@@ -57,8 +57,8 @@ impl StringFromTo for ExtractChannel {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        self.channel.content_to_string()
+    fn params_to_string(&self) -> Option<String> {
+        Some(self.channel.content_to_string())
     }
 }
 
@@ -112,8 +112,8 @@ impl Filter for NeutralizeChannel {
 }
 
 impl StringFromTo for NeutralizeChannel {
-    fn content_to_string(&self) -> String {
-        self.channel.content_to_string()
+    fn params_to_string(&self) -> Option<String> {
+        Some(self.channel.content_to_string())
     }
 
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
@@ -211,8 +211,8 @@ impl Filter for Rgb2Gray {
 }
 
 impl StringFromTo for Rgb2Gray {
-    fn content_to_string(&self) -> String {
-        String::new()
+    fn params_to_string(&self) -> Option<String> {
+        None
     }
 
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
@@ -306,8 +306,8 @@ impl Filter for EqualizeHist {
 }
 
 impl StringFromTo for EqualizeHist {
-    fn content_to_string(&self) -> String {
-        String::new()
+    fn params_to_string(&self) -> Option<String> {
+        None
     }
 
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {

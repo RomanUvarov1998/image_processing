@@ -144,8 +144,9 @@ impl StringFromTo for LinearGaussian {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
+    fn params_to_string(&self) -> Option<String> {
+        let params_str = format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string());
+        Some(params_str)
     }
 }
 
@@ -283,26 +284,26 @@ impl StringFromTo for LinearCustom {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        let mut fil_string = String::new();
+    fn params_to_string(&self) -> Option<String> {
+        let mut params_str = String::new();
 
         for row in 0..self.height {
             for col in 0..self.width {
-                fil_string.push_str(&self.coeffs[row * self.width + col].to_string());
+                params_str.push_str(&self.coeffs[row * self.width + col].to_string());
                 if col < self.width - 1 {
-                    fil_string.push_str(", ");
+                    params_str.push_str(", ");
                 }
             }
             if row < self.height - 1 {
-                fil_string.push_str("\n");
+                params_str.push_str("\n");
             }
         }
 
-        fil_string.push_str(&format!("\n{}", self.extend_value.content_to_string()));
+        params_str.push_str(&format!("\n{}", self.extend_value.content_to_string()));
 
-        fil_string.push_str(&format!("\n{}", self.normalized.content_to_string()));
+        params_str.push_str(&format!("\n{}", self.normalized.content_to_string()));
 
-        fil_string
+        Some(params_str)
     }
 }
 
@@ -422,8 +423,9 @@ impl StringFromTo for LinearMean {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
+    fn params_to_string(&self) -> Option<String> {
+        let params_str = format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string());
+        Some(params_str)
     }
 }
 

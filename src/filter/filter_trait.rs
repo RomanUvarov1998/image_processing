@@ -2,7 +2,7 @@ use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{Fi
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
-    fn content_to_string(&self) -> String;
+    fn params_to_string(&self) -> Option<String>;
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError>;
 }
 

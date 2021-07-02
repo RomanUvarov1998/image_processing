@@ -3,7 +3,6 @@ use crate::{filter::{filter_trait::{Filter}}};
 pub mod line;
 pub mod progress_provider;
 mod step;
-mod step_editor;
 mod background_worker;
 
 const PADDING: i32 = 20;

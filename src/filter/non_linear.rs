@@ -138,8 +138,9 @@ impl StringFromTo for MedianFilter {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string())
+    fn params_to_string(&self) -> Option<String> {
+        let params_str = format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string());
+        Some(params_str)
     }
 }
 
@@ -300,8 +301,9 @@ impl StringFromTo for HistogramLocalContrast {
         Ok(())
     }
     
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string(), self.a_values.content_to_string())
+    fn params_to_string(&self) -> Option<String> {
+        let params_str = format!("{}\n{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string(), self.a_values.content_to_string());
+        Some(params_str)
     }
 }
 
@@ -481,8 +483,9 @@ impl StringFromTo for CutBrightness {
         Ok(())
     }
 
-    fn content_to_string(&self) -> String {
-        format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string())
+    fn params_to_string(&self) -> Option<String> {
+        let params_str = format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string());
+        Some(params_str)
     }
 }
 

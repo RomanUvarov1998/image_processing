@@ -1,8 +1,8 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{AddStep, ImportType, MoveStep, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos}};
-use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
+use crate::{filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
+use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep};
 
 
 pub struct ProcessingLine {
@@ -271,29 +271,16 @@ impl ProcessingLine {
 
 
     fn add_step_with_dlg(&mut self, msg: AddStep, app: app::App) -> () {
-        let mut filter = match msg {
-            AddStep::LinCustom => Box::new(LinearCustom::default()) as FilterBase,
-            AddStep::LinMean => Box::new(LinearMean::default()) as FilterBase,
-            AddStep::LinGauss => Box::new(LinearGaussian::default()) as FilterBase,
-            AddStep::Median => Box::new(MedianFilter::default()) as FilterBase,
-            AddStep::HistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
-            AddStep::CutBrightness => Box::new(CutBrightness::default()) as FilterBase,
-            AddStep::HistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
-            AddStep::Rgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
-            AddStep::NeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
-            AddStep::ExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+        match step_editor::create(msg, app) {
+            Some(filter) => self.add_step_widget(filter),
+            None => return,
         };
-
-        let mut step_editor = StepEditor::new();
-        if !step_editor.edit_with_dlg(app, &mut filter) { return; }
-
-        self.add_step(filter);
     }
 
-    fn add_step(&mut self, filter: FilterBase) {
+    fn add_step_widget(&mut self, filter: FilterBase) {
         self.scroll_pack.begin();
 
-        self.steps.push(ProcessingStep::new(self.w(), self.h(), self.steps.len(), filter));
+        self.steps.push(ProcessingStep::new(self.w() / 2, self.h(), self.steps.len(), filter));
 
         self.scroll_pack.end();
     }
@@ -301,9 +288,7 @@ impl ProcessingLine {
     fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {
         let step = &mut self.steps[step_num];
 
-        let mut step_editor = StepEditor::new();
-
-        if step_editor.edit_with_dlg(app, step.filter_mut()) { 
+        if step_editor::edit(app, step.filter_mut()) { 
             step.update_step_description();
         }
     }
@@ -461,11 +446,13 @@ impl ProcessingLine {
         for step_num in 0..self.steps.len() {
             let filter = self.steps[step_num].filter();
             let filter_save_name: String = filter.get_save_name();
-            let filter_content: String = filter.content_to_string();
-            
+
             file_content.push_str(&filter_save_name);
             file_content.push_str("\n");
-            file_content.push_str(&filter_content);
+
+            if let Some(params_str) = filter.params_to_string() {
+                file_content.push_str(&params_str);
+            }
             file_content.push_str("\n");
 
             if step_num < self.steps.len() - 1 {
@@ -530,7 +517,7 @@ impl ProcessingLine {
             let filter_content = lines_iter.all_left(true);
 
             match Self::try_parce_filter(&filter_name, &filter_content) {
-                Ok(filter) => self.add_step(filter),
+                Ok(filter) => self.add_step_widget(filter),
                 Err(err) => {
                     let question = format!(
                         "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
