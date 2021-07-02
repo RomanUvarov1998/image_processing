@@ -1,3 +1,8 @@
+use std::{cell::RefCell, rc::Rc};
+
+use my_err::MyError;
+use crate::{my_component::Alignable, utils::Pos};
+
 mod my_err;
 mod filter;
 mod processing;
@@ -15,9 +20,6 @@ extern crate rust_embed;
 #[folder = "icons\\"]
 pub struct Asset;
 
-use my_err::MyError;
-
-use crate::{my_component::Alignable};
 fn main() -> Result<(), MyError> {
     use fltk::{prelude::*, app::{App, Scheme}, enums::Damage, window::Window};
 
@@ -35,19 +37,27 @@ fn main() -> Result<(), MyError> {
     
     use crate::processing::line::ProcessingLine;
     let mut steps_line = ProcessingLine::new(0, 0, WIN_WIDTH, WIN_HEIGHT);
-    
+
+    let win_sz_event_loop = Rc::new(RefCell::new(None));
+    let win_sz_handle = Rc::clone(&win_sz_event_loop);
+
+    wind.handle(move |w, event| {
+        use fltk::enums::Event;
+        match event {
+            Event::Resize => {
+                win_sz_handle.borrow_mut().replace(Pos::new(w.w(), w.h()));
+                true
+            },
+            _ => false
+        }
+    });
+
     wind.end();
     wind.show();
 
-    let (mut window_w_prev, mut window_h_prev) = (wind.w(), wind.h());
-
     while app.wait() {
-        let (window_w, window_h) = (wind.w(), wind.h());
-
-        if window_w != window_w_prev || window_h != window_h_prev {
-            steps_line.resize(window_w, window_h);
-            window_w_prev = window_w;
-            window_h_prev = window_h;
+        if let Some(sz) = win_sz_event_loop.borrow_mut().take() {
+            steps_line.resize(sz.x, sz.y);
             wind.redraw();
         }
         

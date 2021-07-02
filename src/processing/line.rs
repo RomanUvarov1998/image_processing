@@ -132,7 +132,7 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
-        if let Some(msg) = self.rx.recv() {
+        while let Some(msg) = self.rx.recv() {
             match msg {
                 Msg::Project(msg) => {
                     match msg {
