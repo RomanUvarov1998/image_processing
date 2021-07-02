@@ -1,4 +1,6 @@
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
+use crate::AssetItem;
+
 use super::{Alignable, TEXT_PADDING};
 
 const IMG_PADDING: i32 = 5;
@@ -9,10 +11,11 @@ enum ImgPadding {
 }
 
 trait MyComponentWithImage {
-    fn set_image_from_asset(&mut self, path: &str, padding: ImgPadding)
+    fn set_image_from_asset(&mut self, item: AssetItem, padding: ImgPadding)
     where
         Self: WidgetExt + WidgetBase
     {
+        let path = item.to_path();
         let bytes = crate::Asset::get(path)
             .expect(&format!("Couldn't load image from embedded asset by path '{}'", path));
         let mut img = fltk::image::PngImage::from_data(&bytes[..])
@@ -54,9 +57,9 @@ impl MyButton {
         MyButton { btn }
     }
 
-    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+    pub fn with_img_and_tooltip(item: AssetItem, tooltip: &str) -> Self {
         let mut btn = button::Button::default();
-        btn.set_image_from_asset(path, ImgPadding::All(IMG_PADDING));
+        btn.set_image_from_asset(item, ImgPadding::All(IMG_PADDING));
         btn.set_tooltip(tooltip);
 
         MyButton { btn }
@@ -113,9 +116,9 @@ impl MyToggleButton {
         MyToggleButton { btn }
     }
 
-    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+    pub fn with_img_and_tooltip(item: AssetItem, tooltip: &str) -> Self {
         let mut btn = button::ToggleButton::default();
-        btn.set_image_from_asset(path, ImgPadding::All(IMG_PADDING));
+        btn.set_image_from_asset(item, ImgPadding::All(IMG_PADDING));
         btn.set_tooltip(tooltip);
 
         MyToggleButton { btn }
@@ -259,11 +262,11 @@ pub struct MyMenuButton {
 
 #[allow(unused)]
 impl MyMenuButton {
-    pub fn with_img_and_tooltip(path: &str, tooltip: &str) -> Self {
+    pub fn with_img_and_tooltip(item: AssetItem, tooltip: &str) -> Self {
         let mut btn = menu::MenuButton::default();
 
         btn.set_image_from_asset(
-            path, 
+            item, 
             ImgPadding::Sides { 
                 left: IMG_PADDING, 
                 top: IMG_PADDING, 

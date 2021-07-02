@@ -1,7 +1,7 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
+use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep};
 
 
@@ -42,13 +42,13 @@ impl ProcessingLine {
         btn_project.add_emit("Зарузить", tx, Msg::Project(Project::LoadProject));
         btn_project.add_emit("Сохранить как", tx, Msg::Project(Project::SaveProject));
 
-        let mut btn_import = MyMenuButton::with_img_and_tooltip("import.png", "Импорт");
+        let mut btn_import = MyMenuButton::with_img_and_tooltip(AssetItem::Import, "Импорт");
         btn_import.add_emit("Файл", tx, 
             Msg::Project(Project::Import(ImportType::File)));
         btn_import.add_emit("Системный буфер обмена", tx, 
             Msg::Project(Project::Import(ImportType::SystemClipoard)));
             
-        let mut btn_add_step = MyMenuButton::with_img_and_tooltip("add step.png", "Добавить шаг");
+        let mut btn_add_step = MyMenuButton::with_img_and_tooltip(AssetItem::AddStep, "Добавить шаг");
         btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::StepOp(StepOp::AddStep(AddStep::Rgb2Gray)));
         btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinMean)));
         btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinGauss)));
@@ -60,11 +60,11 @@ impl ProcessingLine {
         btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::NeutralizeChannel)));
         btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::ExtractChannel)));
 
-        let mut btn_export = MyMenuButton::with_img_and_tooltip("export.png", "Экспорт");
+        let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
         btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
 
         let (tx_halt, rx_halt) = std::sync::mpsc::channel::<HaltMessage>();
-        let mut btn_halt_processing = MyButton::with_img_and_tooltip("stop processing.png", "Прервать обработку");
+        let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
         btn_halt_processing.widget_mut().set_callback(move |_| {
             tx_halt.send(HaltMessage).unwrap();
         });

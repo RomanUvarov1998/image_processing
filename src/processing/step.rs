@@ -1,5 +1,5 @@
 use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
-use crate::{img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
+use crate::{AssetItem, img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
 use super::{FilterBase, PADDING};
 
 pub struct ProcessingStep {
@@ -28,10 +28,10 @@ impl ProcessingStep {
 
         let mut btns_row = MyRow::new(w, 100);
 
-        let btn_run = MyMenuButton::with_img_and_tooltip("run step.png", "Запустить");
-        let btn_edit = MyButton::with_img_and_tooltip("edit step.png", "Изменить");
-        let btn_delete = MyButton::with_img_and_tooltip("delete step.png", "Удалить");
-        let btn_reorder = MyMenuButton::with_img_and_tooltip("reorder steps.png", "Переупорядочить");
+        let btn_run = MyMenuButton::with_img_and_tooltip(AssetItem::RunStepsChain, "Запустить");
+        let btn_edit = MyButton::with_img_and_tooltip(AssetItem::EditStep, "Изменить");
+        let btn_delete = MyButton::with_img_and_tooltip(AssetItem::DeleteStep, "Удалить");
+        let btn_reorder = MyMenuButton::with_img_and_tooltip(AssetItem::ReorderSteps, "Переупорядочить");
 
         let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h()];
 

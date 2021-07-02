@@ -1,6 +1,6 @@
 use std::{cell::{RefCell}, rc::Rc};
 use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{Img}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
+use crate::{AssetItem, img::{Img}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
 
 
@@ -21,10 +21,10 @@ impl MyImgPresenter {
 
         let mut btns_row = MyRow::new(w, 100);
 
-        let mut btn_fit = MyButton::with_img_and_tooltip("stretch.png", "Уместить");
+        let mut btn_fit = MyButton::with_img_and_tooltip(AssetItem::FitImage, "Уместить");
         btn_fit.set_active(false);
         
-        let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip("crop.png", "Брать выделенное");
+        let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip(AssetItem::CropImage, "Брать выделенное");
         btn_toggle_selection.set_active(false);
 
         btns_row.resize(
