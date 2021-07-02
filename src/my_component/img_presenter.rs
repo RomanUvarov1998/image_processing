@@ -12,6 +12,7 @@ pub struct MyImgPresenter {
     frame_img: frame::Frame,
     img_pres_rect_rc: Option<Rc<RefCell<ImgPresRect>>>,
     img: Option<Img>,
+    tx_resized: Option<std::sync::mpsc::Sender<ImgPresMsg>>
 }
 
 impl MyImgPresenter {
@@ -42,12 +43,15 @@ impl MyImgPresenter {
         MyImgPresenter { 
             column,
             btns_row, btn_fit, btn_toggle_selection, 
-            frame_img, img: None, img_pres_rect_rc: None 
+            frame_img, img: None, img_pres_rect_rc: None,
+            tx_resized: None
         }
     }
 
     pub fn clear_image(&mut self) {
         self.img = None;
+
+        self.tx_resized = None;
 
         self.btn_fit.set_active(false);
         self.btn_fit.widget_mut().set_callback(move |_| { });
@@ -85,6 +89,7 @@ impl MyImgPresenter {
 
         self.set_btn_toggle_cbk(tx.clone());
         self.set_btn_fit_cbk(tx.clone());
+        self.tx_resized = Some(tx.clone());
         self.set_frame_handle_cbk(tx);
 		
         self.img = Some(img);
@@ -113,7 +118,7 @@ impl MyImgPresenter {
             draw::push_clip(view_area.x(), view_area.y(), view_area.w(), view_area.h());
             
             let mut presenter_rc = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
-            presenter_rc.draw_img(&mut drawable, draw_position, view_area_size);
+            presenter_rc.draw_img(&mut drawable, draw_position);
             drop(presenter_rc);
 
             draw::pop_clip();
@@ -237,7 +242,11 @@ impl MyImgPresenter {
 impl Alignable for MyImgPresenter {
     fn resize(&mut self, w: i32, h: i32) { 
         self.frame_img.set_size(w, h - self.btns_row.h() - self.column.widget().spacing() * 3);
-        self.frame_img.redraw(); 
+        
+        if let Some(ref tx) = self.tx_resized {
+            tx.send(ImgPresMsg::ComponentResized).unwrap();
+            self.frame_img.redraw(); 
+        }
     }
 
     fn x(&self) -> i32 { self.frame_img.x() }
@@ -295,6 +304,11 @@ impl ImgPresRect {
             ImgPresMsg::SelectionOff => {
                 self.selection_rect = None;
             }
+            ImgPresMsg::ComponentResized => {
+                let view_size = view_area.size();
+                self.scale_rect.fit_scale(view_size);
+                self.scale_rect.fit_pos(RectArea::new(0, 0, view_size.x, view_size.y));
+            },
         }
     }
 
@@ -343,10 +357,7 @@ impl ImgPresRect {
     }
 
 
-    fn draw_img(&mut self, img: &mut fltk::image::RgbImage, draw_position: Pos, view_size: Pos) {
-        self.scale_rect.fit_scale(view_size);
-        self.scale_rect.fit_pos(RectArea::new(0, 0, view_size.x, view_size.y));
-
+    fn draw_img(&mut self, img: &mut fltk::image::RgbImage, draw_position: Pos) {
 		let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
         img.scale(im_w, im_h, true, true);
 
@@ -357,7 +368,6 @@ impl ImgPresRect {
         if let Some(ref rect) = self.selection_rect {
             rect.draw(draw_position.x, draw_position.y);
         }
-        
     }
 }
 
@@ -476,6 +486,7 @@ enum ImgPresMsg {
     MouseUp,
     MouseScroll { factor_delta: f32, pos: Pos },
     Fit,
-    SeletionOn, SelectionOff
+    SeletionOn, SelectionOff,
+    ComponentResized
 }
 
