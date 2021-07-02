@@ -1,7 +1,7 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{self, AddStep, ImportType, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos}};
+use crate::{filter::{color_channel::{EqualizeHist, ExtractChannel, NeutralizeChannel, Rgb2Gray}, linear::{LinearCustom, LinearGaussian, LinearMean}, non_linear::{CutBrightness, HistogramLocalContrast, MedianFilter}}, img::Img, message::{AddStep, ImportType, MoveStep, Msg, Proc, Project, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, confirm_with_dlg, show_err_msg, show_info_msg}, utils::{self, Pos}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep, step_editor::StepEditor};
 
 
@@ -49,16 +49,16 @@ impl ProcessingLine {
             Msg::Project(Project::Import(ImportType::SystemClipoard)));
             
         let mut btn_add_step = MyMenuButton::with_img_and_tooltip("add step.png", "Добавить шаг");
-        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::AddStep(AddStep::Rgb2Gray));
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::AddStep(AddStep::LinMean));
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::AddStep(AddStep::LinGauss));
-        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::AddStep(AddStep::LinCustom));
-        btn_add_step.add_emit("Медианный фильтр", tx, Msg::AddStep(AddStep::Median));
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::AddStep(AddStep::HistogramLocalContrast));
-        btn_add_step.add_emit("Обрезание яркости", tx, Msg::AddStep(AddStep::CutBrightness));
-        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::AddStep(AddStep::HistogramEqualizer));
-        btn_add_step.add_emit("Убрать канал", tx, Msg::AddStep(AddStep::NeutralizeChannel));
-        btn_add_step.add_emit("Выделить канал", tx, Msg::AddStep(AddStep::ExtractChannel));
+        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::StepOp(StepOp::AddStep(AddStep::Rgb2Gray)));
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinMean)));
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinGauss)));
+        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinCustom)));
+        btn_add_step.add_emit("Медианный фильтр", tx, Msg::StepOp(StepOp::AddStep(AddStep::Median)));
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::StepOp(StepOp::AddStep(AddStep::HistogramLocalContrast)));
+        btn_add_step.add_emit("Обрезание яркости", tx, Msg::StepOp(StepOp::AddStep(AddStep::CutBrightness)));
+        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::StepOp(StepOp::AddStep(AddStep::HistogramEqualizer)));
+        btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::NeutralizeChannel)));
+        btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::ExtractChannel)));
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip("export.png", "Экспорт");
         btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
@@ -132,7 +132,7 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
-        while let Some(msg) = self.rx.recv() {
+        'out: while let Some(msg) = self.rx.recv() {
             match msg {
                 Msg::Project(msg) => {
                     match msg {
@@ -163,51 +163,45 @@ impl ProcessingLine {
                         }
                     };
                 },
-                Msg::AddStep(msg) => self.add_step_with_dlg(msg, app),
                 Msg::StepOp(msg) => {
                     match msg {
+                        StepOp::AddStep(msg) => self.add_step_with_dlg(msg, app),
                         StepOp::Edit { step_num } => self.edit_step_with_dlg(step_num, app),
                         StepOp::Delete { step_num } => self.delete_step(step_num),
                         StepOp::Move { step_num, direction } => {
-                            match direction {
-                                message::MoveStep::Up => {
-                                    if step_num > 0 {                                            
-                                        self.scroll_pack.begin();
-
-                                        for step in self.steps[step_num - 1..].iter_mut() {
-                                            step.remove_self_from(&mut self.scroll_pack);
-                                        }
-
-                                        self.steps.swap(step_num - 1, step_num);
-
-                                        for step in self.steps[step_num - 1..].iter_mut() {
-                                            step.draw_self_on(&mut self.scroll_pack);
-                                        }
-
-                                        self.scroll_pack.end();
-                                    }
+                            let (upper_num, lower_num) = match direction {
+                                MoveStep::Up => if step_num > 0 { 
+                                    (step_num - 1, step_num) 
+                                } else { 
+                                    break 'out; 
                                 },
-                                message::MoveStep::Down => {                                        
-                                    if step_num < self.steps.len() - 1 {                                            
-                                        self.scroll_pack.begin();
-
-                                        for step in self.steps[step_num..].iter_mut() {
-                                            step.remove_self_from(&mut self.scroll_pack);
-                                        }
-
-                                        self.steps.swap(step_num, step_num + 1);
-
-                                        for step in self.steps[step_num..].iter_mut() {
-                                            step.draw_self_on(&mut self.scroll_pack);
-                                        }
-
-                                        self.scroll_pack.end();
-                                    }
+                                MoveStep::Down => if step_num < self.steps.len() - 1 {
+                                    (step_num, step_num + 1)
+                                } else {
+                                    break 'out;
                                 },
-                            };
-                            for step_num in 0..self.steps.len() {
+                            };           
+
+                            self.scroll_pack.begin();
+
+                            for step in self.steps[upper_num..].iter_mut() {
+                                step.clear_result();
+                                step.remove_self_from(&mut self.scroll_pack);
+                            }
+
+                            self.steps.swap(upper_num, lower_num);
+
+                            for step in self.steps[upper_num..].iter_mut() {
+                                step.draw_self_on(&mut self.scroll_pack);
+                            }
+
+                            self.scroll_pack.end();
+
+                            for step_num in upper_num..self.steps.len() {
                                 self.steps[step_num].update_btn_emits(step_num);
                             }
+
+                            self.main_row.widget_mut().redraw();
                         },
                     }
                 },
