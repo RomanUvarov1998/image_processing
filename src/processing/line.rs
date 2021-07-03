@@ -285,7 +285,7 @@ impl ProcessingLine {
 
         self.scroll_pack.end();
 
-        self.scroll_pack.redraw();
+        crate::notify_content_changed();
     }
 
     fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {

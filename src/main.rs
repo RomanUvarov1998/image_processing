@@ -1,9 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
-use fltk::app::handle_main;
-use my_err::MyError;
-use crate::{my_component::Alignable};
-
 mod my_err;
 mod filter;
 mod processing;
@@ -13,6 +7,9 @@ mod small_dlg;
 mod utils;
 mod my_component;
 
+use std::{cell::RefCell, rc::Rc};
+use my_err::MyError;
+use crate::{my_component::Alignable};
 
 #[macro_use]
 extern crate rust_embed;
