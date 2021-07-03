@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod color_channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::{HaltError, ProgressProvider}};
+use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::{Halted, ProgressProvider}};
 
 use self::filter_trait::WindowFilter;
 
@@ -48,7 +48,7 @@ fn process_with_window<T: WindowFilter>(
     init: &Matrix2D,      
     filter: &T, 
     prog_prov: &mut ProgressProvider) 
-    -> Result<Matrix2D, HaltError>
+    -> Result<Matrix2D, Halted>
 {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
@@ -89,13 +89,13 @@ trait ByLayer {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError>;
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted>;
 }
 
 fn process_each_layer<F: ByLayer>(
     img: &Img, 
     filter: &F, 
-    prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> 
+    prog_prov: &mut ProgressProvider) -> Result<Img, Halted> 
 {
     let mut res_layers = Vec::<ImgLayer>::with_capacity(img.d());
 

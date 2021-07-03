@@ -3,7 +3,7 @@ use fltk::app::{Sender};
 use crate::message::{Msg, Proc};
 
 
-pub struct HaltError;
+pub struct Halted;
 
 pub struct HaltMessage;
 
@@ -35,12 +35,12 @@ impl<'own> ProgressProvider<'own> {
 
     const MS_DELAY: u128 = 100;
 
-    pub fn complete_action(&mut self) -> Result<(), HaltError> { 
+    pub fn complete_action(&mut self) -> Result<(), Halted> { 
         self.actions_completed += 1;
         
         if self.prev_time.elapsed().as_millis() > Self::MS_DELAY {
             if let Ok(_) = self.rx_halt.try_recv() {
-                return Err(HaltError);
+                return Err(Halted);
             }
             
             self.prev_time = time::Instant::now();

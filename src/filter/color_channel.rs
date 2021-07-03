@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}};
+use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}};
 use super::{filter_option::{ImgChannel, Parceable}, filter_trait::{Filter, StringFromTo}, utils::{HistBuf, count_histogram}};
 
 
@@ -16,7 +16,7 @@ impl ExtractChannel {
 }
 
 impl Filter for ExtractChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         prog_prov.reset(img.d());
 
         let mut img_res = img.clone();
@@ -81,7 +81,7 @@ impl NeutralizeChannel {
 }
 
 impl Filter for NeutralizeChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         prog_prov.reset(1);
 
         let mut img_res = img.clone();
@@ -138,7 +138,7 @@ pub struct Rgb2Gray {
 }
 
 impl Filter for Rgb2Gray {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
                 prog_prov.reset(1);
@@ -237,7 +237,7 @@ pub struct EqualizeHist {
 }
 
 impl Filter for EqualizeHist {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {

@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{HaltError, ProgressProvider}}, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}, utils::{LinesIter}};
 use super::{ByLayer, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -90,7 +90,7 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -154,7 +154,7 @@ impl ByLayer for MedianFilter {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError>
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted>
     {
         let result_mat = {
             match layer.channel() {
@@ -195,7 +195,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         {
             let fil_size_half = self.w() / 2;
             let mean_filter = 
@@ -316,7 +316,7 @@ impl ByLayer for HistogramLocalContrast {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> 
     {
         let mat = {
             match layer.channel() {
@@ -431,7 +431,7 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, HaltError> {
+    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         {
             let pixels_per_layer = img.h() * img.w();
             let layers_count = match img.color_depth() {
@@ -492,7 +492,7 @@ impl ByLayer for CutBrightness {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, HaltError> 
+        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> 
     {
         let mut mat_res = {
             match layer.channel() {
