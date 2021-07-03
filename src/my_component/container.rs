@@ -18,6 +18,11 @@ impl MyColumn {
         MyColumn { pack }
     }
 
+    pub fn height_left(&self) -> i32 {
+        let children_height: i32 = (0..self.pack.children()).map(|ch_num| self.pack.child(ch_num).unwrap().h()).sum();
+        self.h() - children_height - self.pack.spacing() * (self.pack.children() - 1)
+    }
+
     pub fn end(&mut self) { self.pack.end(); }
 
     pub fn widget<'own>(&'own self) -> &'own group::Pack { 

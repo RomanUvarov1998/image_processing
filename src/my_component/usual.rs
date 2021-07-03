@@ -185,27 +185,27 @@ impl MyLabel {
 
         let mut label = MyLabel { inner, text: text.to_string() };
 
-        label.set_draw_callback();
+        let mut cbk = Self::create_draw_callback(text);
+        label.inner.set_size(w, 0);
+        cbk(&mut label.inner);
 
-        label.inner.set_size(w, 100);
-        label.inner.redraw();
+        label.inner.draw(cbk);
 
         label
     }
 
     pub fn set_text<'text>(&mut self, text: &'text str) {
         self.text = text.to_string();
-        self.set_draw_callback();
+        self.inner.draw(Self::create_draw_callback(text));
     }
 
-    fn set_draw_callback(&mut self) {
+    fn create_draw_callback(text: &str) -> Box<dyn FnMut(&mut frame::Frame) -> ()> {
         use fltk::draw;
-        
-        let content = self.text.clone();
+        let content = text.to_string();
         let mut content_wrapped = String::new();
-        let mut prev_label_size = Pos::new(0, 0);
+        let mut prev_label_size = Pos::new(-1, -1);
 
-        self.inner.draw(move |label| {
+        let cbk = move |label: &mut frame::Frame| {
             if label.w() != prev_label_size.x || label.h() != prev_label_size.y {
                 content_wrapped.clear();
                 prev_label_size = Pos::new(label.w(), label.h());
@@ -246,14 +246,15 @@ impl MyLabel {
                 label.w(), label.h(), 
                 fltk::enums::Align::Center);
             draw::pop_clip();
-        });
+        };
+
+        Box::new(cbk)
     }
 }
 
 impl Alignable for MyLabel {
     fn resize(&mut self, w: i32, h: i32) { 
         self.inner.set_size(w, h);
-        self.set_draw_callback();
         self.inner.redraw();
     }
 

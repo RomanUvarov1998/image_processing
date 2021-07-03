@@ -77,8 +77,8 @@ impl ProcessingLine {
         let mut whole_proc_prog_bar = MyProgressBar::new(w / 2, 30);
         whole_proc_prog_bar.hide();
             
-        let img_presenter = MyImgPresenter::new(
-            w / 2, h - lbl_init_img.h() - btns_row.h());
+        let presenter_h = init_img_col.height_left();
+        let img_presenter = MyImgPresenter::new(w / 2, presenter_h);
         
         init_img_col.end();
 
