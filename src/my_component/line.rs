@@ -599,7 +599,7 @@ impl ProcessingLine {
         // save all images
         for step_num in 0..self.steps.len() {
             let mut file_path = proj_path.clone();
-            file_path.push_str(&format!("/{}.bmp", step_num + 1));
+            file_path.push_str(&format!("/{}.jpg", step_num + 1));
 
             self.steps[step_num].image_ref().unwrap().try_save(&file_path)?;
         }
