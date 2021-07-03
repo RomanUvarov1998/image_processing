@@ -1,5 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
+use fltk::app::handle_main;
 use my_err::MyError;
 use crate::{my_component::Alignable};
 
@@ -73,6 +74,11 @@ fn main() -> Result<(), MyError> {
     let steps_line_rc = Rc::clone(&steps_line);
 
     wind.handle(move |w, event| {
+        if event.bits() == EVENT_CONTENT_CHANGED {
+            w.redraw();
+            return true;
+        }
+
         use fltk::enums::Event;
         match event {
             Event::Resize => {
@@ -92,4 +98,10 @@ fn main() -> Result<(), MyError> {
     }
 
     Ok(())
+}
+
+const EVENT_CONTENT_CHANGED: i32 = 40;
+
+pub fn notify_content_changed() {
+    fltk::app::handle_main(EVENT_CONTENT_CHANGED).unwrap();
 }

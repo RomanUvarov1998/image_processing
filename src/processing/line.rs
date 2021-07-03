@@ -280,9 +280,12 @@ impl ProcessingLine {
     fn add_step_widget(&mut self, filter: FilterBase) {
         self.scroll_pack.begin();
 
+        self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
         self.steps.push(ProcessingStep::new(self.w() / 2, self.h(), self.steps.len(), filter));
 
         self.scroll_pack.end();
+
+        self.scroll_pack.redraw();
     }
 
     fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {
@@ -396,6 +399,8 @@ impl ProcessingLine {
         self.lbl_init_img.set_text(&init_image.get_description());
 
         self.img_presenter.set_image(init_image)?;
+
+        crate::notify_content_changed();
 
         Ok(())
     }

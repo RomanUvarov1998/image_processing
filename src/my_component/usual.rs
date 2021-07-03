@@ -174,18 +174,21 @@ impl Alignable for MyToggleButton {
 impl MyComponentWithImage for button::ToggleButton {}
 
 pub struct MyLabel {
-    label: frame::Frame,
+    inner: frame::Frame,
     text: String
 }
 
 #[allow(unused)]
 impl MyLabel {
     pub fn new<'text>(text: &'text str, w: i32) -> Self {
-        let mut label = frame::Frame::default();
+        let mut inner = frame::Frame::default();
 
-        let mut label = MyLabel { label, text: text.to_string() };
+        let mut label = MyLabel { inner, text: text.to_string() };
 
         label.set_draw_callback();
+
+        label.inner.set_size(w, 100);
+        label.inner.redraw();
 
         label
     }
@@ -193,7 +196,6 @@ impl MyLabel {
     pub fn set_text<'text>(&mut self, text: &'text str) {
         self.text = text.to_string();
         self.set_draw_callback();
-        self.label.parent().unwrap().redraw();
     }
 
     fn set_draw_callback(&mut self) {
@@ -203,10 +205,10 @@ impl MyLabel {
         let mut content_wrapped = String::new();
         let mut prev_label_size = Pos::new(0, 0);
 
-        self.label.draw(move |l| {
-            if l.w() != prev_label_size.x || l.h() != prev_label_size.y {
+        self.inner.draw(move |label| {
+            if label.w() != prev_label_size.x || label.h() != prev_label_size.y {
                 content_wrapped.clear();
-                prev_label_size = Pos::new(l.w(), l.h());
+                prev_label_size = Pos::new(label.w(), label.h());
 
                 let mut line = String::new();
 
@@ -218,7 +220,7 @@ impl MyLabel {
                 while let Some(word) = words_iter.next() {
                     let (ww, wh) = draw::measure(&word, true);
                     
-                    if acc_w + ww > l.w() {
+                    if acc_w + ww > label.w() {
                         content_wrapped.push_str(&line);
                         content_wrapped.push('\n');
                         line.clear();
@@ -234,12 +236,15 @@ impl MyLabel {
                 acc_h += space_h;
                 content_wrapped.push_str(&line);
 
-                l.set_size(l.w(), acc_h);
+                label.set_size(label.w(), acc_h);
             }
 
-            draw::push_clip(l.x(), l.y(), l.w(), l.h());
+            draw::push_clip(label.x(), label.y(), label.w(), label.h());
             draw::set_color_rgb(0, 0, 0);
-            draw::draw_text2(&content_wrapped, l.x(), l.y(), l.w(), l.h(), fltk::enums::Align::TopLeft);
+            draw::draw_text2(&content_wrapped, 
+                label.x(), label.y(), 
+                label.w(), label.h(), 
+                fltk::enums::Align::Center);
             draw::pop_clip();
         });
     }
@@ -247,18 +252,18 @@ impl MyLabel {
 
 impl Alignable for MyLabel {
     fn resize(&mut self, w: i32, h: i32) { 
-        self.label.set_size(w, h);
+        self.inner.set_size(w, h);
         self.set_draw_callback();
-        self.label.redraw();
+        self.inner.redraw();
     }
 
-    fn x(&self) -> i32 { self.label.x() }
+    fn x(&self) -> i32 { self.inner.x() }
 
-    fn y(&self) -> i32 { self.label.y() }
+    fn y(&self) -> i32 { self.inner.y() }
 
-    fn w(&self) -> i32 { self.label.w() }
+    fn w(&self) -> i32 { self.inner.w() }
 
-    fn h(&self) -> i32 { self.label.h() }
+    fn h(&self) -> i32 { self.inner.h() }
 }
 
 

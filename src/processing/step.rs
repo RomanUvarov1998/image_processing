@@ -138,7 +138,6 @@ impl ProcessingStep {
 
     pub fn display_result(&mut self, processed_img: Option<Img>) -> Result<(), MyError>  {
         self.prog_bar.hide();
-
                         
         match processed_img {
             Some(img) => self.img_presenter.set_image(img)?,
