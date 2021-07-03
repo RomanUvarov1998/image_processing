@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}, utils::{LinesIter}};
+use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}, utils::{LinesIter}};
 use super::{ByLayer, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
@@ -102,7 +102,7 @@ impl Filter for MedianFilter {
 
             let actions_count = layers_count * pixels_per_layer;
 
-            prog_prov.reset(actions_count);
+            prog_prov.reset_and_set_total_actions_count(actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)
@@ -220,7 +220,7 @@ impl Filter for HistogramLocalContrast {
 
             let actions_count = layers_count * per_layer;
 
-            prog_prov.reset(actions_count);
+            prog_prov.reset_and_set_total_actions_count(actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)
@@ -443,7 +443,7 @@ impl Filter for CutBrightness {
 
             let actions_count = layers_count * pixels_per_layer;
 
-            prog_prov.reset(actions_count);
+            prog_prov.reset_and_set_total_actions_count(actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)

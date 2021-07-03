@@ -1,6 +1,6 @@
 use fltk::{app::{Sender}, group, prelude::{GroupExt}};
-use crate::{AssetItem, img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
-use super::{FilterBase, PADDING};
+use crate::{AssetItem, img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, processing::FilterBase};
+use super::PADDING;
 
 pub struct ProcessingStep {
     main_column: MyColumn,

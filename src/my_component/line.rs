@@ -2,7 +2,9 @@ use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
 use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
-use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, step::ProcessingStep};
+
+use super::{PADDING, step::ProcessingStep};
+use crate::processing::*;
 
 
 pub struct ProcessingLine {

@@ -1,10 +1,10 @@
 use crate::{filter::{filter_trait::{Filter}}};
 
-pub mod line;
-pub mod progress_provider;
-mod step;
+mod progress_provider;
 mod background_worker;
 
-const PADDING: i32 = 20;
+pub use background_worker::BackgroundWorker;
+pub use progress_provider::ProgressProvider;
+pub use progress_provider::Halted;
 
 pub type FilterBase = Box<dyn Filter>;

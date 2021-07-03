@@ -64,7 +64,7 @@ fn main() -> Result<(), MyError> {
     wind.set_damage_type(Damage::All | Damage::Child | Damage::Scroll);
     wind.make_resizable(true);
     
-    use crate::processing::line::ProcessingLine;
+    use crate::my_component::line::ProcessingLine;
     let steps_line = ProcessingLine::new(0, 0, WIN_WIDTH, WIN_HEIGHT);
 
     let steps_line = Rc::new(RefCell::new(steps_line));

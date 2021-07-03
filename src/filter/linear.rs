@@ -1,7 +1,6 @@
 use fltk::enums::ColorDepth;
-use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}, utils::{LinesIter, WordsIter}};
+use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}, utils::{LinesIter, WordsIter}};
 use super::{ByLayer, FilterIterator, filter_option::{ExtendValue, FilterWindowSize, ImgChannel, NormalizeOption, Parceable}, filter_trait::{Filter, StringFromTo, WindowFilter}};
-
 
 #[derive(Clone)]
 pub struct LinearGaussian {
@@ -58,7 +57,7 @@ impl Filter for LinearGaussian {
             };
             let actions_count = layers_count * pixels_per_layer;
     
-            prog_prov.reset(actions_count);
+            prog_prov.reset_and_set_total_actions_count(actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)
@@ -213,7 +212,7 @@ impl Filter for LinearCustom {
             };
             let all_actions_count = layers_count * pixels_per_layer;
 
-            prog_prov.reset(all_actions_count);
+            prog_prov.reset_and_set_total_actions_count(all_actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)
@@ -379,7 +378,7 @@ impl Filter for LinearMean {
             };
             let all_actions_count = layers_count * (row_sums + col_sums + diffs);
 
-            prog_prov.reset(all_actions_count);
+            prog_prov.reset_and_set_total_actions_count(all_actions_count);
         }
 
         super::process_each_layer(img, self, prog_prov)

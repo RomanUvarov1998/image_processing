@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod color_channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::progress_provider::{Halted, ProgressProvider}};
+use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::{Halted, ProgressProvider}};
 
 use self::filter_trait::WindowFilter;
 

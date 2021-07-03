@@ -28,7 +28,7 @@ impl<'own> ProgressProvider<'own> {
         }
     }
 
-    pub fn reset(&mut self, actions_count: usize) {
+    pub fn reset_and_set_total_actions_count(&mut self, actions_count: usize) {
         self.actions_completed = 0;
         self.actions_total = actions_count;
     }

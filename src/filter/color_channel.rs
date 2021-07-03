@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}};
+use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}};
 use super::{filter_option::{ImgChannel, Parceable}, filter_trait::{Filter, StringFromTo}, utils::{HistBuf, count_histogram}};
 
 
@@ -17,7 +17,7 @@ impl ExtractChannel {
 
 impl Filter for ExtractChannel {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        prog_prov.reset(img.d());
+        prog_prov.reset_and_set_total_actions_count(img.d());
 
         let mut img_res = img.clone();
 
@@ -82,7 +82,7 @@ impl NeutralizeChannel {
 
 impl Filter for NeutralizeChannel {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        prog_prov.reset(1);
+        prog_prov.reset_and_set_total_actions_count(1);
 
         let mut img_res = img.clone();
 
@@ -141,7 +141,7 @@ impl Filter for Rgb2Gray {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
-                prog_prov.reset(1);
+                prog_prov.reset_and_set_total_actions_count(1);
                 let res = img.clone();
                 prog_prov.complete_action()?;
                 Ok(res)
@@ -153,7 +153,7 @@ impl Filter for Rgb2Gray {
                 {
                     let pixels_per_layer = img.h() * img.w();
                     let actions_count = pixels_per_layer;
-                    prog_prov.reset(actions_count);
+                    prog_prov.reset_and_set_total_actions_count(actions_count);
                 }
     
                 const RGB_2_GRAY_RED: f64 = 0.299;
@@ -247,7 +247,7 @@ impl Filter for EqualizeHist {
                 ColorDepth::Rgba8 => img.d() - 1,
             };
             let actions_count = layers_count * (PIXEL_VALUES_COUNT * 2 + pixels_per_layer);
-            prog_prov.reset(actions_count);
+            prog_prov.reset_and_set_total_actions_count(actions_count);
         }
 
         let mut buffer: HistBuf = [0_f64; PIXEL_VALUES_COUNT];

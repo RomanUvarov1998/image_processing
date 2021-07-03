@@ -1,4 +1,4 @@
-use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, progress_provider::{Halted, ProgressProvider}}};
+use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}};
 use super::filter_option::ExtendValue;
 
 pub trait StringFromTo {
