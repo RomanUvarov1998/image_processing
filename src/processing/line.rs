@@ -75,7 +75,7 @@ impl ProcessingLine {
         btns_row.resize(btns_row.w(), *btns_heights.iter().max().unwrap());
         btns_row.end();
 
-        let lbl_init_img = MyLabel::new("Исходное изображение");
+        let lbl_init_img = MyLabel::new("Исходное изображение", w / 2);
 
         let mut whole_proc_prog_bar = MyProgressBar::new(w / 2, 30);
         whole_proc_prog_bar.hide();

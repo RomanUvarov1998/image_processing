@@ -1,5 +1,5 @@
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
-use crate::AssetItem;
+use crate::{AssetItem, utils::{Pos, WordsIter}};
 
 use super::{Alignable, TEXT_PADDING};
 
@@ -175,28 +175,82 @@ impl MyComponentWithImage for button::ToggleButton {}
 
 pub struct MyLabel {
     label: frame::Frame,
+    text: String
 }
 
 #[allow(unused)]
 impl MyLabel {
-    pub fn new<'text>(text: &'text str) -> Self {
+    pub fn new<'text>(text: &'text str, w: i32) -> Self {
         let mut label = frame::Frame::default();
-        label.set_label(text);
-        
-        let (w, h) = label.measure_label();
-        label.set_size(w + TEXT_PADDING, h + TEXT_PADDING);
-        
-        MyLabel { label }
+
+        let mut label = MyLabel { label, text: text.to_string() };
+
+        label.set_draw_callback();
+
+        label
     }
 
     pub fn set_text<'text>(&mut self, text: &'text str) {
-        self.label.set_label(text);
-        self.label.redraw_label();
+        self.text = text.to_string();
+        self.set_draw_callback();
+        self.label.parent().unwrap().redraw();
+    }
+
+    fn set_draw_callback(&mut self) {
+        use fltk::draw;
+        
+        let content = self.text.clone();
+        let mut content_wrapped = String::new();
+        let mut prev_label_size = Pos::new(0, 0);
+
+        self.label.draw(move |l| {
+            if l.w() != prev_label_size.x || l.h() != prev_label_size.y {
+                content_wrapped.clear();
+                prev_label_size = Pos::new(l.w(), l.h());
+
+                let mut line = String::new();
+
+                let mut acc_h = 0;
+                let mut acc_w = 0;
+                let (space_w, space_h) = draw::measure(" ", true);
+
+                let mut words_iter = WordsIter::new(&content, " ");
+                while let Some(word) = words_iter.next() {
+                    let (ww, wh) = draw::measure(&word, true);
+                    
+                    if acc_w + ww > l.w() {
+                        content_wrapped.push_str(&line);
+                        content_wrapped.push('\n');
+                        line.clear();
+                        acc_w = 0;
+                        acc_h += wh;
+                    }
+
+                    acc_w += ww + space_w;
+                    line.push_str(word);
+                    line.push(' ');
+                }
+                
+                acc_h += space_h;
+                content_wrapped.push_str(&line);
+
+                l.set_size(l.w(), acc_h);
+            }
+
+            draw::push_clip(l.x(), l.y(), l.w(), l.h());
+            draw::set_color_rgb(0, 0, 0);
+            draw::draw_text2(&content_wrapped, l.x(), l.y(), l.w(), l.h(), fltk::enums::Align::TopLeft);
+            draw::pop_clip();
+        });
     }
 }
 
 impl Alignable for MyLabel {
-    fn resize(&mut self, w: i32, h: i32) { self.label.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) { 
+        self.label.set_size(w, h);
+        self.set_draw_callback();
+        self.label.redraw();
+    }
 
     fn x(&self) -> i32 { self.label.x() }
 

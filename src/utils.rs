@@ -86,6 +86,10 @@ impl<'text> WordsIter<'text> {
         self.iter.next().unwrap_or("")
     }
 
+    pub fn next(&mut self) -> Option<&str> {
+        self.iter.next()
+    }
+
     pub fn len(&self) -> usize { self.iter.len() }
 }
 

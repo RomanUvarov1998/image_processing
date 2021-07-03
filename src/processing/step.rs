@@ -22,7 +22,7 @@ impl ProcessingStep {
 
         let mut main_column = MyColumn::new(w, h);
 
-        let label_step_name = MyLabel::new(&name);
+        let label_step_name = MyLabel::new(&name, w);
 
         let (tx, _) = app::channel::<Msg>();
 
