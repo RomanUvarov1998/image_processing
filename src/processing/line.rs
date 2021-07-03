@@ -1,18 +1,17 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
+use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
 use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
 use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, step::ProcessingStep};
 
 
 pub struct ProcessingLine {
     steps: Vec<ProcessingStep>,
-    rx: Receiver<Msg>,
+    tx: Sender<Msg>, rx: Receiver<Msg>,
     background_worker: BackgroundWorker,
+
     // graphical parts
-    img_presenter: MyImgPresenter,
     main_row: MyRow,
-    init_img_col: MyColumn,
 
     btns_row: MyRow,
     btn_project: MyMenuButton,
@@ -21,8 +20,11 @@ pub struct ProcessingLine {
     btn_export: MyMenuButton,
     btn_halt_processing: MyButton,
 
-    lbl_init_img: MyLabel,
+    init_img_col: MyColumn,
     whole_proc_prog_bar: MyProgressBar,
+    lbl_init_img: MyLabel,
+    img_presenter: MyImgPresenter,
+
     processing_col: MyColumn,
     scroll_area: group::Scroll,
     scroll_pack: group::Pack,    
@@ -99,7 +101,7 @@ impl ProcessingLine {
 
         let mut line = ProcessingLine {
             steps: Vec::<ProcessingStep>::new(),
-            rx,
+            tx, rx,
             background_worker,
             // graphical parts
             img_presenter,
@@ -278,7 +280,7 @@ impl ProcessingLine {
         self.scroll_pack.begin();
 
         self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
-        self.steps.push(ProcessingStep::new(self.w() / 2, self.h(), self.steps.len(), filter));
+        self.steps.push(ProcessingStep::new(self.w() / 2, self.h(), self.steps.len(), filter, self.tx));
 
         self.scroll_pack.end();
 

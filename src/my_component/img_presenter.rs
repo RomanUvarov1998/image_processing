@@ -114,9 +114,7 @@ impl MyImgPresenter {
             use fltk::draw;
             draw::push_clip(view_area.x(), view_area.y(), view_area.w(), view_area.h());
             
-            let mut presenter_rc = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
-            presenter_rc.draw_img(&mut drawable, draw_position);
-            drop(presenter_rc);
+            presenter_rc.borrow_mut().draw_img(&mut drawable, draw_position);
 
             draw::pop_clip();
         });

@@ -1,4 +1,4 @@
-use fltk::{app::{self, Sender}, group, prelude::{GroupExt}};
+use fltk::{app::{Sender}, group, prelude::{GroupExt}};
 use crate::{AssetItem, img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError};
 use super::{FilterBase, PADDING};
 
@@ -17,14 +17,12 @@ pub struct ProcessingStep {
 }
 
 impl ProcessingStep {
-    pub fn new(w: i32, h: i32, step_num: usize, filter: FilterBase) -> Self {
+    pub fn new(w: i32, h: i32, step_num: usize, filter: FilterBase, tx: fltk::app::Sender<Msg>) -> Self {
         let name: String = filter.get_description();
 
         let mut main_column = MyColumn::new(w, h);
 
         let label_step_name = MyLabel::new(&name, w);
-
-        let (tx, _) = app::channel::<Msg>();
 
         let mut btns_row = MyRow::new(w);
 
