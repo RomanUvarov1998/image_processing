@@ -2,7 +2,7 @@ use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
 use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
-use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, progress_provider::{HaltMessage}, step::ProcessingStep};
+use super::{FilterBase, PADDING, background_worker::{BackgroundWorker}, step::ProcessingStep};
 
 
 pub struct ProcessingLine {
@@ -63,11 +63,8 @@ impl ProcessingLine {
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
         btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
 
-        let (tx_halt, rx_halt) = std::sync::mpsc::channel::<HaltMessage>();
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
-        btn_halt_processing.widget_mut().set_callback(move |_| {
-            tx_halt.send(HaltMessage).unwrap();
-        });
+        btn_halt_processing.set_emit(tx, Msg::Proc(Proc::Halt));
         btn_halt_processing.set_active(false);
         
         btns_row.end();
@@ -98,7 +95,7 @@ impl ProcessingLine {
 
         main_row.end();
 
-        let background_worker = BackgroundWorker::new(tx.clone(), rx_halt);
+        let background_worker = BackgroundWorker::new(tx.clone());
 
         let mut line = ProcessingLine {
             steps: Vec::<ProcessingStep>::new(),
@@ -237,6 +234,9 @@ impl ProcessingLine {
                             self.whole_proc_prog_bar.set_value(whole_prog);
 
                             self.steps[step_num].display_progress(cur_percents);
+                        },
+                        Proc::Halt => {
+                            self.background_worker.halt_processing();
                         },
                         Proc::Completed { step_num } => {
                             let processing_continues: bool = match self.on_step_completed(step_num) {

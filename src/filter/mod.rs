@@ -47,7 +47,6 @@ impl Iterator for FilterIterator {
 fn process_with_window<T: WindowFilter>(
     init: &Matrix2D,      
     filter: &T, 
-    buf_filt_fcn: fn(f: &T, &mut [f64]) -> f64, 
     prog_prov: &mut ProgressProvider) 
     -> Result<Matrix2D, HaltError>
 {
@@ -72,8 +71,8 @@ fn process_with_window<T: WindowFilter>(
             let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
             pixel_buf[buf_ind] = layer_ext[pix_pos];
         }
-
-        let filter_result: f64 = buf_filt_fcn(filter, &mut pixel_buf[..]);
+        
+        let filter_result: f64 = filter.process_window(&mut pixel_buf[..]);
         
         res[pos_im - fil_half_size] = filter_result;
 

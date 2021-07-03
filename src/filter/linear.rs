@@ -87,7 +87,6 @@ impl ByLayer for LinearGaussian {
             _ => super::process_with_window(
                 layer.matrix(), 
                 self, 
-                LinearGaussian::process_window, 
                 prog_prov)?,
         };
 
@@ -324,7 +323,6 @@ impl ByLayer for LinearCustom {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
                 _ => super::process_with_window(layer.matrix(), self, 
-                    LinearCustom::process_window, 
                     prog_prov)?,
             }
         };

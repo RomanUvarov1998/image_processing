@@ -6,12 +6,15 @@ use super::{FilterBase, progress_provider::{HaltMessage, ProgressProvider}};
 
 pub struct BackgroundWorker {
     inner: Arc<Inner>,
+    tx_halt: std::sync::mpsc::SyncSender<HaltMessage>,
     _processing_thread_handle: JoinHandle<()>
 }
 
 impl BackgroundWorker {
-    pub fn new(progress_tx: fltk::app::Sender<Msg>, halt_msg_rx: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
+    pub fn new(progress_tx: fltk::app::Sender<Msg>) -> Self {
         let inner = Arc::new(Inner::new());
+
+        let (tx_halt, rx_halt) = std::sync::mpsc::sync_channel::<HaltMessage>(1);
 
         let inner_arc = Arc::clone(&inner);
         let _processing_thread_handle: JoinHandle<()> = thread::Builder::new()
@@ -27,8 +30,11 @@ impl BackgroundWorker {
 
                 let mut prog_prov = ProgressProvider::new(
                     &progress_tx, 
-                    &halt_msg_rx, 
+                    &rx_halt, 
                     task.step_num);
+
+                // leave the message buffer clean
+                while let Ok(_) = rx_halt.try_recv() {}
                 
                 let img_result = match task.filter_copy.filter(&task.img, &mut prog_prov) {
                     Ok(img) => {
@@ -55,7 +61,19 @@ impl BackgroundWorker {
         })
             .expect("Couldn't create a processing thread");
 
-        BackgroundWorker { inner, _processing_thread_handle }
+        BackgroundWorker { inner, tx_halt, _processing_thread_handle }
+    }
+
+    pub fn halt_processing(&mut self) {
+        use std::sync::mpsc::TrySendError;
+
+        match self.tx_halt.try_send(HaltMessage) {
+            Ok(()) => {},
+            Err(err) => match err {
+                TrySendError::Full(_) => {},
+                TrySendError::Disconnected(_) => panic!("Halt message rx was destroyed, but tx is still trying to send"),
+            },
+        }
     }
 
     pub fn put_task(&mut self, step_num: usize, filter_copy: FilterBase, img: Img, do_until_end: bool) {

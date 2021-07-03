@@ -160,7 +160,6 @@ impl ByLayer for MedianFilter {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
                 _ => super::process_with_window(layer.matrix(), self, 
-                    Self::process_window, 
                     prog_prov)?,
             }
         };

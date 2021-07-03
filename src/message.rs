@@ -25,6 +25,7 @@ pub enum StepOp {
 pub enum Proc {
     ChainIsStarted { step_num: usize, do_until_end: bool },
     Progress { step_num: usize, cur_percents: usize },
+    Halt,
     Completed { step_num: usize },
 }
 
