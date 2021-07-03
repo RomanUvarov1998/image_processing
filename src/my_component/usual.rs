@@ -193,10 +193,6 @@ impl MyLabel {
         self.label.set_label(text);
         self.label.redraw_label();
     }
-
-    pub fn set_width(&mut self, new_w: i32) {
-        self.label.set_size(new_w, self.label.h());
-    }
 }
 
 impl Alignable for MyLabel {
