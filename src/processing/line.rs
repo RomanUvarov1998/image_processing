@@ -32,11 +32,11 @@ impl ProcessingLine {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         let (tx, rx) = app::channel::<Msg>();
 
-        let mut main_row = MyRow::new(w, h).with_pos(x, y);
+        let mut main_row = MyRow::new(w).with_pos(x, y);
             
         let mut init_img_col = MyColumn::new(w / 2, h);
 
-        let mut btns_row = MyRow::new(w / 2, 100);
+        let mut btns_row = MyRow::new(w / 2);
 
         let mut btn_project = MyMenuButton::with_label("Проект");
         btn_project.add_emit("Зарузить", tx, Msg::Project(Project::LoadProject));
@@ -70,9 +70,6 @@ impl ProcessingLine {
         });
         btn_halt_processing.set_active(false);
         
-        let btns_heights = [btn_project.h(), btn_import.h(), btn_add_step.h(), btn_export.h(), btn_halt_processing.h()];
-
-        btns_row.resize(btns_row.w(), *btns_heights.iter().max().unwrap());
         btns_row.end();
 
         let lbl_init_img = MyLabel::new("Исходное изображение", w / 2);

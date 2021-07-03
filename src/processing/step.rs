@@ -26,18 +26,13 @@ impl ProcessingStep {
 
         let (tx, _) = app::channel::<Msg>();
 
-        let mut btns_row = MyRow::new(w, 100);
+        let mut btns_row = MyRow::new(w);
 
         let btn_run = MyMenuButton::with_img_and_tooltip(AssetItem::RunStepsChain, "Запустить");
         let btn_edit = MyButton::with_img_and_tooltip(AssetItem::EditStep, "Изменить");
         let btn_delete = MyButton::with_img_and_tooltip(AssetItem::DeleteStep, "Удалить");
         let btn_reorder = MyMenuButton::with_img_and_tooltip(AssetItem::ReorderSteps, "Переупорядочить");
 
-        let btns = [btn_run.h(), btn_edit.h(), btn_delete.h(), btn_reorder.h()];
-
-        btns_row.resize(
-            btns_row.w(), 
-            *btns.iter().max().unwrap());
         btns_row.end();        
 
         let mut prog_bar = MyProgressBar::new(w - PADDING, 30);

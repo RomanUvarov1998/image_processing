@@ -45,7 +45,8 @@ pub fn edit(app: app::App, filter: &mut Box<dyn Filter>) -> bool {
         .with_label("Редактирование");
 
     let mut main_col = MyColumn::new(WIN_WIDTH - PADDING, INP_HEIGHT);
-    let mut row = MyRow::new(WIN_WIDTH - PADDING, INP_HEIGHT);
+
+    let mut row = MyRow::new(WIN_WIDTH - PADDING);
 
     let (tx, rx) = app::channel::<StepEditMessage>();
 

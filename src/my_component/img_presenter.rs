@@ -19,7 +19,7 @@ impl MyImgPresenter {
     pub fn new(w: i32, h: i32) -> Self {
         let mut column = MyColumn::new(w, h);
 
-        let mut btns_row = MyRow::new(w, 100);
+        let mut btns_row = MyRow::new(w);
 
         let mut btn_fit = MyButton::with_img_and_tooltip(AssetItem::FitImage, "Уместить");
         btn_fit.set_active(false);
@@ -27,9 +27,6 @@ impl MyImgPresenter {
         let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip(AssetItem::CropImage, "Брать выделенное");
         btn_toggle_selection.set_active(false);
 
-        btns_row.resize(
-            btns_row.w(), 
-            std::cmp::max(btn_fit.h(), btn_toggle_selection.h()));
         btns_row.end();
 
         let mut frame_img = frame::Frame::default()
