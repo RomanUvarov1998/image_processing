@@ -32,8 +32,8 @@ impl BackgroundWorker {
                         ThreadExchange::HasProcResult(_) => true,
                         ThreadExchange::HasProcTask(_) => false,
                         ThreadExchange::HasSaveTask(_) => false,
+                        ThreadExchange::HasSaveResult(_) => true,
                     }).expect("Couldn't wait");
-
 
                 match guard.exch {
                     ThreadExchange::HasProcTask(ref mut task) => {
@@ -92,10 +92,17 @@ impl BackgroundWorker {
                     ThreadExchange::HasSaveTask(ref mut task) => {
                         let path = task.take().unwrap();
 
-                        for (step_num, step) in guard.proc_steps.iter().enumerate() {
+                        guard.exch = ThreadExchange::HasSaveResult ( Some( Ok(()) ) );
+
+                        'saving: for (step_num, step) in guard.proc_steps.iter().enumerate() {
                             let mut file_path = path.clone();
                             file_path.push_str(&format!("/{}.jpg", step_num + 1));
-                            step.step.img.as_ref().unwrap().try_save(&file_path).unwrap();
+                            
+                            if let Err(err) = step.step.img.as_ref().unwrap().try_save(&file_path) {
+                                guard.exch = ThreadExchange::HasSaveResult ( Some( Err ( err.into() ) ) );
+                                progress_tx.send(Msg::Project( Project::SaveResults ( SaveResults::Error ) ) );
+                                break 'saving;
+                            }
 
                             let percents = step_num * 100 / guard.proc_steps.len();
                             let last_result_is_saved = step_num == guard.proc_steps.len() - 1;
@@ -104,8 +111,6 @@ impl BackgroundWorker {
                                 last_result_is_saved
                             } ) ) );
                         }
-
-                        guard.exch = ThreadExchange::Empty;
 
                         drop(guard);
 
@@ -250,6 +255,17 @@ impl BackgroundWorker {
         self.inner.cv.notify_one();
     }
 
+    pub fn get_saving_steps_results_error(&self) -> Option<MyError> {
+        let mut guard = self.get_unlocked_guard();
+        match guard.exch {
+            ThreadExchange::HasSaveResult(ref mut result) => match result.take().unwrap() {
+                Ok(_) => None,
+                Err(err) => Some(err),
+            },
+            _ => None,
+        }
+    }
+
 
     fn get_unlocked_guard(&self) -> MutexGuard<Guarded> {
         self.inner.guarded.lock().expect("Couldn't lock")
@@ -305,9 +321,10 @@ impl Guarded {
 
 enum ThreadExchange {
     Empty,
-    HasProcTask(Option<ProcTask>),
-    HasProcResult(Option<ProcResult>),
-    HasSaveTask(Option<String>)
+    HasProcTask ( Option<ProcTask> ),
+    HasProcResult ( Option<ProcResult> ),
+    HasSaveTask ( Option<String> ),
+    HasSaveResult ( Option<Result<(), MyError>> ),
 }
 
 

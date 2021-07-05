@@ -51,6 +51,7 @@ pub enum MoveStep { Up, Down }
 
 #[derive(Debug, Copy, Clone)]
 pub enum SaveResults {
-    Started,
-    Completed { percents: usize, last_result_is_saved: bool }
+    Start,
+    Completed { percents: usize, last_result_is_saved: bool },
+    Error
 }

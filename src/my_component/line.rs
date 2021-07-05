@@ -66,7 +66,7 @@ impl ProcessingLine {
         btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
-        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::SaveResults ( SaveResults::Started ) ) );
+        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::SaveResults ( SaveResults::Start ) ) );
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
         btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::Halted ) );
@@ -170,7 +170,7 @@ impl ProcessingLine {
                         },
                         Project::SaveResults (msg) => {
                             match msg {
-                                SaveResults::Started => {
+                                SaveResults::Start => {
                                     let started = match self.try_start_saving_results() {
                                         Ok(started) => started,
                                         Err(err) => {
@@ -193,6 +193,12 @@ impl ProcessingLine {
                                         self.total_progress_bar.hide();
                                         show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
                                     }
+                                },
+                                SaveResults::Error => {
+                                    set_controls_active(self, true);
+                                    self.total_progress_bar.hide();
+                                    let err = self.background_worker.get_saving_steps_results_error();
+                                    show_err_msg(self.get_center_pos(), err.unwrap());
                                 },
                             }
                         }
