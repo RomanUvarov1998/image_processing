@@ -44,32 +44,32 @@ impl ProcessingLine {
         let mut btns_row = MyRow::new(w / 2);
 
         let mut btn_project = MyMenuButton::with_label("Проект");
-        btn_project.add_emit("Зарузить", tx, Msg::Project(Project::LoadProject));
-        btn_project.add_emit("Сохранить как", tx, Msg::Project(Project::SaveProject));
+        btn_project.add_emit("Зарузить", tx, Msg::Project ( Project::LoadProject ) );
+        btn_project.add_emit("Сохранить как", tx, Msg::Project ( Project::SaveProject ) );
 
         let mut btn_import = MyMenuButton::with_img_and_tooltip(AssetItem::Import, "Импорт");
         btn_import.add_emit("Файл", tx, 
-            Msg::Project(Project::Import(ImportType::File)));
+            Msg::Project(Project::Import ( ImportType::File ) ) );
         btn_import.add_emit("Системный буфер обмена", tx, 
-            Msg::Project(Project::Import(ImportType::SystemClipoard)));
+            Msg::Project(Project::Import ( ImportType::SystemClipoard ) ) );
             
         let mut btn_add_step = MyMenuButton::with_img_and_tooltip(AssetItem::AddStep, "Добавить шаг");
-        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::StepOp(StepOp::AddStep(AddStep::Rgb2Gray)));
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinMean)));
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinGauss)));
-        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::StepOp(StepOp::AddStep(AddStep::LinCustom)));
-        btn_add_step.add_emit("Медианный фильтр", tx, Msg::StepOp(StepOp::AddStep(AddStep::Median)));
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::StepOp(StepOp::AddStep(AddStep::HistogramLocalContrast)));
-        btn_add_step.add_emit("Обрезание яркости", tx, Msg::StepOp(StepOp::AddStep(AddStep::CutBrightness)));
-        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::StepOp(StepOp::AddStep(AddStep::HistogramEqualizer)));
-        btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::NeutralizeChannel)));
-        btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp(StepOp::AddStep(AddStep::ExtractChannel)));
+        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::StepOp ( StepOp::AddStep( AddStep::Rgb2Gray ) ) );
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinMean ) ) );
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinGauss ) ) );
+        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinCustom ) ) );
+        btn_add_step.add_emit("Медианный фильтр", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::Median ) ) );
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramLocalContrast ) ) );
+        btn_add_step.add_emit("Обрезание яркости", tx, Msg::StepOp( StepOp::AddStep ( AddStep::CutBrightness ) ) );
+        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramEqualizer ) ) );
+        btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::NeutralizeChannel ) ) );
+        btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
-        btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
+        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::SaveResults ( SaveResults::Started ) ) );
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
-        btn_halt_processing.set_emit(tx, Msg::Proc(Proc::Halted));
+        btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::Halted ) );
         btn_halt_processing.set_active(false);
         
         btns_row.end();
@@ -133,6 +133,18 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
+        let set_controls_active = |owner: &mut Self, active: bool| {
+            for step in owner.steps_widgets.iter_mut() {
+                step.set_buttons_active(active);
+            }
+
+            owner.btn_project.set_active(active);
+            owner.btn_import.set_active(active);
+            owner.btn_add_step.set_active(active);
+            owner.btn_export.set_active(active);
+            owner.btn_halt_processing.set_active(!active);
+        };
+
         'out: while let Some(msg) = self.rx.recv() {
             match msg {
                 Msg::Project(msg) => {
@@ -156,10 +168,32 @@ impl ProcessingLine {
                                 show_err_msg(self.get_center_pos(), err);
                             }
                         },
-                        Project::SaveResults => {
-                            match self.try_save_results() {
-                                Ok(_) => show_info_msg(self.get_center_pos(), "Результаты успешно сохранены"),
-                                Err(err) => show_err_msg(self.get_center_pos(), err),
+                        Project::SaveResults (msg) => {
+                            match msg {
+                                SaveResults::Started => {
+                                    let started = match self.try_start_saving_results() {
+                                        Ok(started) => started,
+                                        Err(err) => {
+                                            show_err_msg(self.get_center_pos(), err);
+                                            false
+                                        },
+                                    };
+
+                                    if started {
+                                        set_controls_active(self, false);
+                                        self.total_progress_bar.show();
+                                        self.total_progress_bar.set_value(0);
+                                    }
+                                },
+                                SaveResults::Completed { percents, last_result_is_saved } => {
+                                    self.total_progress_bar.set_value(percents);
+
+                                    if last_result_is_saved {
+                                        set_controls_active(self, true);
+                                        self.total_progress_bar.hide();
+                                        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
+                                    }
+                                },
                             }
                         }
                     };
@@ -207,18 +241,6 @@ impl ProcessingLine {
                     }
                 },
                 Msg::Proc(msg) => {
-                    let set_controls_active = |owner: &mut Self, active: bool| {
-                        for step in owner.steps_widgets.iter_mut() {
-                            step.set_buttons_active(active);
-                        }
-
-                        owner.btn_project.set_active(active);
-                        owner.btn_import.set_active(active);
-                        owner.btn_add_step.set_active(active);
-                        owner.btn_export.set_active(active);
-                        owner.btn_halt_processing.set_active(!active);
-                    };
-
                     match msg {
                         Proc::ChainIsStarted { step_num, process_until_end: do_until_end } => {
                             match self.try_start_chain(step_num, do_until_end) {
@@ -540,15 +562,13 @@ impl ProcessingLine {
         Ok(filter)
     }
 
-    fn try_save_results(&self) -> Result<bool, MyError> {
-        // check if there are any steps
-        if self.steps_widgets.len() == 0 {
-            return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
-        }
-
-        // check if all steps have images
-        if !self.background_worker.all_steps_have_result() {
-            return Err(MyError::new("не все шаги имеют результаты для сохранения".to_string()));
+    fn try_start_saving_results(&self) -> Result<bool, MyError> {
+        match self.background_worker.check_if_can_save_results() {
+            StartResultsSavingResult::NoSteps => 
+                return Err(MyError::new("В проекте нет шагов обработки для сохранения их результатов".to_string())),
+            StartResultsSavingResult::NotAllStepsHaveResult => 
+                return Err(MyError::new("Не все шаги имеют результаты для сохранения".to_string())),
+            StartResultsSavingResult::CanStart => {},
         }
 
         let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveDir);
@@ -558,7 +578,7 @@ impl ProcessingLine {
 
         let path_buf = dlg.filename();
 
-        let mut proj_path = match path_buf.to_str() {
+        let mut proj_path: String = match path_buf.to_str() {
             Some(path) => path.to_string(),
             None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
         };
@@ -575,14 +595,8 @@ impl ProcessingLine {
             Ok(_) => {},
             Err(err) => { return Err(MyError::new(err.to_string())); },
         };
-
-        // save all images
-        for step_num in 0..self.steps_widgets.len() {
-            let mut file_path = proj_path.clone();
-            file_path.push_str(&format!("/{}.jpg", step_num + 1));
-
-            self.background_worker.try_save_img_to_file(step_num, &file_path)?;
-        }
+        
+        self.background_worker.start_saving_steps_results(proj_path);
 
         Ok(true)
     }

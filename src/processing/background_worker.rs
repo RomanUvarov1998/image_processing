@@ -1,7 +1,7 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
 use fltk::{image::RgbImage, prelude::ImageExt};
 
-use crate::{img::{Img, PixelsArea}, message::{Msg, Proc}, my_err::MyError};
+use crate::{img::{Img, PixelsArea}, message::{Msg, Proc, Project, SaveResults}, my_err::MyError};
 use super::{FilterBase, progress_provider::{HaltMessage, ProgressProvider}};
 
 
@@ -25,58 +25,93 @@ impl BackgroundWorker {
             loop {
                 let mut guard = inner_arc.guarded.lock().expect("Couldn't lock");
 
-                guard = inner_arc.cv.wait_while(guard, |g| g.has_task() == false).expect("Couldn't wait");
+                guard = inner_arc.cv.wait_while(
+                    guard, 
+                    |g| match g.exch {
+                        ThreadExchange::Empty => true,
+                        ThreadExchange::HasProcResult(_) => true,
+                        ThreadExchange::HasProcTask(_) => false,
+                        ThreadExchange::HasSaveTask(_) => false,
+                    }).expect("Couldn't wait");
 
-                let task = guard.take_task();
-                let step_num = task.step_num;
 
-                let mut prog_prov = ProgressProvider::new(
-                    &progress_tx, 
-                    &rx_halt, 
-                    step_num,
-                    guard.proc_steps.len()
-                );
+                match guard.exch {
+                    ThreadExchange::HasProcTask(ref mut task) => {
+                        let task = task.take().unwrap();
 
-                // leave the message buffer clean
-                while let Ok(_) = rx_halt.try_recv() {}
-                
-                let step = &guard.proc_steps[step_num];
-                let mut img_to_process = if step_num == 0 {
-                    guard.initial_step.img.as_ref().unwrap()
-                } else {
-                    guard.proc_steps[step_num - 1].step.img.as_ref().unwrap()
-                };
+                        let step_num = task.step_num;
 
-                let cropped_copy: Option<Img>;
-                if let Some(crop_area) = task.crop_area {
-                    cropped_copy = Some(img_to_process.get_cropped_copy(crop_area));
-                    img_to_process = cropped_copy.as_ref().unwrap();
+                        let mut prog_prov = ProgressProvider::new(
+                            &progress_tx, 
+                            &rx_halt, 
+                            step_num,
+                            guard.proc_steps.len()
+                        );
+        
+                        // leave the message buffer clean
+                        while let Ok(_) = rx_halt.try_recv() {}
+                        
+                        let step = &guard.proc_steps[step_num];
+                        let mut img_to_process = if step_num == 0 {
+                            guard.initial_step.img.as_ref().unwrap()
+                        } else {
+                            guard.proc_steps[step_num - 1].step.img.as_ref().unwrap()
+                        };
+        
+                        let cropped_copy: Option<Img>;
+                        if let Some(crop_area) = task.crop_area {
+                            cropped_copy = Some(img_to_process.get_cropped_copy(crop_area));
+                            img_to_process = cropped_copy.as_ref().unwrap();
+                        }
+        
+                        let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
+                            Ok(img) => {
+                                assert!(prog_prov.all_actions_completed());
+                                Some(img)
+                            },
+                            Err(_halted) => None
+                        };
+        
+                        let task_result = ProcResult {
+                            img: match img_result {
+                                Some(ref img) => Some(img.get_drawable_copy()),
+                                None => None,
+                            },
+                            it_is_the_last_step: task.step_num == guard.proc_steps.len() - 1,
+                            processing_was_halted: img_result.is_none(),
+                        };
+        
+                        guard.proc_steps[task.step_num].step.img = img_result;
+        
+                        guard.exch = ThreadExchange::HasProcResult( Some(task_result) );
+
+                        drop(guard);
+
+                        progress_tx.send(Msg::Proc(Proc::CompletedStep { num: task.step_num }));
+                    },
+                    ThreadExchange::HasSaveTask(ref mut task) => {
+                        let path = task.take().unwrap();
+
+                        for (step_num, step) in guard.proc_steps.iter().enumerate() {
+                            let mut file_path = path.clone();
+                            file_path.push_str(&format!("/{}.jpg", step_num + 1));
+                            step.step.img.as_ref().unwrap().try_save(&file_path).unwrap();
+
+                            let percents = step_num * 100 / guard.proc_steps.len();
+                            let last_result_is_saved = step_num == guard.proc_steps.len() - 1;
+                            progress_tx.send(Msg::Project( Project::SaveResults ( SaveResults::Completed { 
+                                percents,
+                                last_result_is_saved
+                            } ) ) );
+                        }
+
+                        guard.exch = ThreadExchange::Empty;
+
+                        drop(guard);
+
+                    },
+                    _ => unreachable!(),
                 }
-
-                let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
-                    Ok(img) => {
-                        assert!(prog_prov.all_actions_completed());
-                        Some(img)
-                    },
-                    Err(_halted) => None
-                };
-
-                let task_result = ProcResult {
-                    img: match img_result {
-                        Some(ref img) => Some(img.get_drawable_copy()),
-                        None => None,
-                    },
-                    it_is_the_last_step: task.step_num == guard.proc_steps.len() - 1,
-                    processing_was_halted: img_result.is_none(),
-                };
-
-                guard.proc_steps[task.step_num].step.img = img_result;
-
-                guard.put_result(task_result);
-
-                drop(guard);
-
-                progress_tx.send(Msg::Proc(Proc::CompletedStep { num: task.step_num }));
             }
         })
             .expect("Couldn't create a processing thread");
@@ -155,7 +190,7 @@ impl BackgroundWorker {
 
     pub fn start_processing(&mut self, step_num: usize, crop_area: Option<PixelsArea>) {
         let mut guard = self.get_unlocked_guard();
-        guard.put_task( ProcTask { step_num, crop_area } );
+        guard.put_proc_task( ProcTask { step_num, crop_area } );
         drop(guard);
 
         self.inner.cv.notify_one();
@@ -195,14 +230,24 @@ impl BackgroundWorker {
     }
 
 
-    pub fn all_steps_have_result(&self) -> bool {
+    pub fn check_if_can_save_results(&self) -> StartResultsSavingResult {
         let guard = self.get_unlocked_guard();
-        guard.proc_steps.iter().all(|s| s.step.img.is_some())
+
+        if guard.proc_steps.len() == 0 {
+            StartResultsSavingResult::NoSteps
+        } else if guard.proc_steps.iter().any(|s| s.step.img.is_none()) {
+            StartResultsSavingResult::NotAllStepsHaveResult
+        } else {
+            StartResultsSavingResult::CanStart
+        }
     }
 
-    pub fn try_save_img_to_file(&self, step_num: usize, path: &str) -> Result<(), MyError> {
-        let guard = self.get_unlocked_guard();
-        guard.proc_steps[step_num].step.img.as_ref().unwrap().try_save(path)
+    pub fn start_saving_steps_results(&self, dir_path: String) {
+        let mut guard = self.get_unlocked_guard();
+        guard.put_save_task(dir_path);
+        drop(guard);
+
+        self.inner.cv.notify_one();
     }
 
 
@@ -240,32 +285,19 @@ struct Guarded {
 }
 
 impl Guarded {
-    fn has_task(&mut self) -> bool {
-        match self.exch {
-            ThreadExchange::Empty | ThreadExchange::HasResult (_) => false,
-            ThreadExchange::HasTask (_) => true,
-        }
+    fn put_proc_task(&mut self, task: ProcTask) {
+        self.exch = ThreadExchange::HasProcTask ( Some( task ) );
     }
-
-    fn put_task(&mut self, task: ProcTask) {
-        self.exch = ThreadExchange::HasTask(Some(task));
-    }
-
-    fn take_task(&mut self) -> ProcTask {
-        match self.exch {
-            ThreadExchange::Empty | ThreadExchange::HasResult (_) => unreachable!(),
-            ThreadExchange::HasTask (ref mut task) => task.take().expect("didn't found task"),
-        }
-    }
-
-    fn put_result(&mut self, task_result: ProcResult) {
-        self.exch = ThreadExchange::HasResult(Some(task_result));
+    
+    fn put_save_task(&mut self, dir_path: String) {
+        self.exch = ThreadExchange::HasSaveTask ( Some( dir_path ));
     }
 
     fn take_task_result(&mut self) -> ProcResult {
         match self.exch {
-            ThreadExchange::Empty | ThreadExchange::HasTask (_) => unreachable!(),
-            ThreadExchange::HasResult (ref mut result) => result.take().expect("didn't found task result"),
+            ThreadExchange::HasProcResult (ref mut result) => 
+                result.take().expect("didn't found task result"),
+            _ => unreachable!(),
         }
     }
 }
@@ -273,8 +305,9 @@ impl Guarded {
 
 enum ThreadExchange {
     Empty,
-    HasTask(Option<ProcTask>),
-    HasResult(Option<ProcResult>)
+    HasProcTask(Option<ProcTask>),
+    HasProcResult(Option<ProcResult>),
+    HasSaveTask(Option<String>)
 }
 
 
@@ -325,3 +358,5 @@ impl ProcStep {
 
 
 pub enum StartProcResult { NoInitialImg, NoPrevStepImg, CanStart }
+
+pub enum StartResultsSavingResult { NoSteps, NotAllStepsHaveResult, CanStart }
