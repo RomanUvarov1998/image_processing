@@ -182,7 +182,7 @@ impl ProcessingLine {
                                     if started {
                                         set_controls_active(self, false);
                                         self.total_progress_bar.show();
-                                        self.total_progress_bar.set_value(0);
+                                        self.total_progress_bar.reset("Экспорт".to_string());
                                     }
                                 },
                                 SaveResults::Completed { percents, last_result_is_saved } => {
@@ -248,7 +248,7 @@ impl ProcessingLine {
                                     set_controls_active(self, false);
     
                                     self.total_progress_bar.show();
-                                    self.total_progress_bar.set_value(0);
+                                    self.total_progress_bar.reset("Общий прогресс".to_string());
     
                                     for step_widget in &mut self.steps_widgets[step_num..] {
                                         step_widget.clear_displayed_result();

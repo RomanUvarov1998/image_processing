@@ -100,7 +100,7 @@ impl ProcessingStep {
 
     pub fn display_processing_start(&mut self) {
         self.prog_bar.show();
-        self.prog_bar.reset();
+        self.prog_bar.reset("Обработка".to_string());
         self.img_presenter.clear_image(); 
     }
 
