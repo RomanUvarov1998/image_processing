@@ -1,9 +1,5 @@
-use std::{
-	error,
-	string,
-	fmt
-};
-use fltk::prelude::*;
+use std::{error, fmt};
+use fltk::prelude::FltkError;
 use jpeg_encoder::EncodingError;
 
 #[derive(Debug, Clone)]
@@ -13,7 +9,7 @@ pub struct MyError {
 
 impl fmt::Display for MyError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "MyError occured: {}", self.msg)
+		write!(f, "{}", self.msg)
 	}
 }
 
@@ -28,14 +24,6 @@ impl MyError {
 
 	pub fn get_message(&self) -> String {
 		self.msg.clone()
-	}
-}
-
-impl From<string::FromUtf8Error> for MyError { 
-	fn from(err: string::FromUtf8Error) -> Self {
-		MyError {
-			msg: err.to_string()
-		}
 	}
 }
 
