@@ -1,16 +1,17 @@
 use std::{fs::{self, File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
-use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, ImageExt, WidgetExt}};
-use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, img::Img, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
+use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
+use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
 
 use super::{PADDING, step::ProcessingStep};
 use crate::processing::*;
 
 
 pub struct ProcessingLine {
-    steps: Vec<ProcessingStep>,
+    steps_widgets: Vec<ProcessingStep>,
     tx: Sender<Msg>, rx: Receiver<Msg>,
     background_worker: BackgroundWorker,
+    process_until_end: Option<bool>,
 
     // graphical parts
     main_row: MyRow,
@@ -23,7 +24,7 @@ pub struct ProcessingLine {
     btn_halt_processing: MyButton,
 
     init_img_col: MyColumn,
-    whole_proc_prog_bar: MyProgressBar,
+    total_progress_bar: MyProgressBar,
     lbl_init_img: MyLabel,
     img_presenter: MyImgPresenter,
 
@@ -68,15 +69,15 @@ impl ProcessingLine {
         btn_export.add_emit("Сохранить результаты", tx, Msg::Project(Project::SaveResults));
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
-        btn_halt_processing.set_emit(tx, Msg::Proc(Proc::Halt));
+        btn_halt_processing.set_emit(tx, Msg::Proc(Proc::Halted));
         btn_halt_processing.set_active(false);
         
         btns_row.end();
 
         let lbl_init_img = MyLabel::new("Исходное изображение", w / 2);
 
-        let mut whole_proc_prog_bar = MyProgressBar::new(w / 2, 30);
-        whole_proc_prog_bar.hide();
+        let mut total_progress_bar = MyProgressBar::new(w / 2, 30);
+        total_progress_bar.hide();
             
         let presenter_h = init_img_col.height_left();
         let img_presenter = MyImgPresenter::new(w / 2, presenter_h);
@@ -102,9 +103,11 @@ impl ProcessingLine {
         let background_worker = BackgroundWorker::new(tx.clone());
 
         let mut line = ProcessingLine {
-            steps: Vec::<ProcessingStep>::new(),
+            steps_widgets: Vec::<ProcessingStep>::new(),
             tx, rx,
             background_worker,
+            process_until_end: None,
+            
             // graphical parts
             img_presenter,
             main_row,
@@ -118,7 +121,7 @@ impl ProcessingLine {
             btn_halt_processing,
 
             lbl_init_img,
-            whole_proc_prog_bar,
+            total_progress_bar,
             processing_col,
             scroll_area,
             scroll_pack,
@@ -165,7 +168,7 @@ impl ProcessingLine {
                     match msg {
                         StepOp::AddStep(msg) => self.add_step_with_dlg(msg, app),
                         StepOp::Edit { step_num } => self.edit_step_with_dlg(step_num, app),
-                        StepOp::Delete { step_num } => self.delete_step(step_num),
+                        StepOp::Delete { step_num } => self.remove_step(step_num),
                         StepOp::Move { step_num, direction } => {
                             let (upper_num, lower_num) = match direction {
                                 MoveStep::Up => if step_num > 0 { 
@@ -173,7 +176,7 @@ impl ProcessingLine {
                                 } else { 
                                     break 'out; 
                                 },
-                                MoveStep::Down => if step_num < self.steps.len() - 1 {
+                                MoveStep::Down => if step_num < self.steps_widgets.len() - 1 {
                                     (step_num, step_num + 1)
                                 } else {
                                     break 'out;
@@ -182,21 +185,21 @@ impl ProcessingLine {
 
                             self.scroll_pack.begin();
 
-                            for step in self.steps[upper_num..].iter_mut() {
-                                step.clear_result();
+                            for step in self.steps_widgets[upper_num..].iter_mut() {
+                                step.clear_displayed_result();
                                 step.remove_self_from(&mut self.scroll_pack);
                             }
 
-                            self.steps.swap(upper_num, lower_num);
+                            self.steps_widgets.swap(upper_num, lower_num);
 
-                            for step in self.steps[upper_num..].iter_mut() {
+                            for step in self.steps_widgets[upper_num..].iter_mut() {
                                 step.draw_self_on(&mut self.scroll_pack);
                             }
 
                             self.scroll_pack.end();
 
-                            for step_num in upper_num..self.steps.len() {
-                                self.steps[step_num].update_btn_emits(step_num);
+                            for step_num in upper_num..self.steps_widgets.len() {
+                                self.steps_widgets[step_num].update_btn_emits(step_num);
                             }
 
                             self.main_row.widget_mut().redraw();
@@ -204,8 +207,8 @@ impl ProcessingLine {
                     }
                 },
                 Msg::Proc(msg) => {
-                    let set_all_controls_active = |owner: &mut Self, active: bool| {
-                        for step in owner.steps.iter_mut() {
+                    let set_controls_active = |owner: &mut Self, active: bool| {
+                        for step in owner.steps_widgets.iter_mut() {
                             step.set_buttons_active(active);
                         }
 
@@ -217,43 +220,45 @@ impl ProcessingLine {
                     };
 
                     match msg {
-                        Proc::ChainIsStarted { step_num, do_until_end } => {
-                            match self.try_start_step(step_num, do_until_end) {
+                        Proc::ChainIsStarted { step_num, process_until_end: do_until_end } => {
+                            match self.try_start_chain(step_num, do_until_end) {
                                 Ok(_) => {
-                                    set_all_controls_active(self, false);
+                                    set_controls_active(self, false);
     
-                                    self.whole_proc_prog_bar.show();
-                                    let whole_prog_min = step_num * 100 / self.steps.len();
-                                    self.whole_proc_prog_bar.set_value(whole_prog_min);
+                                    self.total_progress_bar.show();
+                                    self.total_progress_bar.set_value(0);
     
-                                    for step in &mut self.steps[step_num..] {
-                                        step.clear_result();
+                                    for step_widget in &mut self.steps_widgets[step_num..] {
+                                        step_widget.clear_displayed_result();
                                     }
                                 }
                                 Err(err) => show_err_msg(self.get_center_pos(), err)
                             };
                         },
-                        Proc::Progress { step_num, cur_percents } => {
-                            let whole_prog = (step_num * 100 + cur_percents) / self.steps.len();
-                            self.whole_proc_prog_bar.set_value(whole_prog);
-
-                            self.steps[step_num].display_progress(cur_percents);
+                        Proc::StepProgress { num, step_percents, total_percents } => {
+                            self.total_progress_bar.set_value(total_percents);
+                            self.steps_widgets[num].display_progress(step_percents);
                         },
-                        Proc::Halt => {
+                        Proc::Halted => {
                             self.background_worker.halt_processing();
                         },
-                        Proc::Completed { step_num } => {
-                            let processing_continues: bool = match self.on_step_completed(step_num) {
-                                Ok(continued) => continued,
-                                Err(err) => {
-                                    show_err_msg(self.get_center_pos(), err);
-                                    false
-                                },
-                            };
+                        Proc::CompletedStep { num } => {
+                            let mut proc_result = self.background_worker.get_result(); 
 
-                            if !processing_continues {
-                                set_all_controls_active(self, true);
-                                self.whole_proc_prog_bar.hide();
+                            self.steps_widgets[num].display_result(proc_result.get_image());
+                            self.steps_widgets[num].set_step_descr(&self.background_worker.get_step_descr(num));
+
+                            let processing_continues: bool = 
+                                self.process_until_end.unwrap()
+                                && !proc_result.it_is_the_last_step()
+                                && !proc_result.processing_was_halted();
+
+                            if processing_continues {
+                                self.start_step(num + 1);
+                            } else {
+                                set_controls_active(self, true);
+                                self.total_progress_bar.hide();
+                                self.process_until_end = None;
                             }
                         },
                     };
@@ -273,133 +278,108 @@ impl ProcessingLine {
 
     fn add_step_with_dlg(&mut self, msg: AddStep, app: app::App) -> () {
         match step_editor::create(msg, app) {
-            Some(filter) => self.add_step_widget(filter),
+            Some(filter) => {
+                self.add_step_to_background_worker_and_as_widget(filter);
+            },
             None => return,
         };
     }
 
-    fn add_step_widget(&mut self, filter: FilterBase) {
+    fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {
+        let step = &mut self.steps_widgets[step_num];
+
+        let edited = self.background_worker.edit_step(
+            step_num, 
+            |filter| {
+                step_editor::edit(app, filter)
+            }
+        );
+
+        if edited {
+            step.set_step_descr(&self.background_worker.get_step_descr(step_num));
+        }
+    }
+
+    fn remove_step(&mut self, step_num: usize) {
         self.scroll_pack.begin();
-
-        self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
-        self.steps.push(ProcessingStep::new(self.w() / 2, self.h(), self.steps.len(), filter, self.tx));
-
+        self.steps_widgets[step_num].remove_self_from(&mut self.scroll_pack);
         self.scroll_pack.end();
+
+        self.steps_widgets.remove(step_num);
+
+        for sn in step_num..self.steps_widgets.len() {
+            self.steps_widgets[sn].update_btn_emits(sn);
+        }
 
         crate::notify_content_changed();
-    }
 
-    fn edit_step_with_dlg(&mut self, step_num: usize, app: app::App) {
-        let step = &mut self.steps[step_num];
-
-        if step_editor::edit(app, step.filter_mut()) { 
-            step.update_step_description();
-        }
-    }
-
-    fn delete_step(&mut self, step_num: usize) {
-        self.scroll_pack.begin();
-        self.steps[step_num].remove_self_from(&mut self.scroll_pack);
-        self.scroll_pack.end();
-
-        self.steps.remove(step_num);
-
-        for sn in step_num..self.steps.len() {
-            self.steps[sn].update_btn_emits(sn);
-        }
-
-        self.scroll_pack.top_window().unwrap().set_damage(true);
+        self.background_worker.remove_step(step_num);
     }
 
 
-    fn try_start_step(&mut self, step_num: usize, do_until_end: bool) -> Result<(), MyError> {
-        assert!(self.steps.len() > step_num);
-
-        if !self.img_presenter.has_image() {
-            return Err(MyError::new("Необходимо загрузить изображение для обработки".to_string())); 
-        }
-
-        let init_img: Img = if step_num == 0 {
-            self.img_presenter.image_copy().unwrap()
-        } else {
-            match self.steps[step_num - 1].get_data_copy() {
-                Ok(img_copy) => img_copy,
-                Err(err) => { 
-                    return Err(MyError::new(format!("Необходим результат предыдущего шага для обработки текущего: {}", err.get_message()))); 
-                }
+    fn try_start_chain(&mut self, step_num: usize, process_until_end: bool) -> Result<(), MyError> {
+        match self.background_worker.check_if_can_start_processing(step_num) {
+            StartProcResult::NoInitialImg => {
+                Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
+            },
+            StartProcResult::NoPrevStepImg => {
+                Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
+            },
+            StartProcResult::CanStart => {
+                self.process_until_end = Some(process_until_end);
+                self.start_step(step_num);
+                Ok(())
             }
-        };
-            
-        let filter_copy = self.steps[step_num].filter().get_copy();
-
-        self.steps[step_num].start_processing();
-
-        self.background_worker.put_task(step_num, filter_copy, init_img, do_until_end);
-
-        Ok(())
+        }
     }
 
-    fn on_step_completed(&mut self, step_num: usize) -> Result<bool, MyError> {
-        let task_result = self.background_worker.take_result();
+    fn start_step(&mut self, step_num: usize) {
+        self.steps_widgets[step_num].display_processing_start();
 
-        let processing_continues = task_result.do_until_end && step_num < self.steps.len() - 1;
+        let crop_area = if step_num == 0 {
+            self.img_presenter.get_selection_rect()
+        } else {
+            self.steps_widgets[step_num - 1].get_selection_rect()
+        };
 
-        let processing_was_halted: bool = task_result.img.is_none();
-
-        self.steps[step_num].display_result(task_result.img)?;
-
-        if processing_was_halted {
-            return Ok(false);
-        }
-
-        if processing_continues {
-            self.try_start_step(step_num + 1, processing_continues)?;
-        }
-        
-        Ok(processing_continues)
+        self.background_worker.start_processing(step_num, crop_area);
     }
 
     
     fn try_import_initial_img(&mut self, import_type: ImportType) -> Result<(), MyError> {
-        if self.img_presenter.has_image() {
-            if small_dlg::confirm_with_dlg(self.get_center_pos(), "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?") {
-                for step in self.steps.iter_mut() {
-                    step.clear_result();
+        if self.background_worker.has_initial_img() {
+            if small_dlg::confirm_with_dlg(
+                self.get_center_pos(), 
+                "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?"
+            ) {
+                for step in self.steps_widgets.iter_mut() {
+                    step.clear_displayed_result();
                 }
             } else {
                 return Ok(());
             }
         }
 
-        let init_image = match import_type {
+        match import_type {
             ImportType::File => {
                 let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
                 dlg.show();
                 let path_buf = dlg.filename();
-        
-                if let Some(p) = path_buf.to_str() {
-                    if p.is_empty() { return Ok(()); }
-                }     
 
-                let sh_im = fltk::image::SharedImage::load(path_buf)?;
-
-                if sh_im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
-                if sh_im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
+                let path = path_buf.to_str().unwrap();
         
-                Img::from(sh_im)
+                if path.is_empty() { return Ok(()); }
+        
+                self.background_worker.load_initial_img(path)?;
             },
             ImportType::SystemClipoard => {
-                match app::event_clipboard_image() {
-                    Some(rgb_img) => Img::from(rgb_img),
-                    None => { return Err(MyError::new("Не удалось загрузить изображение из системного буфера".to_string())); },
-                }
+                todo!()
             },
         };
 
+        self.lbl_init_img.set_text(&self.background_worker.get_init_img_descr());
 
-        self.lbl_init_img.set_text(&init_image.get_description());
-
-        self.img_presenter.set_image(init_image)?;
+        self.img_presenter.set_img(self.background_worker.get_init_img_drawable());
 
         crate::notify_content_changed();
 
@@ -417,7 +397,7 @@ impl ProcessingLine {
 
     fn try_save_project(&self) -> Result<bool, MyError> {
         // check if there are any steps
-        if self.steps.len() == 0 {
+        if self.steps_widgets.len() == 0 {
             return Err(MyError::new("В проекте нет шагов для сохранения".to_string()));
         }
 
@@ -449,19 +429,18 @@ impl ProcessingLine {
 
         let mut file_content = String::new();
 
-        for step_num in 0..self.steps.len() {
-            let filter = self.steps[step_num].filter();
-            let filter_save_name: String = filter.get_save_name();
+        for step_num in 0..self.steps_widgets.len() {
+            let filter_save_name: String = self.background_worker.get_filter_save_name(step_num);
 
             file_content.push_str(&filter_save_name);
             file_content.push_str("\n");
 
-            if let Some(params_str) = filter.params_to_string() {
+            if let Some(params_str) = self.background_worker.get_filter_params_as_str(step_num) {
                 file_content.push_str(&params_str);
             }
             file_content.push_str("\n");
 
-            if step_num < self.steps.len() - 1 {
+            if step_num < self.steps_widgets.len() - 1 {
                 file_content.push_str(Self::FILTER_SAVE_SEPARATOR);
                 file_content.push_str("\n");
             }
@@ -474,12 +453,12 @@ impl ProcessingLine {
     }
     
     fn try_load_project(&mut self) -> Result<(), MyError> {
-        if self.steps.len() > 0 {
+        if self.steps_widgets.len() > 0 {
             if confirm_with_dlg(self.get_center_pos(),
                 "Есть несохраненный проект. Открыть вместо него?") 
             {
-                while self.steps.len() > 0 {
-                    self.delete_step(0);
+                while self.steps_widgets.len() > 0 {
+                    self.remove_step(0);
                 }
             } else {
                 return Ok(());
@@ -515,7 +494,7 @@ impl ProcessingLine {
         let mut filters_iter = utils::TextBlocksIter::new(
             &file_content, Self::FILTER_SAVE_SEPARATOR);
 
-        self.steps.reserve(filters_iter.len());
+        self.steps_widgets.reserve(filters_iter.len());
 
         'out: for filter_str in filters_iter.iter() {
             let mut lines_iter = utils::LinesIter::new(filter_str);
@@ -523,7 +502,9 @@ impl ProcessingLine {
             let filter_content = lines_iter.all_left(true);
 
             match Self::try_parce_filter(&filter_name, &filter_content) {
-                Ok(filter) => self.add_step_widget(filter),
+                Ok(filter) => {
+                    self.add_step_to_background_worker_and_as_widget(filter);
+                },
                 Err(err) => {
                     let question = format!(
                         "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
@@ -561,14 +542,13 @@ impl ProcessingLine {
 
     fn try_save_results(&self) -> Result<bool, MyError> {
         // check if there are any steps
-        if self.steps.len() == 0 {
+        if self.steps_widgets.len() == 0 {
             return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
         }
 
         // check if all steps have images
-        let all_steps_have_image = self.steps.iter().all(|s| s.has_image());
-        if !all_steps_have_image {
-            return Err(MyError::new("В проекте нет результатов для сохранения".to_string()));
+        if !self.background_worker.all_steps_have_result() {
+            return Err(MyError::new("не все шаги имеют результаты для сохранения".to_string()));
         }
 
         let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveDir);
@@ -597,14 +577,38 @@ impl ProcessingLine {
         };
 
         // save all images
-        for step_num in 0..self.steps.len() {
+        for step_num in 0..self.steps_widgets.len() {
             let mut file_path = proj_path.clone();
             file_path.push_str(&format!("/{}.jpg", step_num + 1));
 
-            self.steps[step_num].image_ref().unwrap().try_save(&file_path)?;
+            self.background_worker.try_save_img_to_file(step_num, &file_path)?;
         }
 
         Ok(true)
+    }
+    
+
+    fn add_step_to_background_worker_and_as_widget(&mut self, filter: FilterBase) {
+        self.background_worker.add_step(filter);
+
+        self.scroll_pack.begin();
+
+        self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
+
+        let step_num = self.steps_widgets.len();
+
+        let mut new_step = ProcessingStep::new(
+            self.w() / 2, self.h(), 
+            step_num, 
+            self.tx);
+
+        new_step.set_step_descr(&self.background_worker.get_step_descr(step_num));
+        
+        self.steps_widgets.push(new_step);
+
+        self.scroll_pack.end();
+
+        crate::notify_content_changed();
     }
 }
 
@@ -623,7 +627,7 @@ impl Alignable for ProcessingLine {
         let img_pres_y = self.btns_row.h() + self.lbl_init_img.h();
         self.img_presenter.resize(w / 2, h - img_pres_y);
 
-        for step in self.steps.iter_mut() {
+        for step in self.steps_widgets.iter_mut() {
             step.resize(w / 2, h);
         }
     }

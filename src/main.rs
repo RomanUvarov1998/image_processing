@@ -79,9 +79,14 @@ fn main() -> Result<(), MyError> {
         use fltk::enums::Event;
         match event {
             Event::Resize => {
-                steps_line_rc.borrow_mut().resize(w.w(), w.h());
-                w.redraw();
-                true
+                match steps_line_rc.try_borrow_mut() {
+                    Ok(mut ref_mut) => {
+                        ref_mut.resize(w.w(), w.h());
+                        w.redraw();
+                        true
+                    },
+                    Err(_) => false,
+                }
             },
             _ => false
         }

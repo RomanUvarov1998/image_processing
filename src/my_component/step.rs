@@ -1,8 +1,11 @@
-use fltk::{app::{Sender}, group, prelude::{GroupExt}};
-use crate::{AssetItem, img::Img, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, processing::FilterBase};
+use fltk::{app::{Sender}, group, image::RgbImage, prelude::{GroupExt}};
+use crate::{AssetItem, img::PixelsArea, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
 use super::PADDING;
 
 pub struct ProcessingStep {
+    step_num: usize,
+    tx: Sender<Msg>,
+
     main_column: MyColumn,
     btn_run: MyMenuButton,
     btn_edit: MyButton,
@@ -11,18 +14,13 @@ pub struct ProcessingStep {
     label_step_name: MyLabel,
     prog_bar: MyProgressBar,
     img_presenter: MyImgPresenter,
-    filter: FilterBase,
-    step_num: usize,
-    tx: Sender<Msg>
 }
 
 impl ProcessingStep {
-    pub fn new(w: i32, h: i32, step_num: usize, filter: FilterBase, tx: fltk::app::Sender<Msg>) -> Self {
-        let name: String = filter.get_description();
-
+    pub fn new(w: i32, h: i32, step_num: usize, tx: fltk::app::Sender<Msg>) -> Self {
         let mut main_column = MyColumn::new(w, h);
 
-        let label_step_name = MyLabel::new(&name, w);
+        let label_step_name = MyLabel::new("", w);
 
         let mut btns_row = MyRow::new(w);
 
@@ -50,7 +48,6 @@ impl ProcessingStep {
             label_step_name,
             prog_bar,
             img_presenter, 
-            filter,
             step_num,
             tx
         };
@@ -70,24 +67,19 @@ impl ProcessingStep {
     }
     
     
-    pub fn clear_result(&mut self) {
+    pub fn clear_displayed_result(&mut self) {
         self.img_presenter.clear_image();
     }
 
-    pub fn update_step_description(&mut self) {
-        let filter_description: String = self.filter.get_description();
-        let img_description: String = match self.img_presenter.image_ref() {
-            Some(img) => img.get_description(),
-            None => String::new(),
-        };
-        self.label_step_name.set_text(&format!("{} {}", &filter_description, &img_description));
+    pub fn set_step_descr(&mut self, descr: &str) {
+        self.label_step_name.set_text(descr);
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
         self.btn_run.add_emit("Только этот шаг", self.tx, 
-            Msg::Proc(Proc::ChainIsStarted { step_num, do_until_end: false }));
+            Msg::Proc(Proc::ChainIsStarted { step_num, process_until_end: false }));
         self.btn_run.add_emit("Этот шаг и все шаги ниже", self.tx, 
-            Msg::Proc(Proc::ChainIsStarted { step_num, do_until_end: true }));
+            Msg::Proc(Proc::ChainIsStarted { step_num, process_until_end: true }));
         self.btn_edit.set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
         self.btn_delete.set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
         self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Up } ));
@@ -102,23 +94,11 @@ impl ProcessingStep {
         self.btn_reorder.set_active(active);
     }
 
-
-    pub fn get_data_copy(&self) -> Result<Img, MyError> {
-        match self.img_presenter.image_copy() {
-            Some(img) => Ok(img),
-            None => Err(MyError::new("Шаг не содержит изображения".to_string())),
-        }
+    pub fn get_selection_rect(&self) -> Option<PixelsArea> {
+        self.img_presenter.get_selection_rect()
     }
 
-    pub fn has_image(&self) -> bool { self.img_presenter.has_image() }
-    
-    pub fn image_ref<'own>(&'own self) -> Option<&'own Img> { self.img_presenter.image_ref() }
-    
-    pub fn filter<'own>(&'own self) -> &'own FilterBase { &self.filter }
-    pub fn filter_mut<'own>(&'own mut self) -> &'own mut FilterBase { &mut self.filter }
-
-
-    pub fn start_processing(&mut self) {
+    pub fn display_processing_start(&mut self) {
         self.prog_bar.show();
         self.prog_bar.reset();
         self.img_presenter.clear_image(); 
@@ -126,20 +106,15 @@ impl ProcessingStep {
 
     pub fn display_progress(&mut self, percents: usize) {
         self.prog_bar.set_value(percents);
-        self.img_presenter.clear_image(); 
     }
 
-    pub fn display_result(&mut self, processed_img: Option<Img>) -> Result<(), MyError>  {
+    pub fn display_result(&mut self, processed_img: Option<RgbImage>) {
         self.prog_bar.hide();
                         
         match processed_img {
-            Some(img) => self.img_presenter.set_image(img)?,
+            Some(img) => self.img_presenter.set_img(img),
             None => self.img_presenter.clear_image(),
         }
-
-        self.update_step_description();
-
-        Ok(())
     }
 }
 

@@ -23,10 +23,10 @@ pub enum StepOp {
 
 #[derive(Debug, Copy, Clone)]
 pub enum Proc {
-    ChainIsStarted { step_num: usize, do_until_end: bool },
-    Progress { step_num: usize, cur_percents: usize },
-    Halt,
-    Completed { step_num: usize },
+    ChainIsStarted { step_num: usize, process_until_end: bool },
+    StepProgress { num: usize, step_percents: usize, total_percents: usize },
+    Halted,
+    CompletedStep { num: usize },
 }
 
 #[derive(Debug, Copy, Clone)]

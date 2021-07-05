@@ -10,6 +10,7 @@ pub struct HaltMessage;
 pub struct ProgressProvider<'own> {
     tx_progress: &'own Sender<Msg>,
     step_num: usize,
+    total_steps: usize,
     rx_halt: &'own Receiver<HaltMessage>,
     actions_total: usize,
     actions_completed: usize,
@@ -17,10 +18,11 @@ pub struct ProgressProvider<'own> {
 }
 
 impl<'own> ProgressProvider<'own> {
-    pub fn new(tx_progress: &'own Sender<Msg>, rx_halt: &'own Receiver<HaltMessage>, step_num: usize) -> Self {
+    pub fn new(tx_progress: &'own Sender<Msg>, rx_halt: &'own Receiver<HaltMessage>, step_num: usize, total_steps: usize) -> Self {
         ProgressProvider { 
             tx_progress, 
             step_num, 
+            total_steps,
             rx_halt,
             actions_total: 0,
             actions_completed: 0,
@@ -55,7 +57,8 @@ impl<'own> ProgressProvider<'own> {
     }
 
     fn send_progress_msg(&mut self) {
-        let cur_percents = self.actions_completed * 100 / self.actions_total;
-        self.tx_progress.send(Msg::Proc(Proc::Progress{ step_num: self.step_num, cur_percents }));
+        let step_percents = self.actions_completed * 100 / self.actions_total;
+        let total_percents = (self.step_num * 100 + step_percents) / self.total_steps;
+        self.tx_progress.send( Msg::Proc( Proc::StepProgress { num: self.step_num, step_percents, total_percents } ) );
     }
 }

@@ -283,18 +283,18 @@ impl Img {
     pub fn layer_mut<'own>(&'own mut self, ind: usize) -> &'own mut ImgLayer { &mut self.layers[ind] }
     pub fn layer<'own>(&'own self, ind: usize) -> &'own ImgLayer { &self.layers[ind] }
 
-    pub fn croped_copy(&self, top_left: PixelPos, bottom_right: PixelPos) -> Img {
-        assert!(bottom_right.col <= self.w());
-        assert!(bottom_right.row <= self.h());
+    pub fn get_cropped_copy(&self, area: PixelsArea) -> Img {
+        assert!(area.bottom_right.col <= self.w());
+        assert!(area.bottom_right.row <= self.h());
 
         let mut img = Img::empty_with_size(
-            bottom_right.col - top_left.col, 
-            bottom_right.row - top_left.row, 
+            area.bottom_right.col - area.top_left.col, 
+            area.bottom_right.row - area.top_left.row, 
             self.color_depth());
         
-        for pos in PixelsIterator::for_rect_area(top_left, bottom_right) {
+        for pos in PixelsIterator::for_rect_area(area.top_left, area.bottom_right) {
             for ch_num in 0..self.d() {
-                img.layer_mut(ch_num)[pos - top_left] = self.layer(ch_num)[pos];
+                img.layer_mut(ch_num)[pos - area.top_left] = self.layer(ch_num)[pos];
             }
         }
 
@@ -309,7 +309,7 @@ impl Img {
         LayersIterator::new(self)
     }
 
-    pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
+    pub fn get_drawable_copy(&self) -> image::RgbImage { 
         let mut all_pixels = Vec::<u8>::with_capacity(self.w() * self.h() * self.d());
 
         let layer_length = self.w() * self.h(); 
@@ -321,9 +321,9 @@ impl Img {
 
         let im_rgb = image::RgbImage::new(
             all_pixels.as_slice(), 
-            self.width as i32, self.height as i32,  self.color_depth)?;
+            self.width as i32, self.height as i32,  self.color_depth).unwrap();
 
-        Ok(im_rgb)
+        im_rgb
     }
 
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {
@@ -449,5 +449,17 @@ impl<'own> Iterator for LayersIterator<'own> {
             self.curr_layer_num = 0;
             return None;
         }        
+    }
+}
+
+
+pub struct PixelsArea {
+    top_left: PixelPos,
+    bottom_right: PixelPos
+}
+
+impl PixelsArea {
+    pub fn new(top_left: PixelPos, bottom_right: PixelPos) -> Self {
+        PixelsArea { top_left, bottom_right }
     }
 }

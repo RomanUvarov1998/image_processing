@@ -1,6 +1,6 @@
 use std::{cell::{RefCell}, rc::Rc};
-use fltk::{frame, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{AssetItem, img::{Img}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, my_err::MyError, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
+use fltk::{frame, image::RgbImage, prelude::{ImageExt, WidgetBase, WidgetExt}};
+use crate::{AssetItem, img::{PixelsArea}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
 
 
@@ -11,7 +11,6 @@ pub struct MyImgPresenter {
     btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
     img_pres_rect_rc: Option<Rc<RefCell<ImgPresRect>>>,
-    img: Option<Img>,
     tx_resized: Option<std::sync::mpsc::Sender<ImgPresMsg>>
 }
 
@@ -40,14 +39,12 @@ impl MyImgPresenter {
         MyImgPresenter { 
             column,
             btns_row, btn_fit, btn_toggle_selection, 
-            frame_img, img: None, img_pres_rect_rc: None,
+            frame_img, img_pres_rect_rc: None,
             tx_resized: None
         }
     }
 
     pub fn clear_image(&mut self) {
-        self.img = None;
-
         self.tx_resized = None;
 
         self.btn_fit.set_active(false);
@@ -68,19 +65,19 @@ impl MyImgPresenter {
         self.frame_img.redraw(); 
     }
 
-    pub fn set_image(&mut self, img: Img) -> Result<(), MyError> {
+    pub fn set_img(&mut self, img: RgbImage) {
         if let Some(_) = self.img_pres_rect_rc {
             self.clear_image();
         }
 
         let pres_rect = ImgPresRect::new(
-            Pos::size_of_img(&img), 
+            Pos::new(img.w(), img.h()), 
             RectArea::of_widget(&self.frame_img).with_zero_origin());
         let presenter_rc: Rc<RefCell<ImgPresRect>> = Rc::new(RefCell::new(pres_rect));
 
         let (tx, rx) = std::sync::mpsc::channel::<ImgPresMsg>();
 
-        self.set_draw_cbk(&img, Rc::clone(&presenter_rc), rx)?;
+        self.set_draw_cbk(img, Rc::clone(&presenter_rc), rx);
 
         self.img_pres_rect_rc = Some(presenter_rc);
 
@@ -89,26 +86,27 @@ impl MyImgPresenter {
         self.tx_resized = Some(tx.clone());
         self.set_frame_handle_cbk(tx);
 		
-        self.img = Some(img);
-
         self.frame_img.redraw(); 
-
-        Ok(())
     }
 
-    fn set_draw_cbk(&mut self, img: &Img, presenter_rc: Rc<RefCell<ImgPresRect>>, rx_draw: std::sync::mpsc::Receiver<ImgPresMsg>) -> Result<(), MyError> {
-        let mut drawable = img.get_drawable_copy()?;
-        
+    fn set_draw_cbk(
+        &mut self, 
+        mut drawable: RgbImage, 
+        presenter_rc: Rc<RefCell<ImgPresRect>>, 
+        rx_draw: std::sync::mpsc::Receiver<ImgPresMsg>
+    ) {
         self.frame_img.draw(move |frame| 
         {
             let view_area = RectArea::of_widget(frame);
             let view_area_size = view_area.size();
             let draw_position = Pos::of(frame);
 
-            let mut presenter_rc_mut = presenter_rc.try_borrow_mut().expect("Couldn't get &mut to presenter from frame.draw()");
+            let mut presenter_rc_mut = presenter_rc.borrow_mut();
+
             while let Ok(msg) = rx_draw.try_recv() {
                 presenter_rc_mut.consume_msg(msg, view_area_size);
             }
+
             drop(presenter_rc_mut);
 
             use fltk::draw;
@@ -118,8 +116,6 @@ impl MyImgPresenter {
 
             draw::pop_clip();
         });
-
-        Ok(())
     }
 
     fn set_btn_toggle_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
@@ -198,38 +194,27 @@ impl MyImgPresenter {
     }
 
 
-    pub fn has_image(&self) -> bool { self.img.is_some() }
+    pub fn get_selection_rect(&self) -> Option<PixelsArea> { 
+        if self.btn_toggle_selection.is_toggled() {
+            let presenter_rc_mut = self.img_pres_rect_rc
+                .as_ref()
+                .expect("image_copy(): Presenter rect is None")
+                .try_borrow()
+                .expect("Couldn't get & to presenter from image_copy()");
 
-    pub fn image_ref<'own>(&'own self) -> Option<&'own Img> { self.img.as_ref() }
+            let scale_rect: &ScalableRect = &presenter_rc_mut.scale_rect;
+            let sel_rect: &SelectionRect = presenter_rc_mut.selection_rect
+                .as_ref()
+                .expect("Selection mode btn is ON but there sel_rect is None");
 
-    pub fn image_copy(&self) -> Option<Img> { 
-        match self.img {
-            Some(ref img) => {
-                if self.btn_toggle_selection.is_toggled() {
-                    let presenter_rc_mut = self.img_pres_rect_rc
-                        .as_ref()
-                        .expect("image_copy(): Presenter rect is None")
-                        .try_borrow()
-                        .expect("Couldn't get & to presenter from image_copy()");
+            let tl: Pos = scale_rect.self_to_pixel(sel_rect.inner.tl());
+            let br: Pos = scale_rect.self_to_pixel(sel_rect.inner.br());
 
-                    let scale_rect: &ScalableRect = &presenter_rc_mut.scale_rect;
-                    let sel_rect: &SelectionRect = presenter_rc_mut.selection_rect
-                        .as_ref()
-                        .expect("Selection mode btn is ON but there sel_rect is None");
+            drop(presenter_rc_mut);
 
-                    let tl: Pos = scale_rect.self_to_pixel(sel_rect.inner.tl());
-                    let br: Pos = scale_rect.self_to_pixel(sel_rect.inner.br());
-
-                    drop(presenter_rc_mut);
-
-                    let cropped: Img = img.croped_copy(tl.to_pixel_pos(), br.to_pixel_pos());
-
-                    Some(cropped)
-                } else {
-                    Some(img.clone())
-                }
-            },
-            None => None,
+            Some(PixelsArea::new(tl.to_pixel_pos(), br.to_pixel_pos()))
+        } else {
+            None
         }
     }
 }
