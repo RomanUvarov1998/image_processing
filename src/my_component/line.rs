@@ -1,4 +1,4 @@
-use std::{fs::{self, File}, io::{Read, Write}, usize};
+use std::{fs::{File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
 use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
@@ -66,7 +66,7 @@ impl ProcessingLine {
         btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
-        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::SaveResults ( SaveResults::Start ) ) );
+        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::Export ( Export::Start ) ) );
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
         btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::Halted ) );
@@ -168,10 +168,10 @@ impl ProcessingLine {
                                 show_err_msg(self.get_center_pos(), err);
                             }
                         },
-                        Project::SaveResults (msg) => {
+                        Project::Export (msg) => {
                             match msg {
-                                SaveResults::Start => {
-                                    let started = match self.try_start_saving_results() {
+                                Export::Start => {
+                                    let started = match self.try_start_export() {
                                         Ok(started) => started,
                                         Err(err) => {
                                             show_err_msg(self.get_center_pos(), err);
@@ -185,20 +185,18 @@ impl ProcessingLine {
                                         self.total_progress_bar.reset("Экспорт".to_string());
                                     }
                                 },
-                                SaveResults::Completed { percents, last_result_is_saved } => {
+                                Export::Progress { percents } => {
                                     self.total_progress_bar.set_value(percents);
-
-                                    if last_result_is_saved {
-                                        set_controls_active(self, true);
-                                        self.total_progress_bar.hide();
-                                        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
-                                    }
                                 },
-                                SaveResults::Error => {
+                                Export::Completed => {
                                     set_controls_active(self, true);
                                     self.total_progress_bar.hide();
-                                    let err = self.background_worker.get_saving_steps_results_error();
-                                    show_err_msg(self.get_center_pos(), err.unwrap());
+                                    let export_result = self.background_worker.get_export_result().unwrap();
+
+                                    match export_result.result {
+                                        Ok(()) => show_info_msg(self.get_center_pos(), "Результаты успешно сохранены"),
+                                        Err(err) => show_err_msg(self.get_center_pos(), err),
+                                    }
                                 },
                             }
                         }
@@ -268,13 +266,13 @@ impl ProcessingLine {
                             self.steps_widgets[num].display_progress(step_percents);
                         },
                         Proc::Halted => {
-                            self.background_worker.halt_processing();
+                            self.background_worker.halt_processing().unwrap();
                         },
                         Proc::CompletedStep { num } => {
-                            let mut proc_result = self.background_worker.get_result(); 
+                            let mut proc_result = self.background_worker.get_proc_result().unwrap(); 
 
                             self.steps_widgets[num].display_result(proc_result.get_image());
-                            self.steps_widgets[num].set_step_descr(&self.background_worker.get_step_descr(num));
+                            self.steps_widgets[num].set_step_descr(&self.background_worker.get_step_descr(num).unwrap());
 
                             let processing_continues: bool = 
                                 self.process_until_end.unwrap()
@@ -321,10 +319,10 @@ impl ProcessingLine {
             |filter| {
                 step_editor::edit(app, filter)
             }
-        );
+        ).unwrap();
 
         if edited {
-            step.set_step_descr(&self.background_worker.get_step_descr(step_num));
+            step.set_step_descr(&self.background_worker.get_step_descr(step_num).unwrap());
         }
     }
 
@@ -341,7 +339,7 @@ impl ProcessingLine {
 
         crate::notify_content_changed();
 
-        self.background_worker.remove_step(step_num);
+        self.background_worker.remove_step(step_num).unwrap();
     }
 
 
@@ -370,7 +368,7 @@ impl ProcessingLine {
             self.steps_widgets[step_num - 1].get_selection_rect()
         };
 
-        self.background_worker.start_processing(step_num, crop_area);
+        self.background_worker.start_processing(step_num, crop_area).unwrap();
     }
 
     
@@ -398,16 +396,16 @@ impl ProcessingLine {
         
                 if path.is_empty() { return Ok(()); }
         
-                self.background_worker.load_initial_img(path)?;
+                self.background_worker.try_load_initial_img(path)?;
             },
             ImportType::SystemClipoard => {
                 todo!()
             },
         };
 
-        self.lbl_init_img.set_text(&self.background_worker.get_init_img_descr());
+        self.lbl_init_img.set_text(&self.background_worker.get_init_img_descr().unwrap());
 
-        self.img_presenter.set_img(self.background_worker.get_init_img_drawable());
+        self.img_presenter.set_img(self.background_worker.get_init_img_drawable().unwrap());
 
         crate::notify_content_changed();
 
@@ -458,12 +456,12 @@ impl ProcessingLine {
         let mut file_content = String::new();
 
         for step_num in 0..self.steps_widgets.len() {
-            let filter_save_name: String = self.background_worker.get_filter_save_name(step_num);
+            let filter_save_name: String = self.background_worker.get_filter_save_name(step_num).unwrap();
 
             file_content.push_str(&filter_save_name);
             file_content.push_str("\n");
 
-            if let Some(params_str) = self.background_worker.get_filter_params_as_str(step_num) {
+            if let Some(params_str) = self.background_worker.get_filter_params_as_str(step_num).unwrap() {
                 file_content.push_str(&params_str);
             }
             file_content.push_str("\n");
@@ -568,8 +566,8 @@ impl ProcessingLine {
         Ok(filter)
     }
 
-    fn try_start_saving_results(&self) -> Result<bool, MyError> {
-        match self.background_worker.check_if_can_save_results() {
+    fn try_start_export(&self) -> Result<bool, MyError> {
+        match self.background_worker.check_if_can_export() {
             StartResultsSavingResult::NoSteps => 
                 return Err(MyError::new("В проекте нет шагов обработки для сохранения их результатов".to_string())),
             StartResultsSavingResult::NotAllStepsHaveResult => 
@@ -597,12 +595,7 @@ impl ProcessingLine {
         let dir_name = format!("Results {}", Self::cur_time_str());
         proj_path.push_str(&dir_name);
         
-        match fs::create_dir(&proj_path) {
-            Ok(_) => {},
-            Err(err) => { return Err(MyError::new(err.to_string())); },
-        };
-        
-        self.background_worker.start_saving_steps_results(proj_path);
+        self.background_worker.start_export(proj_path).unwrap();
 
         Ok(true)
     }
@@ -622,7 +615,7 @@ impl ProcessingLine {
             step_num, 
             self.tx);
 
-        new_step.set_step_descr(&self.background_worker.get_step_descr(step_num));
+        new_step.set_step_descr(&self.background_worker.get_step_descr(step_num).unwrap());
         
         self.steps_widgets.push(new_step);
 

@@ -453,6 +453,7 @@ impl<'own> Iterator for LayersIterator<'own> {
 }
 
 
+#[derive(Debug)]
 pub struct PixelsArea {
     top_left: PixelPos,
     bottom_right: PixelPos

@@ -10,7 +10,7 @@ pub enum Project {
     Import (ImportType),
     SaveProject,
     LoadProject,
-    SaveResults (SaveResults),
+    Export (Export),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -50,8 +50,8 @@ pub enum AddStep {
 pub enum MoveStep { Up, Down }
 
 #[derive(Debug, Copy, Clone)]
-pub enum SaveResults {
+pub enum Export {
     Start,
-    Completed { percents: usize, last_result_is_saved: bool },
-    Error
+    Progress { percents: usize },
+    Completed
 }
