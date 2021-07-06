@@ -58,10 +58,6 @@ impl ProcessingStep {
     }
 
 
-    pub fn draw_self_on(&mut self, pack: &mut group::Pack) {
-        pack.add(self.main_column.widget_mut());
-    }
-
     pub fn remove_self_from(&mut self, pack: &mut group::Pack) {
         pack.remove(self.main_column.widget_mut());
     }

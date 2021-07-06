@@ -77,6 +77,11 @@ impl BackgroundWorker {
         guard.remove_step(step_num)
     }
 
+    pub fn swap_steps(&mut self, step_num1: usize, step_num2: usize) -> Result<(), BWError> {
+        let mut guard = self.get_unlocked_guard();
+        guard.swap_steps(step_num1, step_num2)
+    }
+
 
     pub fn check_if_can_start_processing(&self, step_num: usize) -> StartProcResult {
         let guard = self.get_unlocked_guard();

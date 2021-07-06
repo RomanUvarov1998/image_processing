@@ -208,6 +208,7 @@ impl ProcessingLine {
                         StepOp::Edit { step_num } => self.edit_step_with_dlg(step_num, app),
                         StepOp::Delete { step_num } => self.remove_step(step_num),
                         StepOp::Move { step_num, direction } => {
+
                             let (upper_num, lower_num) = match direction {
                                 MoveStep::Up => if step_num > 0 { 
                                     (step_num - 1, step_num) 
@@ -219,28 +220,17 @@ impl ProcessingLine {
                                 } else {
                                     break 'out;
                                 },
-                            };           
+                            };     
 
-                            self.scroll_pack.begin();
+                            self.background_worker.swap_steps(upper_num, lower_num).unwrap();
 
                             for step in self.steps_widgets[upper_num..].iter_mut() {
                                 step.clear_displayed_result();
-                                step.remove_self_from(&mut self.scroll_pack);
-                            }
-
-                            self.steps_widgets.swap(upper_num, lower_num);
-
-                            for step in self.steps_widgets[upper_num..].iter_mut() {
-                                step.draw_self_on(&mut self.scroll_pack);
-                            }
-
-                            self.scroll_pack.end();
-
-                            for step_num in upper_num..self.steps_widgets.len() {
-                                self.steps_widgets[step_num].update_btn_emits(step_num);
-                            }
-
-                            self.main_row.widget_mut().redraw();
+                            } 
+                            self.steps_widgets[upper_num].set_step_descr(&self.background_worker.get_step_descr(upper_num).unwrap());
+                            self.steps_widgets[lower_num].set_step_descr(&self.background_worker.get_step_descr(lower_num).unwrap());
+                            
+                            crate::notify_content_changed();
                         },
                     }
                 },

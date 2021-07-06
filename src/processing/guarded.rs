@@ -1,8 +1,6 @@
 use std::fs;
-
 use fltk::{image::RgbImage, prelude::ImageExt};
-
-use crate::{img::{Img, PixelsArea}, message::{Msg, Proc, Project, Export}, my_err::MyError};
+use crate::{img::{Img, PixelsArea}, message::{Export, Msg, Proc, Project}, my_err::MyError};
 use super::{BWError, FilterBase, ProgressProvider, progress_provider::HaltMessage, task_info::*};
 
 pub struct Guarded {
@@ -200,6 +198,15 @@ impl Guarded {
         Self::check_if_step_num_exceeds_bounds(&self.proc_steps, step_num)?;
         self.proc_steps.remove(step_num);
         Ok(())
+    }
+
+	pub fn swap_steps(&mut self, step_num1: usize, step_num2: usize) -> Result<(), BWError> {
+        Self::check_if_step_num_exceeds_bounds(&self.proc_steps, step_num1)?;
+        Self::check_if_step_num_exceeds_bounds(&self.proc_steps, step_num2)?; 
+
+		self.proc_steps.swap(step_num1, step_num2);
+
+		Ok(())
     }
 
 
