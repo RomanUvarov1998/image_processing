@@ -106,7 +106,7 @@ impl Guarded {
 
 		proc_steps[setup.step_num].step.img = img_result;
 
-		progress_tx.send(Msg::Proc(Proc::CompletedStep { num: setup.step_num }));
+		progress_tx.send(Msg::Proc(Proc::CompletedStep { step_num: setup.step_num }));
 
 		Ok(task_result)
 	}

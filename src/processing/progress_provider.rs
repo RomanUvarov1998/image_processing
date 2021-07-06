@@ -59,6 +59,6 @@ impl<'own> ProgressProvider<'own> {
     fn send_progress_msg(&mut self) {
         let step_percents = self.actions_completed * 100 / self.actions_total;
         let total_percents = (self.step_num * 100 + step_percents) / self.total_steps;
-        self.tx_progress.send( Msg::Proc( Proc::StepProgress { num: self.step_num, step_percents, total_percents } ) );
+        self.tx_progress.send( Msg::Proc( Proc::StepProgress { step_num: self.step_num, step_percents, total_percents } ) );
     }
 }

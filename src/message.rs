@@ -24,9 +24,9 @@ pub enum StepOp {
 #[derive(Debug, Copy, Clone)]
 pub enum Proc {
     ChainIsStarted { step_num: usize, process_until_end: bool },
-    StepProgress { num: usize, step_percents: usize, total_percents: usize },
+    StepProgress { step_num: usize, step_percents: usize, total_percents: usize },
     Halted,
-    CompletedStep { num: usize },
+    CompletedStep { step_num: usize },
 }
 
 #[derive(Debug, Copy, Clone)]
