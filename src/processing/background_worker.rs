@@ -1,6 +1,5 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use crate::img::PixelsArea;
-use super::{TaskMsg, guarded::{Guarded, StartProcResult}, progress_provider::HaltMessage};
+use super::{TaskMsg, guarded::{Guarded, StartProcResult}, progress_provider::HaltMessage, task::TaskBase};
 
 
 pub struct BackgroundWorker {
@@ -38,10 +37,9 @@ impl BackgroundWorker {
         self.get_unlocked_guard()
     }
 
-
-    pub fn start_import(&mut self, path: String) {
+    pub fn start_task(&mut self, task: TaskBase) {
         let mut guard = self.get_unlocked_guard();
-        guard.start_import(path);
+        guard.put_task(task);
         drop(guard);
 
         self.inner.cv.notify_one();
@@ -51,15 +49,7 @@ impl BackgroundWorker {
         let guard = self.get_unlocked_guard();
         guard.check_if_can_start_processing(step_num)
     }
-
-    pub fn start_processing(&mut self, step_num: usize, crop_area: Option<PixelsArea>) {
-        let mut guard = self.get_unlocked_guard();
-        guard.start_processing(step_num, crop_area);
-        drop(guard);
-
-        self.inner.cv.notify_one();
-    }
-
+    
     pub fn halt_processing(&mut self) {
         use std::sync::mpsc::TrySendError;
 
@@ -68,14 +58,6 @@ impl BackgroundWorker {
                 panic!("Rx_halt disconnected");
             }
         }
-    }
-
-    pub fn start_export(&self, dir_path: String) {
-        let mut guard = self.get_unlocked_guard();
-        guard.start_export(dir_path);
-        drop(guard);
-
-        self.inner.cv.notify_one();
     }
 
 

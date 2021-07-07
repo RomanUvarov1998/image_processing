@@ -217,7 +217,7 @@ impl ProcessingLine {
                 self.total_progress_bar.reset("Импорт".to_string());
                 self.current_task = Some( CurrentTask::Importing );
         
-                self.bw.start_import(path.to_string());
+                self.bw.start_task(ImportTask::new(path.to_string()));
             },
             ImportType::SystemClipoard => {
                 todo!()
@@ -388,7 +388,7 @@ impl ProcessingLine {
         let dir_name = format!("Results {}", Self::cur_time_str());
         proj_path.push_str(&dir_name);
         
-        self.bw.start_export(proj_path);
+        self.bw.start_task(ExportTask::new(proj_path));
 
         Ok(())        
     }
@@ -474,12 +474,11 @@ impl ProcessingLine {
                 self.total_progress_bar.show();
                 self.total_progress_bar.reset("Общий прогресс".to_string());
 
-                self.start_step_processing(step_num, process_until_end);
-
-
                 for step_widget in &mut self.steps_widgets[step_num..] {
                     step_widget.clear_displayed_result();
                 }
+
+                self.start_step_processing(step_num, process_until_end);
 
                 Ok(())
             }
@@ -630,7 +629,7 @@ impl ProcessingLine {
             self.steps_widgets[step_num - 1].get_selection_rect()
         };
 
-        self.bw.start_processing(step_num, crop_area);
+        self.bw.start_task(ProcTask::new(step_num, crop_area));
     }
 
     const PROJECT_EXT: &'static str = "ps";

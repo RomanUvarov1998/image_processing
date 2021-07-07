@@ -1,6 +1,6 @@
 use fltk::{image::RgbImage};
-use crate::{img::{Img, PixelsArea}, my_err::MyError};
-use super::{FilterBase, TaskMsg, progress_provider::HaltMessage, task_info::*};
+use crate::{img::Img, my_err::MyError};
+use super::{FilterBase, TaskMsg, progress_provider::HaltMessage, task::*};
 
 pub struct Guarded {
 	pub tx_notify: std::sync::mpsc::Sender<TaskMsg>,
@@ -40,11 +40,19 @@ impl Guarded {
         
         self.tx_notify.send( TaskMsg::Finished ).unwrap();
 	}
+    
+    pub fn put_task(&mut self, task: TaskBase) {
+        assert!(self.task.is_none());
+        self.task = Some(task);
+	}
+
+    pub fn get_task_result(&mut self) -> Result<(), MyError> {
+        self.task.take().unwrap().take_result()
+    }
 
 
-
-	pub fn start_import(&mut self, path: String) {
-        self.put_task(ImportTask::new(path));
+	pub fn get_initial_img(&self) -> &Img {
+        self.initial_step.img.as_ref().unwrap()
 	}
 
     pub fn has_initial_img(&self) -> bool {
@@ -88,7 +96,10 @@ impl Guarded {
     pub fn get_steps_count(&self) -> usize {
         self.proc_steps.len()
     }
-
+	
+	pub fn get_step_img(&self, step_num: usize) -> &Img {
+        self.proc_steps[step_num].img.as_ref().unwrap()
+	}
 
     pub fn check_if_can_start_processing(&self, step_num: usize) -> StartProcResult {
         if self.initial_step.img.is_none() {
@@ -98,14 +109,6 @@ impl Guarded {
         } else {
             StartProcResult::CanStart
         }
-    }
-
-    pub fn start_processing(
-		&mut self, 
-		step_num: usize, 
-		crop_area: Option<PixelsArea>
-	) {
-        self.put_task(ProcTask::new(step_num, crop_area));
     }
 
     pub fn get_step_descr(&self, step_num: usize) -> String {
@@ -118,7 +121,6 @@ impl Guarded {
             None => None,
         }
 	}
-
 
     pub fn get_filter_params_as_str(&self, step_num: usize) -> Option<String> {
         self.proc_steps[step_num].filter.params_to_string()
@@ -138,29 +140,6 @@ impl Guarded {
             StartResultsSavingResult::CanStart
         }
     }
-
-    pub fn start_export(&mut self, dir_path: String) {
-		self.put_task(ExportTask::new(dir_path))
-    }
-
-
-    pub fn get_task_result(&mut self) -> Result<(), MyError> {
-        self.task.take().unwrap().take_result()
-    }
-
-
-	pub fn get_initial_img(&self) -> &Img {
-        self.initial_step.img.as_ref().unwrap()
-	}
-	
-	pub fn get_step_img(&self, step_num: usize) -> &Img {
-        self.proc_steps[step_num].img.as_ref().unwrap()
-	}
-
-	fn put_task(&mut self, task: TaskBase) {
-        assert!(self.task.is_none());
-        self.task = Some(task);
-	}
 }
 
 
