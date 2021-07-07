@@ -41,9 +41,9 @@ impl ProcTask {
             &guarded.rx_halt);
 
         let mut img_to_process: &Img = if self.step_num == 0 {
-            guarded.try_get_initial_img()
+            guarded.get_initial_img()
         } else {
-            guarded.try_get_step_img(self.step_num - 1)
+            guarded.get_step_img(self.step_num - 1)
         };
 
         let cropped_copy: Img;

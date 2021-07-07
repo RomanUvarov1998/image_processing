@@ -149,11 +149,11 @@ impl Guarded {
     }
 
 
-	pub fn try_get_initial_img(&self) -> &Img {
+	pub fn get_initial_img(&self) -> &Img {
         self.initial_step.img.as_ref().unwrap()
 	}
 	
-	pub fn try_get_step_img(&self, step_num: usize) -> &Img {
+	pub fn get_step_img(&self, step_num: usize) -> &Img {
         self.proc_steps[step_num].img.as_ref().unwrap()
 	}
 
