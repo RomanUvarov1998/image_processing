@@ -9,6 +9,7 @@ use crate::processing::*;
 
 #[derive(Clone, Copy, Debug)]
 enum CurrentTask {
+    Importing,
     Processing { step_num: usize, process_until_end: bool },
     Exporting
 }
@@ -209,17 +210,19 @@ impl ProcessingLine {
                 let path = path_buf.to_str().unwrap();
         
                 if path.is_empty() { return Ok(()); }
+
+                self.img_presenter.clear_image();
+                self.set_controls_active(false);
+                self.total_progress_bar.show();
+                self.total_progress_bar.reset("Импорт".to_string());
+                self.current_task = Some( CurrentTask::Importing );
         
-                self.bw.unlocked().try_load_initial_img(path)?;
+                self.bw.start_import(path.to_string());
             },
             ImportType::SystemClipoard => {
                 todo!()
             },
         };
-
-        self.lbl_init_img.set_text(&self.bw.unlocked().get_init_img_descr());
-
-        self.img_presenter.set_img(self.bw.unlocked().get_init_img_drawable());
 
         Ok(())
     }
@@ -494,6 +497,7 @@ impl ProcessingLine {
         if let Some(task) = self.current_task {
             while let Ok(msg) = self.rx_task.try_recv() {
                 if let Err(err) = match task {
+                    CurrentTask::Importing => self.process_task_import_msg(msg),
                     CurrentTask::Processing { step_num, process_until_end } => 
                         self.process_task_processing_msg(msg, step_num, process_until_end),
                     CurrentTask::Exporting => 
@@ -507,6 +511,27 @@ impl ProcessingLine {
         }
 
         Ok(())
+    }
+
+    fn process_task_import_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
+        match msg {
+            TaskMsg::Progress { percents } => {
+                self.total_progress_bar.set_value(percents);
+                Ok(())
+            },
+            TaskMsg::Finished => {
+                self.current_task = None;
+
+                self.set_controls_active(true);
+                self.total_progress_bar.hide();
+
+                self.lbl_init_img.set_text(&self.bw.unlocked().get_init_img_descr());
+        
+                self.img_presenter.set_img(self.bw.unlocked().get_init_img_drawable());
+                
+                self.bw.unlocked().get_task_result()
+            },
+        }
     }
 
     fn process_task_export_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {

@@ -1,3 +1,5 @@
+use fltk::prelude::ImageExt;
+
 use crate::{img::{Img, PixelsArea}, my_err::MyError, processing::TaskMsg};
 use super::{ProgressProvider, guarded::Guarded};
 
@@ -72,9 +74,6 @@ impl Task for ProcTask {
 
     fn complete(&mut self, guarded: &mut Guarded) {
         self.result = Some(self.process(guarded));
-        guarded.tx_notify.send(TaskMsg::Finished).unwrap();
-
-        assert!(guarded.has_initial_img());
     }
 
     fn take_result(&mut self) -> Result<(), MyError> {
@@ -125,7 +124,56 @@ impl Task for ExportTask {
 
     fn complete(&mut self, guarded: &mut Guarded) {
         self.result = Some(self.export(guarded));
-        guarded.tx_notify.send( TaskMsg::Finished ).unwrap();
+    }
+
+    fn take_result(&mut self) -> Result<(), MyError> {
+        self.result.take().unwrap()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct ImportTask {
+    path: String,
+    result: Option<Result<(), MyError>>
+}
+
+impl ImportTask {
+    pub fn new(path: String) -> TaskBase {
+        let task = ImportTask {
+            path,
+            result: None
+        };
+        Box::new(task) as TaskBase
+    }
+
+    fn import(&self, guarded: &mut Guarded) -> Result<(), MyError> {
+        let sh_im = fltk::image::SharedImage::load(&self.path)?;
+
+        guarded.tx_notify.send(TaskMsg::Progress { percents: 50 } ).unwrap();
+
+        if sh_im.w() < 0 { 
+            return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); 
+        }
+        if sh_im.h() < 0 { 
+            return Err(MyError::new("Высота загруженного изображения < 0".to_string())); 
+        }
+
+        let img = Img::from(sh_im);
+
+        guarded.initial_step.img = Some(img);
+
+        Ok(())
+    }
+}
+
+impl Task for ImportTask {
+    fn is_completed(&self) -> bool {
+        self.result.is_some()
+    }
+
+    fn complete(&mut self, guarded: &mut Guarded) {
+        self.result = Some(self.import(guarded));
     }
 
     fn take_result(&mut self) -> Result<(), MyError> {

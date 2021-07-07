@@ -39,6 +39,14 @@ impl BackgroundWorker {
     }
 
 
+    pub fn start_import(&mut self, path: String) {
+        let mut guard = self.get_unlocked_guard();
+        guard.start_import(path);
+        drop(guard);
+
+        self.inner.cv.notify_one();
+    }
+
     pub fn check_if_can_start_processing(&self, step_num: usize) -> StartProcResult {
         let guard = self.get_unlocked_guard();
         guard.check_if_can_start_processing(step_num)

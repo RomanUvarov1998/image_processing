@@ -1,4 +1,4 @@
-use fltk::{image::RgbImage, prelude::ImageExt};
+use fltk::{image::RgbImage};
 use crate::{img::{Img, PixelsArea}, my_err::MyError};
 use super::{FilterBase, TaskMsg, progress_provider::HaltMessage, task_info::*};
 
@@ -37,23 +37,14 @@ impl Guarded {
         task.complete(self);
 
         self.task = Some(task);
+        
+        self.tx_notify.send( TaskMsg::Finished ).unwrap();
 	}
 
 
 
-	pub fn try_load_initial_img(&mut self, path: &str) -> Result<(), MyError> {
-        let sh_im = fltk::image::SharedImage::load(path)?;
-
-        println!("{}", path);
-
-        if sh_im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
-        if sh_im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
-
-        let img = Img::from(sh_im);
-
-        self.initial_step.img = Some(img);
-
-        Ok(())
+	pub fn start_import(&mut self, path: String) {
+        self.put_task(ImportTask::new(path));
 	}
 
     pub fn has_initial_img(&self) -> bool {
@@ -114,8 +105,7 @@ impl Guarded {
 		step_num: usize, 
 		crop_area: Option<PixelsArea>
 	) {
-		assert!(self.task.is_none());
-		self.task = Some(ProcTask::new(step_num, crop_area));
+        self.put_task(ProcTask::new(step_num, crop_area));
     }
 
     pub fn get_step_descr(&self, step_num: usize) -> String {
@@ -150,8 +140,7 @@ impl Guarded {
     }
 
     pub fn start_export(&mut self, dir_path: String) {
-		let task = ExportTask::new(dir_path);
-		self.put_task(task)
+		self.put_task(ExportTask::new(dir_path))
     }
 
 
