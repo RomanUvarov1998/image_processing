@@ -1,95 +1,134 @@
-use fltk::image::RgbImage;
-use crate::{img::PixelsArea, my_err::MyError};
-use super::BWError;
+use crate::{img::{Img, PixelsArea}, message::TaskMsg, my_err::MyError};
+use super::{ProgressProvider, guarded::Guarded};
 
 
-#[derive(Debug)]
-pub enum TaskInfo<T, R> {
-    Setup ( Option<T> ),
-    Result ( Option<Result<R, BWError>> )
+pub trait Task {
+    fn is_completed(&self) -> bool;
+    fn complete(&mut self, guarded: &mut Guarded);
+    fn take_result(&mut self) -> Result<(), MyError>;
 }
 
-impl<T, R> TaskInfo<T, R> where T: std::fmt::Debug, R: std::fmt::Debug {
-    pub fn setup(task: T) -> Self {
-        TaskInfo::Setup( Some(task) )
-    }
-    
-	pub fn result(result: Result<R, BWError>) -> Self {
-        TaskInfo::Result( Some(result) )
+pub type TaskBase = Box<dyn Task + Send>;
+
+
+pub struct ProcTask {
+    step_num: usize, 
+    crop_area: Option<PixelsArea>,
+    result: Option<Result<(), MyError>>
+}
+
+impl ProcTask {
+    pub fn new(step_num: usize, crop_area: Option<PixelsArea>) -> TaskBase {
+        let task = ProcTask {
+            step_num,
+            crop_area,
+            result: None
+        };
+        Box::new(task) as TaskBase
     }
 
-    pub fn is_setup(&self) -> bool {
-        match self {
-            TaskInfo::Setup(_) => true,
-            TaskInfo::Result(_) => false,
-        }
-    }
-
-	pub fn result_was_taken(&self) -> bool {
-		match self {
-			TaskInfo::Setup(_) => false,
-			TaskInfo::Result(result_op) => result_op.is_none(),
+    fn process(&self, guarded: &mut Guarded) -> Result<(), MyError> {
+		for step in &mut guarded.proc_steps[self.step_num + 1..] {
+			if let Some(_) = step.img {
+				step.img = None;
+			}
 		}
-	}
 
-    pub fn take_setup(&mut self) -> Result<T, BWError> {
-        if let TaskInfo::Setup(task_op) = self {
-            if let Some(task) = task_op.take() {
-                return Ok(task);
-            }
+        let mut prog_prov = ProgressProvider::new(
+            &guarded.tx_notify, 
+            &guarded.rx_halt);
+
+        let mut img_to_process: &Img = if self.step_num == 0 {
+            guarded.try_get_initial_img()
+        } else {
+            guarded.try_get_step_img(self.step_num - 1)
+        };
+
+        let cropped_copy: Img;
+        if let Some(crop_area) = self.crop_area {
+            cropped_copy = img_to_process.get_cropped_copy(crop_area);
+            img_to_process = &cropped_copy;
         }
 
-        Err ( BWError::TaskIsEmpty )
+        let step = &guarded.proc_steps[self.step_num];
+        let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
+            Ok(img) => {
+                assert!(prog_prov.all_actions_completed());
+                Some(img)
+            },
+            Err(_halted) => None
+        };
+
+        guarded.proc_steps[self.step_num].img = img_result;
+
+        Ok(())
+    }
+}
+
+impl Task for ProcTask {
+    fn is_completed(&self) -> bool {
+        self.result.is_some()
     }
 
-    pub fn take_result(&mut self) -> Result<R, BWError> {
-        if let TaskInfo::Result(result_op) = self {
-            if let Some(result) = result_op.take() {
-                return result;
-            }
+    fn complete(&mut self, guarded: &mut Guarded) {
+        self.result = Some(self.process(guarded));
+        guarded.tx_notify.send(TaskMsg::Finished).unwrap();
+
+        assert!(guarded.has_initial_img());
+    }
+
+    fn take_result(&mut self) -> Result<(), MyError> {
+        self.result.take().unwrap()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct ExportTask {
+    dir_path: String,
+    result: Option<Result<(), MyError>>
+}
+
+impl ExportTask {
+    pub fn new(dir_path: String) -> TaskBase {
+        let task = ExportTask {
+            dir_path,
+            result: None
+        };
+        Box::new(task) as TaskBase
+    }
+
+    fn export(&self, guarded: &mut Guarded) -> Result<(), MyError> {
+        if let Err(err) = std::fs::create_dir(&self.dir_path) {
+            return Err(MyError::new(err.to_string()));
+        };
+
+        for step_num in 0..guarded.proc_steps.len() {
+            let mut file_path = self.dir_path.clone();
+            file_path.push_str(&format!("/{}.jpg", step_num + 1));
+            
+            let step = &guarded.proc_steps[step_num];
+            step.img.as_ref().unwrap().try_save(&file_path)?;
+            
+            let percents = step_num * 100 / guarded.proc_steps.len();
+            guarded.tx_notify.send( TaskMsg::Progress { percents } ).unwrap();
         }
 
-        Err ( BWError::TaskResultIsEmpty )
+        Ok(())
     }
 }
 
-
-#[derive(Debug)]
-pub struct ProcSetup { 
-    pub step_num: usize, 
-    pub crop_area: Option<PixelsArea> 
-}
-
-
-#[derive(Debug)]
-pub struct ProcResult { 
-    pub img: Option<RgbImage>, 
-    pub it_is_the_last_step: bool,
-    pub processing_was_halted: bool
-}
-
-impl ProcResult {
-    pub fn it_is_the_last_step(&self) -> bool {
-        self.it_is_the_last_step
+impl Task for ExportTask {
+    fn is_completed(&self) -> bool {
+        self.result.is_some()
     }
 
-    pub fn processing_was_halted(&self) -> bool {
-        self.processing_was_halted
+    fn complete(&mut self, guarded: &mut Guarded) {
+        self.result = Some(self.export(guarded));
+        guarded.tx_notify.send( TaskMsg::Finished ).unwrap();
     }
 
-    pub fn get_image(&mut self) -> Option<RgbImage> {
-        self.img.take()
+    fn take_result(&mut self) -> Result<(), MyError> {
+        self.result.take().unwrap()
     }
-}
-
-
-#[derive(Debug)]
-pub struct ExportSetup {
-    pub dir_path: String
-}
-
-
-#[derive(Debug)]
-pub struct ExportResult {
-    pub result: Result<(), MyError>
 }

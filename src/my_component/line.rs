@@ -7,11 +7,19 @@ use super::{PADDING, step::ProcessingStep};
 use crate::processing::*;
 
 
+#[derive(Clone, Copy, Debug)]
+enum CurrentTask {
+    Processing { step_num: usize, process_until_end: bool },
+    Exporting
+}
+
+
 pub struct ProcessingLine {
     steps_widgets: Vec<ProcessingStep>,
     tx: Sender<Msg>, rx: Receiver<Msg>,
-    background_worker: BackgroundWorker,
-    process_until_end: Option<bool>,
+    bw: BackgroundWorker,
+    rx_task: std::sync::mpsc::Receiver<TaskMsg>,
+    current_task: Option<CurrentTask>,
 
     // graphical parts
     main_row: MyRow,
@@ -66,10 +74,10 @@ impl ProcessingLine {
         btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
-        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::Export ( Export::Start ) ) );
+        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::Export ) );
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
-        btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::Halted ) );
+        btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::HaltStepsChain ) );
         btn_halt_processing.set_active(false);
         
         btns_row.end();
@@ -100,13 +108,15 @@ impl ProcessingLine {
 
         main_row.end();
 
-        let background_worker = BackgroundWorker::new(tx.clone());
+        let (tx_task, rx_task) = std::sync::mpsc::channel::<TaskMsg>();
+        let background_worker = BackgroundWorker::new(tx_task);
 
         let mut line = ProcessingLine {
             steps_widgets: Vec::<ProcessingStep>::new(),
             tx, rx,
-            background_worker,
-            process_until_end: None,
+            bw: background_worker,
+            rx_task,
+            current_task: None,
             
             // graphical parts
             img_presenter,
@@ -141,8 +151,10 @@ impl ProcessingLine {
             } {
                 show_err_msg(self.get_center_pos(), err);
             }
-        }            
-              
+        }      
+
+        crate::notify_content_changed();  
+        
         Ok(())
     }
 
@@ -152,7 +164,7 @@ impl ProcessingLine {
             Project::Import (import_type) => self.process_project_import_msg(import_type),
             Project::SaveProject => self.process_project_save_msg(),
             Project::LoadProject => self.process_project_load_msg(),
-            Project::Export (msg) => self.process_project_export_msg(msg)
+            Project::Export => self.process_project_start_export_msg()
         }
     }
 
@@ -167,16 +179,15 @@ impl ProcessingLine {
 
     fn process_proc_msg(&mut self, msg: Proc) -> Result<(), MyError> {
         match msg {
-            Proc::ChainIsStarted { step_num, process_until_end } => self.process_proc_start_chain_msg(step_num, process_until_end),
-            Proc::StepProgress { step_num, step_percents, total_percents } => self.process_proc_step_progress_msg(step_num, step_percents, total_percents),
-            Proc::Halted => self.process_proc_halt_msg(),
-            Proc::CompletedStep { step_num } => self.process_proc_complete_step_msg(step_num),
+            Proc::StartStepsChain { step_num, process_until_end } => 
+                self.process_proc_start_chain_msg(step_num, process_until_end),
+            Proc::HaltStepsChain => self.process_proc_halt_msg(),
         }
     }
 
 
     fn process_project_import_msg(&mut self, import_type: ImportType) -> Result<(), MyError> {
-        if self.background_worker.has_initial_img() {
+        if self.bw.unlocked().has_initial_img() {
             if small_dlg::confirm_with_dlg(
                 self.get_center_pos(), 
                 "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?"
@@ -199,18 +210,16 @@ impl ProcessingLine {
         
                 if path.is_empty() { return Ok(()); }
         
-                self.background_worker.try_load_initial_img(path)?;
+                self.bw.unlocked().try_load_initial_img(path)?;
             },
             ImportType::SystemClipoard => {
                 todo!()
             },
         };
 
-        self.lbl_init_img.set_text(&self.background_worker.get_init_img_descr().unwrap());
+        self.lbl_init_img.set_text(&self.bw.unlocked().get_init_img_descr());
 
-        self.img_presenter.set_img(self.background_worker.get_init_img_drawable().unwrap());
-
-        crate::notify_content_changed();
+        self.img_presenter.set_img(self.bw.unlocked().get_init_img_drawable());
 
         Ok(())
     }
@@ -250,12 +259,12 @@ impl ProcessingLine {
         let mut file_content = String::new();
 
         for step_num in 0..self.steps_widgets.len() {
-            let filter_save_name: String = self.background_worker.get_filter_save_name(step_num).unwrap();
+            let filter_save_name: String = self.bw.unlocked().get_filter_save_name(step_num);
 
             file_content.push_str(&filter_save_name);
             file_content.push_str("\n");
 
-            if let Some(params_str) = self.background_worker.get_filter_params_as_str(step_num).unwrap() {
+            if let Some(params_str) = self.bw.unlocked().get_filter_params_as_str(step_num) {
                 file_content.push_str(&params_str);
             }
             file_content.push_str("\n");
@@ -342,63 +351,43 @@ impl ProcessingLine {
         Ok(())
     }
 
-    fn process_project_export_msg(&mut self, msg: Export) -> Result<(), MyError> {
-        match msg {
-            Export::Start => {
-                match self.background_worker.check_if_can_export() {
-                    StartResultsSavingResult::NoSteps => 
-                        return Err(MyError::new("В проекте нет шагов обработки для сохранения их результатов".to_string())),
-                    StartResultsSavingResult::NotAllStepsHaveResult => 
-                        return Err(MyError::new("Не все шаги имеют результаты для сохранения".to_string())),
-                    StartResultsSavingResult::CanStart => {},
-                }
-        
-                let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveDir);
-                dlg.set_title("Сохранение результатов");
-        
-                dlg.show(); 
-        
-                let path_buf = dlg.filename();
-        
-                let mut proj_path: String = match path_buf.to_str() {
-                    Some(path) => path.to_string(),
-                    None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
-                };
-        
-                if proj_path.is_empty() {
-                    return Ok(());
-                }
-        
-                proj_path.push_str("/");
-                let dir_name = format!("Results {}", Self::cur_time_str());
-                proj_path.push_str(&dir_name);
-                
-                self.background_worker.start_export(proj_path).unwrap();
-
-                self.set_controls_active(false);
-                self.total_progress_bar.show();
-                self.total_progress_bar.reset("Экспорт".to_string());
-
-                Ok(())
-            },
-            Export::Progress { percents } => {
-                self.total_progress_bar.set_value(percents);
-                Ok(())
-            },
-            Export::Completed => {
-                self.set_controls_active(true);
-                self.total_progress_bar.hide();
-                let export_result = self.background_worker.get_export_result().unwrap();
-
-                match export_result.result {
-                    Ok(()) => {
-                        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
-                        Ok(())
-                    },
-                    Err(err) => Err(err),
-                }
-            },
+    fn process_project_start_export_msg(&mut self) -> Result<(), MyError> {
+        match self.bw.unlocked().check_if_can_export() {
+            StartResultsSavingResult::NoSteps => 
+                return Err(MyError::new("В проекте нет шагов обработки для сохранения их результатов".to_string())),
+            StartResultsSavingResult::NotAllStepsHaveResult => 
+                return Err(MyError::new("Не все шаги имеют результаты для сохранения".to_string())),
+            StartResultsSavingResult::CanStart => {},
         }
+
+        let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveDir);
+        dlg.set_title("Сохранение результатов");
+
+        dlg.show(); 
+
+        let path_buf = dlg.filename();
+
+        let mut proj_path: String = match path_buf.to_str() {
+            Some(path) => path.to_string(),
+            None => { return Err(MyError::new("Не получилось перевести выбранный путь в строку".to_string())); },
+        };
+
+        if proj_path.is_empty() {
+            return Ok(());
+        }
+        
+        self.set_controls_active(false);
+        self.total_progress_bar.show();
+        self.total_progress_bar.reset("Экспорт".to_string());
+        self.current_task = Some( CurrentTask::Exporting );
+
+        proj_path.push_str("/");
+        let dir_name = format!("Results {}", Self::cur_time_str());
+        proj_path.push_str(&dir_name);
+        
+        self.bw.start_export(proj_path);
+
+        Ok(())        
     }
 
 
@@ -413,15 +402,15 @@ impl ProcessingLine {
     fn process_step_op_edit_step_msg(&mut self, step_num: usize, app: app::App) -> Result<(), MyError> {
         let step = &mut self.steps_widgets[step_num];
 
-        let edited = self.background_worker.edit_step(
+        let edited = self.bw.unlocked().edit_step(
             step_num, 
             |filter| {
                 step_editor::edit(app, filter)
             }
-        ).unwrap();
+        );
 
         if edited {
-            step.set_step_descr(&self.background_worker.get_step_descr(step_num).unwrap());
+            step.set_step_descr(&self.bw.unlocked().get_step_descr(step_num));
         }
 
         Ok(())
@@ -438,9 +427,7 @@ impl ProcessingLine {
             self.steps_widgets[sn].update_btn_emits(sn);
         }
 
-        crate::notify_content_changed();
-
-        self.background_worker.remove_step(step_num).unwrap();
+        self.bw.unlocked().remove_step(step_num);
     
         Ok(())
     }
@@ -459,22 +446,20 @@ impl ProcessingLine {
             },
         };     
 
-        self.background_worker.swap_steps(upper_num, lower_num).unwrap();
+        self.bw.unlocked().swap_steps(upper_num, lower_num);
 
         for step in self.steps_widgets[upper_num..].iter_mut() {
             step.clear_displayed_result();
         } 
-        self.steps_widgets[upper_num].set_step_descr(&self.background_worker.get_step_descr(upper_num).unwrap());
-        self.steps_widgets[lower_num].set_step_descr(&self.background_worker.get_step_descr(lower_num).unwrap());
-        
-        crate::notify_content_changed();
+        self.steps_widgets[upper_num].set_step_descr(&self.bw.unlocked().get_step_descr(upper_num));
+        self.steps_widgets[lower_num].set_step_descr(&self.bw.unlocked().get_step_descr(lower_num));
 
         Ok(())
     }
 
 
     fn process_proc_start_chain_msg(&mut self, step_num: usize, process_until_end: bool) -> Result<(), MyError> {
-        match self.background_worker.check_if_can_start_processing(step_num) {
+        match self.bw.check_if_can_start_processing(step_num) {
             StartProcResult::NoInitialImg => {
                 Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
             },
@@ -482,13 +467,12 @@ impl ProcessingLine {
                 Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             },
             StartProcResult::CanStart => {
-                self.process_until_end = Some(process_until_end);
-                self.start_step_processing(step_num);
-
                 self.set_controls_active(false);
-
                 self.total_progress_bar.show();
                 self.total_progress_bar.reset("Общий прогресс".to_string());
+
+                self.start_step_processing(step_num, process_until_end);
+
 
                 for step_widget in &mut self.steps_widgets[step_num..] {
                     step_widget.clear_displayed_result();
@@ -499,40 +483,97 @@ impl ProcessingLine {
         }
     }
 
-    fn process_proc_step_progress_msg(&mut self, step_num: usize, step_percents: usize, total_percents: usize) -> Result<(), MyError> {
-        self.total_progress_bar.set_value(total_percents);
-        self.steps_widgets[step_num].display_progress(step_percents);
-        Ok(())
-    }
-
     fn process_proc_halt_msg(&mut self) -> Result<(), MyError> {
-        self.background_worker.halt_processing().unwrap();
+        self.bw.halt_processing();
         Ok(())
     }
 
-    fn process_proc_complete_step_msg(&mut self, step_num: usize) -> Result<(), MyError> {
-        let mut proc_result = self.background_worker.get_proc_result().unwrap(); 
+    
 
-        self.steps_widgets[step_num].display_result(proc_result.get_image());
-        self.steps_widgets[step_num].set_step_descr(&self.background_worker.get_step_descr(step_num).unwrap());
-
-        let processing_continues: bool = 
-            self.process_until_end.unwrap()
-            && !proc_result.it_is_the_last_step()
-            && !proc_result.processing_was_halted();
-
-        if processing_continues {
-            self.start_step_processing(step_num + 1);
-        } else {
-            self.set_controls_active(true);
-            self.total_progress_bar.hide();
-            self.process_until_end = None;
+    pub fn process_task_message_loop(&mut self) -> Result<(), MyError> {
+        if let Some(task) = self.current_task {
+            while let Ok(msg) = self.rx_task.try_recv() {
+                if let Err(err) = match task {
+                    CurrentTask::Processing { step_num, process_until_end } => 
+                        self.process_task_processing_msg(msg, step_num, process_until_end),
+                    CurrentTask::Exporting => 
+                        self.process_task_export_msg(msg),
+                } {
+                    show_err_msg(self.get_center_pos(), err);
+                }
+            }
+        
+            crate::notify_content_changed();
         }
 
-        crate::notify_content_changed();
-
         Ok(())
     }
+
+    fn process_task_export_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
+        match msg {
+            TaskMsg::Progress { percents } => {
+                self.total_progress_bar.set_value(percents);
+                Ok(())
+            },
+            TaskMsg::Finished => {
+                self.current_task = None;
+
+                self.set_controls_active(true);
+                self.total_progress_bar.hide();
+                let export_result = self.bw.unlocked().get_task_result();
+
+                match export_result {
+                    Ok(()) => {
+                        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
+                        Ok(())
+                    },
+                    Err(err) => Err(err),
+                }
+            },
+        }
+    }
+    
+    fn process_task_processing_msg(&mut self, msg: TaskMsg, step_num: usize, process_until_end: bool) -> Result<(), MyError> {
+        match msg {
+            TaskMsg::Progress { percents } => {
+                let total_percents = (step_num * 100 + percents) / self.steps_widgets.len();
+                self.total_progress_bar.set_value(total_percents);
+                self.steps_widgets[step_num].display_progress(percents);
+                Ok(())
+            },
+            TaskMsg::Finished => {
+                let mut bw_unlocked = self.bw.unlocked();
+
+                let drawable = bw_unlocked.get_step_img_drawable(step_num);
+                let processing_was_halted = drawable.is_none();
+        
+                self.steps_widgets[step_num].display_result(drawable);
+                self.steps_widgets[step_num].set_step_descr(&bw_unlocked.get_step_descr(step_num));
+        
+                let it_is_the_last_step: bool = step_num >= bw_unlocked.get_steps_count() - 1;
+                
+                bw_unlocked.get_task_result()?; 
+        
+                drop(bw_unlocked);
+        
+                let processing_continues: bool = 
+                    process_until_end
+                    && !it_is_the_last_step
+                    && !processing_was_halted;
+        
+                if processing_continues {
+                    self.start_step_processing(step_num + 1, true);
+                } else {
+                    self.set_controls_active(true);
+                    self.total_progress_bar.hide();
+                    self.current_task = None;
+                }
+        
+                Ok(())
+            },
+        }
+    }
+
 
 
     fn set_controls_active(&mut self, active: bool) {
@@ -553,7 +594,9 @@ impl ProcessingLine {
             self.main_row.y() + self.main_row.h() / 2) 
     }
 
-    fn start_step_processing(&mut self, step_num: usize) {
+    fn start_step_processing(&mut self, step_num: usize, process_until_end: bool) {
+        self.current_task = Some( CurrentTask::Processing { step_num, process_until_end } );
+
         self.steps_widgets[step_num].display_processing_start();
 
         let crop_area = if step_num == 0 {
@@ -562,7 +605,7 @@ impl ProcessingLine {
             self.steps_widgets[step_num - 1].get_selection_rect()
         };
 
-        self.background_worker.start_processing(step_num, crop_area).unwrap();
+        self.bw.start_processing(step_num, crop_area);
     }
 
     const PROJECT_EXT: &'static str = "ps";
@@ -595,7 +638,7 @@ impl ProcessingLine {
     }
 
     fn add_step_to_background_worker_and_as_widget(&mut self, filter: FilterBase) {
-        self.background_worker.add_step(filter);
+        self.bw.unlocked().add_step(filter);
 
         self.scroll_pack.begin();
 
@@ -608,13 +651,11 @@ impl ProcessingLine {
             step_num, 
             self.tx);
 
-        new_step.set_step_descr(&self.background_worker.get_step_descr(step_num).unwrap());
+        new_step.set_step_descr(&self.bw.unlocked().get_step_descr(step_num));
         
         self.steps_widgets.push(new_step);
 
         self.scroll_pack.end();
-
-        crate::notify_content_changed();
     }
 }
 

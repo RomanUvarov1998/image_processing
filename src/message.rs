@@ -10,7 +10,7 @@ pub enum Project {
     Import (ImportType),
     SaveProject,
     LoadProject,
-    Export (Export),
+    Export,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -23,10 +23,8 @@ pub enum StepOp {
 
 #[derive(Debug, Copy, Clone)]
 pub enum Proc {
-    ChainIsStarted { step_num: usize, process_until_end: bool },
-    StepProgress { step_num: usize, step_percents: usize, total_percents: usize },
-    Halted,
-    CompletedStep { step_num: usize },
+    StartStepsChain { step_num: usize, process_until_end: bool },
+    HaltStepsChain,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -49,9 +47,9 @@ pub enum AddStep {
 #[derive(Debug, Copy, Clone)]
 pub enum MoveStep { Up, Down }
 
+
 #[derive(Debug, Copy, Clone)]
-pub enum Export {
-    Start,
+pub enum TaskMsg {
     Progress { percents: usize },
-    Completed
+    Finished,
 }

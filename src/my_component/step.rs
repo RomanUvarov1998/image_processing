@@ -73,9 +73,9 @@ impl ProcessingStep {
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
         self.btn_run.add_emit("Только этот шаг", self.tx, 
-            Msg::Proc(Proc::ChainIsStarted { step_num, process_until_end: false }));
+            Msg::Proc(Proc::StartStepsChain { step_num, process_until_end: false }));
         self.btn_run.add_emit("Этот шаг и все шаги ниже", self.tx, 
-            Msg::Proc(Proc::ChainIsStarted { step_num, process_until_end: true }));
+            Msg::Proc(Proc::StartStepsChain { step_num, process_until_end: true }));
         self.btn_edit.set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
         self.btn_delete.set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
         self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Up } ));
