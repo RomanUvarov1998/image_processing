@@ -1,9 +1,9 @@
 use std::{fs::{File}, io::{Read, Write}, usize};
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
-use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, message::*, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
+use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
 
-use super::{PADDING, step::ProcessingStep};
+use super::{PADDING, message::*, step::ProcessingStep};
 use crate::processing::*;
 
 

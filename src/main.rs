@@ -1,7 +1,6 @@
 mod my_err;
 mod filter;
 mod processing;
-mod message;
 mod img;
 mod small_dlg;
 mod utils;

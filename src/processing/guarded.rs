@@ -1,6 +1,6 @@
 use fltk::{image::RgbImage, prelude::ImageExt};
-use crate::{img::{Img, PixelsArea}, message::TaskMsg, my_err::MyError};
-use super::{FilterBase, progress_provider::HaltMessage, task_info::*};
+use crate::{img::{Img, PixelsArea}, my_err::MyError};
+use super::{FilterBase, TaskMsg, progress_provider::HaltMessage, task_info::*};
 
 pub struct Guarded {
 	pub tx_notify: std::sync::mpsc::Sender<TaskMsg>,

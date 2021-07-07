@@ -1,6 +1,6 @@
 use fltk::{app::{Sender}, group, image::RgbImage, prelude::{GroupExt}};
-use crate::{AssetItem, img::PixelsArea, message::{self, Msg, Proc, StepOp}, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
-use super::PADDING;
+use crate::{AssetItem, img::PixelsArea, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
+use super::{PADDING, message::*};
 
 pub struct ProcessingStep {
     step_num: usize,
@@ -78,8 +78,8 @@ impl ProcessingStep {
             Msg::Proc(Proc::StartStepsChain { step_num, process_until_end: true }));
         self.btn_edit.set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
         self.btn_delete.set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
-        self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Up } ));
-        self.btn_reorder.add_emit("Сдвинуть вниз", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: message::MoveStep::Down } ));
+        self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: MoveStep::Up } ));
+        self.btn_reorder.add_emit("Сдвинуть вниз", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: MoveStep::Down } ));
         self.step_num = step_num;
     }
 

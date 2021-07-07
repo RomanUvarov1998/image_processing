@@ -1,5 +1,5 @@
 use std::{sync::mpsc::Receiver, time};
-use crate::message::TaskMsg;
+use super::TaskMsg;
 
 
 pub struct Halted;

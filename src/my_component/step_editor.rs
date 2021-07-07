@@ -1,5 +1,7 @@
 use fltk::{app::{self}, frame, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
-use crate::{filter::{filter_trait::Filter, linear::*, non_linear::*, color_channel::*}, message::AddStep, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}, processing::FilterBase};
+use crate::{filter::{filter_trait::Filter, linear::*, non_linear::*, color_channel::*}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}, processing::FilterBase};
+
+use super::message::AddStep;
 
 const WIN_WIDTH: i32 = 600;
 const WIN_HEIGHT: i32 = 500;

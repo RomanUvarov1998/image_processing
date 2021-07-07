@@ -1,8 +1,7 @@
-use crate::{filter::{color_channel::Rgb2Gray, non_linear::MedianFilter}, processing::FilterBase};
+use crate::{filter::{color_channel::Rgb2Gray, non_linear::MedianFilter}, processing::{FilterBase, TaskMsg}};
 
 #[test]
 fn test1() {
-	use crate::message::*;
 	let (tx, rx) = std::sync::mpsc::channel::<TaskMsg>();
 	let bw = super::BackgroundWorker::new(tx);
 

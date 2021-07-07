@@ -1,4 +1,4 @@
-use crate::{img::{Img, PixelsArea}, message::TaskMsg, my_err::MyError};
+use crate::{img::{Img, PixelsArea}, my_err::MyError, processing::TaskMsg};
 use super::{ProgressProvider, guarded::Guarded};
 
 

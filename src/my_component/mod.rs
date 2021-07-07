@@ -8,6 +8,7 @@ pub mod usual;
 pub mod img_presenter;
 pub mod step_editor;
 pub mod line;
+mod message;
 mod step;
 
 pub trait Alignable {

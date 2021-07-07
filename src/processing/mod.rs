@@ -15,3 +15,9 @@ pub use guarded::StartProcResult;
 pub use guarded::StartResultsSavingResult;
 
 pub type FilterBase = Box<dyn Filter>;
+
+#[derive(Debug, Copy, Clone)]
+pub enum TaskMsg {
+    Progress { percents: usize },
+    Finished,
+}

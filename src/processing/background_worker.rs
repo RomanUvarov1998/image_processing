@@ -1,6 +1,6 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use crate::{img::{PixelsArea}, message::TaskMsg};
-use super::{guarded::{Guarded, StartProcResult}, progress_provider::HaltMessage};
+use crate::img::PixelsArea;
+use super::{TaskMsg, guarded::{Guarded, StartProcResult}, progress_provider::HaltMessage};
 
 
 pub struct BackgroundWorker {

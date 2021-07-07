@@ -46,10 +46,3 @@ pub enum AddStep {
 
 #[derive(Debug, Copy, Clone)]
 pub enum MoveStep { Up, Down }
-
-
-#[derive(Debug, Copy, Clone)]
-pub enum TaskMsg {
-    Progress { percents: usize },
-    Finished,
-}
