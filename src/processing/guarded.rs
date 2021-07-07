@@ -44,6 +44,8 @@ impl Guarded {
 	pub fn try_load_initial_img(&mut self, path: &str) -> Result<(), MyError> {
         let sh_im = fltk::image::SharedImage::load(path)?;
 
+        println!("{}", path);
+
         if sh_im.w() < 0 { return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); }
         if sh_im.h() < 0 { return Err(MyError::new("Высота загруженного изображения < 0".to_string())); }
 

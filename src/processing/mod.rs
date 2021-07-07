@@ -5,6 +5,9 @@ mod background_worker;
 mod guarded;
 mod task_info;
 
+#[cfg(test)]
+mod tests;
+
 pub use background_worker::BackgroundWorker;
 pub use progress_provider::ProgressProvider;
 pub use progress_provider::Halted;
