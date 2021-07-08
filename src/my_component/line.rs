@@ -444,20 +444,26 @@ impl ProcessingLine {
     
 
     pub fn process_task_message_loop(&mut self) -> Result<(), MyError> {
-        if let Some(task) = self.current_task {
-            while let Ok(msg) = self.rx_task.try_recv() {
-                if let Err(err) = match task {
-                    CurrentTask::Importing => self.process_task_import_msg(msg),
-                    CurrentTask::Loading => self.process_task_loading_msg(msg),
-                    CurrentTask::Processing { step_num, process_until_end } => 
-                        self.process_task_processing_msg(msg, step_num, process_until_end),
-                    CurrentTask::Saving => self.process_task_saving_msg(msg),
-                    CurrentTask::Exporting => self.process_task_export_msg(msg),
-                } {
-                    show_err_msg(self.get_center_pos(), err);
-                }
+        let mut received_task_msg = false;
+
+        while let Ok(msg) = self.rx_task.try_recv() {
+            received_task_msg = true;
+
+            let current_task = self.current_task.unwrap();
+
+            if let Err(err) = match current_task {
+                CurrentTask::Importing => self.process_task_import_msg(msg),
+                CurrentTask::Loading => self.process_task_loading_msg(msg),
+                CurrentTask::Processing { step_num, process_until_end } => 
+                    self.process_task_processing_msg(msg, step_num, process_until_end),
+                CurrentTask::Saving => self.process_task_saving_msg(msg),
+                CurrentTask::Exporting => self.process_task_export_msg(msg),
+            } {
+                show_err_msg(self.get_center_pos(), err);
             }
-        
+        }
+    
+        if received_task_msg {
             crate::notify_content_changed();
         }
 
@@ -635,8 +641,6 @@ impl ProcessingLine {
             Local::now().format("%d-%m(%b)-%Y_%a_%_H.%M.%S"); 
         format!("{}", current_datetime_formatter)
     }
-    
-    
 
     fn add_step_to_background_worker_and_as_widget(&mut self, filter: FilterBase) {
         self.bw.locked().add_step(filter);
