@@ -1,7 +1,7 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}, utils::{LinesIter}};
-use super::{ByLayer, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
+use crate::{img::{Matrix2D}, img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}, utils::{LinesIter}};
+use super::{ByLayer, FilterBase, FilterIterator, filter_option::{ARange, CutBrightnessRange, ExtendValue, FilterWindowSize, ImgChannel, Parceable, ValueRepaceWith}, filter_trait::{Filter, StringFromTo, WindowFilter}, linear::LinearMean};
 
 
 #[derive(Clone)]

@@ -33,12 +33,12 @@ impl BackgroundWorker {
         BackgroundWorker { inner, tx_halt, _processing_thread_handle }
     }
 
-    pub fn unlocked(&self) -> MutexGuard<Guarded> {
-        self.get_unlocked_guard()
+    pub fn locked(&self) -> MutexGuard<Guarded> {
+        self.inner.guarded.try_lock().expect("Couldn't lock")
     }
 
     pub fn start_task(&mut self, task: TaskBase) {
-        let mut guard = self.get_unlocked_guard();
+        let mut guard = self.get_locked_guard();
         guard.put_task(task);
         drop(guard);
 
@@ -46,7 +46,7 @@ impl BackgroundWorker {
     }
 
     pub fn check_if_can_start_processing(&self, step_num: usize) -> StartProcResult {
-        let guard = self.get_unlocked_guard();
+        let guard = self.get_locked_guard();
         guard.check_if_can_start_processing(step_num)
     }
     
@@ -61,7 +61,7 @@ impl BackgroundWorker {
     }
 
 
-    fn get_unlocked_guard(&self) -> MutexGuard<Guarded> {
+    fn get_locked_guard(&self) -> MutexGuard<Guarded> {
         self.inner.guarded.lock().expect("Couldn't lock")
     }
 }

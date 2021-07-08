@@ -1,5 +1,5 @@
-use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}};
-use super::filter_option::ExtendValue;
+use crate::{filter::FilterIterator, img::{Img}, my_err::MyError, processing::{Halted, ProgressProvider}};
+use super::{FilterBase, filter_option::ExtendValue};
 
 pub trait StringFromTo {
     fn params_to_string(&self) -> Option<String>;

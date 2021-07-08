@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
-use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}, utils::{LinesIter, WordsIter}};
-use super::{ByLayer, FilterIterator, filter_option::{ExtendValue, FilterWindowSize, ImgChannel, NormalizeOption, Parceable}, filter_trait::{Filter, StringFromTo, WindowFilter}};
+use crate::{img::{Img, ImgLayer, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}, utils::{LinesIter, WordsIter}};
+use super::{ByLayer, FilterBase, FilterIterator, filter_option::{ExtendValue, FilterWindowSize, ImgChannel, NormalizeOption, Parceable}, filter_trait::{Filter, StringFromTo, WindowFilter}};
 
 #[derive(Clone)]
 pub struct LinearGaussian {

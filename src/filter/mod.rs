@@ -5,9 +5,28 @@ pub mod linear;
 pub mod non_linear;
 pub mod color_channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, processing::{Halted, ProgressProvider}};
-
+use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}};
 use self::filter_trait::WindowFilter;
+
+pub type FilterBase = Box<dyn self::filter_trait::Filter>;
+
+use crate::my_component::message::AddStep;
+impl From<AddStep> for FilterBase {
+    fn from(msg: AddStep) -> Self {
+        match msg {
+            AddStep::LinCustom => Box::new(LinearCustom::default()) as FilterBase,
+            AddStep::LinMean => Box::new(LinearMean::default()) as FilterBase,
+            AddStep::LinGauss => Box::new(LinearGaussian::default()) as FilterBase,
+            AddStep::Median => Box::new(MedianFilter::default()) as FilterBase,
+            AddStep::HistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
+            AddStep::CutBrightness => Box::new(CutBrightness::default()) as FilterBase,
+            AddStep::HistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
+            AddStep::Rgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
+            AddStep::NeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
+            AddStep::ExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+        }
+    }
+}
 
 pub struct FilterIterator {
     width: usize,
@@ -105,4 +124,26 @@ fn process_each_layer<F: ByLayer>(
     }        
 
     Ok(Img::new(img.w(), img.h(), res_layers, img.color_depth()))
+}
+
+
+use self::{linear::*, non_linear::*, color_channel::*};
+pub fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, MyError> {
+    let mut filter = match save_name {
+        "LinearCustom" => Box::new(LinearCustom::default()) as FilterBase,
+        "LinearMean" =>  Box::new(LinearMean::default()) as FilterBase,
+        "LinearGaussian" =>  Box::new(LinearGaussian::default()) as FilterBase,
+        "MedianFilter" =>  Box::new(MedianFilter::default()) as FilterBase,
+        "HistogramLocalContrast" =>  Box::new(HistogramLocalContrast::default()) as FilterBase,
+        "CutBrightness" =>  Box::new(CutBrightness::default()) as FilterBase,
+        "EqualizeHist" => Box::new(EqualizeHist::default()) as FilterBase,
+        "Rgb2Gray" => Box::new(Rgb2Gray::default()) as FilterBase,
+        "NeutralizeChannel" =>  Box::new(NeutralizeChannel::default()) as FilterBase,
+        "ExtractChannel" =>  Box::new(ExtractChannel::default()) as FilterBase,
+        _ => {
+            return Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)));
+        }
+    };
+    filter.try_set_from_string(content)?;
+    Ok(filter)
 }

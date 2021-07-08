@@ -1,7 +1,7 @@
 use fltk::enums::ColorDepth;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{FilterBase, Halted, ProgressProvider}};
-use super::{filter_option::{ImgChannel, Parceable}, filter_trait::{Filter, StringFromTo}, utils::{HistBuf, count_histogram}};
+use crate::{img::{Img, ImgLayer, Matrix2D, PIXEL_VALUES_COUNT}, my_err::MyError, processing::{Halted, ProgressProvider}};
+use super::{FilterBase, filter_option::{ImgChannel, Parceable}, filter_trait::{Filter, StringFromTo}, utils::{HistBuf, count_histogram}};
 
 
 #[derive(Clone)]

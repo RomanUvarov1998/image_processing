@@ -1,5 +1,5 @@
 use fltk::{app::{self}, frame, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
-use crate::{filter::{filter_trait::Filter, linear::*, non_linear::*, color_channel::*}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}, processing::FilterBase};
+use crate::{filter::{FilterBase, filter_trait::Filter}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
 
 use super::message::AddStep;
 
@@ -16,18 +16,7 @@ enum StepEditMessage {
 }
 
 pub fn create(msg: AddStep, app: app::App) -> Option<FilterBase> {
-    let mut filter = match msg {
-        AddStep::LinCustom => Box::new(LinearCustom::default()) as FilterBase,
-        AddStep::LinMean => Box::new(LinearMean::default()) as FilterBase,
-        AddStep::LinGauss => Box::new(LinearGaussian::default()) as FilterBase,
-        AddStep::Median => Box::new(MedianFilter::default()) as FilterBase,
-        AddStep::HistogramLocalContrast => Box::new(HistogramLocalContrast::default()) as FilterBase,
-        AddStep::CutBrightness => Box::new(CutBrightness::default()) as FilterBase,
-        AddStep::HistogramEqualizer => Box::new(EqualizeHist::default()) as FilterBase,
-        AddStep::Rgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
-        AddStep::NeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
-        AddStep::ExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
-    };
+    let mut filter: FilterBase = msg.into();
 
     if edit(app, &mut filter) {
         Some(filter)

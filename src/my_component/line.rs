@@ -1,7 +1,7 @@
-use std::{fs::{File}, io::{Read, Write}, usize};
+use std::usize;
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
-use crate::{AssetItem, filter::{color_channel::*, linear::*, non_linear::*}, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{self, Pos}};
+use crate::{AssetItem, filter::{FilterBase}, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{Pos}};
 
 use super::{PADDING, message::*, step::ProcessingStep};
 use crate::processing::*;
@@ -10,7 +10,9 @@ use crate::processing::*;
 #[derive(Clone, Copy, Debug)]
 enum CurrentTask {
     Importing,
+    Loading,
     Processing { step_num: usize, process_until_end: bool },
+    Saving,
     Exporting
 }
 
@@ -188,7 +190,7 @@ impl ProcessingLine {
 
 
     fn process_project_import_msg(&mut self, import_type: ImportType) -> Result<(), MyError> {
-        if self.bw.unlocked().has_initial_img() {
+        if self.bw.locked().has_initial_img() {
             if small_dlg::confirm_with_dlg(
                 self.get_center_pos(), 
                 "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?"
@@ -234,7 +236,7 @@ impl ProcessingLine {
         }
 
         let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseSaveFile);
-        dlg.set_filter(&format!("*.{}", Self::PROJECT_EXT));
+        dlg.set_filter(&format!("*.{}", PROJECT_EXT));
 
         let file_name = format!("Project {}", Self::cur_time_str());
         dlg.set_preset_file(&file_name);
@@ -243,7 +245,7 @@ impl ProcessingLine {
         dlg.show(); 
 
         let mut path_buf = dlg.filename();
-        path_buf.set_extension(Self::PROJECT_EXT);
+        path_buf.set_extension(PROJECT_EXT);
 
         let proj_path: &str = match path_buf.to_str() {
             Some(path) => path,
@@ -253,35 +255,13 @@ impl ProcessingLine {
         if proj_path.is_empty() {
             return Ok(());
         }
-
-        let mut file = match File::create(proj_path) {
-            Ok(f) => f,
-            Err(err) => { return Err(MyError::new(err.to_string())); }
-        };
-
-        let mut file_content = String::new();
-
-        for step_num in 0..self.steps_widgets.len() {
-            let filter_save_name: String = self.bw.unlocked().get_filter_save_name(step_num);
-
-            file_content.push_str(&filter_save_name);
-            file_content.push_str("\n");
-
-            if let Some(params_str) = self.bw.unlocked().get_filter_params_as_str(step_num) {
-                file_content.push_str(&params_str);
-            }
-            file_content.push_str("\n");
-
-            if step_num < self.steps_widgets.len() - 1 {
-                file_content.push_str(Self::FILTER_SAVE_SEPARATOR);
-                file_content.push_str("\n");
-            }
-        }
-
-        file.write_all(&file_content.as_bytes())?;
-        file.sync_all()?;
         
-        show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
+        self.set_controls_active(false);
+        self.total_progress_bar.show();
+        self.total_progress_bar.reset("Сохранение проекта".to_string());
+        self.current_task = Some( CurrentTask::Saving );
+
+        self.bw.start_task(SaveProjectTask::new(proj_path.to_string()));
         
         Ok(())
     }
@@ -300,7 +280,7 @@ impl ProcessingLine {
         } 
         
         let mut dlg = dialog::FileDialog::new(dialog::FileDialogType::BrowseFile);
-        dlg.set_filter(&format!("*.{}", Self::PROJECT_EXT));
+        dlg.set_filter(&format!("*.{}", PROJECT_EXT));
         dlg.set_title("Загрузка проекта");
         dlg.show(); 
 
@@ -315,47 +295,18 @@ impl ProcessingLine {
             return Ok(());
         }
 
-        let mut file = match File::open(&proj_path) {
-            Ok(f) => f,
-            Err(err) => { return Err(MyError::new(format!("Ошибка при открытии файла проекта: {}", err.to_string()))); },
-        };
+        self.set_controls_active(false);
+        self.total_progress_bar.show();
+        self.total_progress_bar.reset("Загрузка проекта".to_string());
+        self.current_task = Some( CurrentTask::Loading );
 
-        let mut file_content = String::new();
-        if let Err(err) = file.read_to_string(&mut file_content) {
-            return Err(MyError::new(format!("Ошибка при чтении файла проекта: {}", err.to_string())));
-        };
-
-        let mut filters_iter = utils::TextBlocksIter::new(
-            &file_content, Self::FILTER_SAVE_SEPARATOR);
-
-        self.steps_widgets.reserve(filters_iter.len());
-
-        'out: for filter_str in filters_iter.iter() {
-            let mut lines_iter = utils::LinesIter::new(filter_str);
-            let filter_name = lines_iter.next_or_empty().to_string();
-            let filter_content = lines_iter.all_left(true);
-
-            match Self::try_parce_filter(&filter_name, &filter_content) {
-                Ok(filter) => {
-                    self.add_step_to_background_worker_and_as_widget(filter);
-                },
-                Err(err) => {
-                    let question = format!(
-                        "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
-                        filter_name, err.to_string());
-
-                    if !confirm_with_dlg(self.get_center_pos(), &question) {
-                        break 'out;
-                    }
-                },
-            }
-        }
-
+        self.bw.start_task(LoadProjectTask::new(proj_path.to_string()));
+        
         Ok(())
     }
 
     fn process_project_start_export_msg(&mut self) -> Result<(), MyError> {
-        match self.bw.unlocked().check_if_can_export() {
+        match self.bw.locked().check_if_can_export() {
             StartResultsSavingResult::NoSteps => 
                 return Err(MyError::new("В проекте нет шагов обработки для сохранения их результатов".to_string())),
             StartResultsSavingResult::NotAllStepsHaveResult => 
@@ -405,7 +356,7 @@ impl ProcessingLine {
     fn process_step_op_edit_step_msg(&mut self, step_num: usize, app: app::App) -> Result<(), MyError> {
         let step = &mut self.steps_widgets[step_num];
 
-        let edited = self.bw.unlocked().edit_step(
+        let edited = self.bw.locked().edit_step(
             step_num, 
             |filter| {
                 step_editor::edit(app, filter)
@@ -413,7 +364,7 @@ impl ProcessingLine {
         );
 
         if edited {
-            step.set_step_descr(&self.bw.unlocked().get_step_descr(step_num));
+            step.set_step_descr(&self.bw.locked().get_step_descr(step_num));
         }
 
         Ok(())
@@ -430,7 +381,7 @@ impl ProcessingLine {
             self.steps_widgets[sn].update_btn_emits(sn);
         }
 
-        self.bw.unlocked().remove_step(step_num);
+        self.bw.locked().remove_step(step_num);
     
         Ok(())
     }
@@ -449,13 +400,13 @@ impl ProcessingLine {
             },
         };     
 
-        self.bw.unlocked().swap_steps(upper_num, lower_num);
+        self.bw.locked().swap_steps(upper_num, lower_num);
 
         for step in self.steps_widgets[upper_num..].iter_mut() {
             step.clear_displayed_result();
         } 
-        self.steps_widgets[upper_num].set_step_descr(&self.bw.unlocked().get_step_descr(upper_num));
-        self.steps_widgets[lower_num].set_step_descr(&self.bw.unlocked().get_step_descr(lower_num));
+        self.steps_widgets[upper_num].set_step_descr(&self.bw.locked().get_step_descr(upper_num));
+        self.steps_widgets[lower_num].set_step_descr(&self.bw.locked().get_step_descr(lower_num));
 
         Ok(())
     }
@@ -497,10 +448,11 @@ impl ProcessingLine {
             while let Ok(msg) = self.rx_task.try_recv() {
                 if let Err(err) = match task {
                     CurrentTask::Importing => self.process_task_import_msg(msg),
+                    CurrentTask::Loading => self.process_task_loading_msg(msg),
                     CurrentTask::Processing { step_num, process_until_end } => 
                         self.process_task_processing_msg(msg, step_num, process_until_end),
-                    CurrentTask::Exporting => 
-                        self.process_task_export_msg(msg),
+                    CurrentTask::Saving => self.process_task_saving_msg(msg),
+                    CurrentTask::Exporting => self.process_task_export_msg(msg),
                 } {
                     show_err_msg(self.get_center_pos(), err);
                 }
@@ -524,11 +476,11 @@ impl ProcessingLine {
                 self.set_controls_active(true);
                 self.total_progress_bar.hide();
 
-                self.lbl_init_img.set_text(&self.bw.unlocked().get_init_img_descr());
+                self.lbl_init_img.set_text(&self.bw.locked().get_init_img_descr());
         
-                self.img_presenter.set_img(self.bw.unlocked().get_init_img_drawable());
+                self.img_presenter.set_img(self.bw.locked().get_init_img_drawable());
                 
-                self.bw.unlocked().get_task_result()
+                self.bw.locked().get_task_result()
             },
         }
     }
@@ -541,18 +493,11 @@ impl ProcessingLine {
             },
             TaskMsg::Finished => {
                 self.current_task = None;
-
                 self.set_controls_active(true);
                 self.total_progress_bar.hide();
-                let export_result = self.bw.unlocked().get_task_result();
-
-                match export_result {
-                    Ok(()) => {
-                        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
-                        Ok(())
-                    },
-                    Err(err) => Err(err),
-                }
+                self.bw.locked().get_task_result()?;
+                show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
+                Ok(())
             },
         }
     }
@@ -566,7 +511,7 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                let mut bw_unlocked = self.bw.unlocked();
+                let mut bw_unlocked = self.bw.locked();
 
                 let drawable = bw_unlocked.get_step_img_drawable(step_num);
                 let processing_was_halted = drawable.is_none();
@@ -598,6 +543,58 @@ impl ProcessingLine {
         }
     }
 
+    fn process_task_saving_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
+        match msg {
+            TaskMsg::Progress { percents } => {
+                self.total_progress_bar.set_value(percents);
+                Ok(())
+            },
+            TaskMsg::Finished => {
+                self.current_task = None;
+                self.set_controls_active(true);
+                self.total_progress_bar.hide();
+                self.bw.locked().get_task_result()?;
+                show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
+                Ok(())
+            },
+        }
+    }
+    
+    fn process_task_loading_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
+        match msg {
+            TaskMsg::Progress { percents } => {
+                self.total_progress_bar.set_value(percents);
+                Ok(())
+            },
+            TaskMsg::Finished => {
+                self.current_task = None;
+                self.set_controls_active(true);
+                self.total_progress_bar.hide();
+                let mut locked_bw = self.bw.locked();
+                locked_bw.get_task_result()?;
+
+                self.scroll_pack.set_size(self.scroll_pack.w(), 0);
+                self.scroll_pack.begin();
+                for _ in 0..locked_bw.get_steps_count() {
+                    self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
+
+                    let step_num = self.steps_widgets.len();
+
+                    let mut new_step = ProcessingStep::new(
+                        self.w() / 2, self.h(), 
+                        step_num, 
+                        self.tx);
+
+                    new_step.set_step_descr(&locked_bw.get_step_descr(step_num));
+                    
+                    self.steps_widgets.push(new_step);
+                }
+                self.scroll_pack.end();
+
+                Ok(())
+            },
+        }
+    }
 
 
     fn set_controls_active(&mut self, active: bool) {
@@ -632,8 +629,6 @@ impl ProcessingLine {
         self.bw.start_task(ProcTask::new(step_num, crop_area));
     }
 
-    const PROJECT_EXT: &'static str = "ps";
-    const FILTER_SAVE_SEPARATOR: &'static str = "||";
 
     fn cur_time_str() -> String {
         let current_datetime_formatter: DelayedFormat<StrftimeItems> = 
@@ -641,28 +636,10 @@ impl ProcessingLine {
         format!("{}", current_datetime_formatter)
     }
     
-    fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, MyError> {
-        let mut filter = match save_name {
-            "LinearCustom" => Box::new(LinearCustom::default()) as FilterBase,
-            "LinearMean" =>  Box::new(LinearMean::default()) as FilterBase,
-            "LinearGaussian" =>  Box::new(LinearGaussian::default()) as FilterBase,
-            "MedianFilter" =>  Box::new(MedianFilter::default()) as FilterBase,
-            "HistogramLocalContrast" =>  Box::new(HistogramLocalContrast::default()) as FilterBase,
-            "CutBrightness" =>  Box::new(CutBrightness::default()) as FilterBase,
-            "EqualizeHist" => Box::new(EqualizeHist::default()) as FilterBase,
-            "Rgb2Gray" => Box::new(Rgb2Gray::default()) as FilterBase,
-            "NeutralizeChannel" =>  Box::new(NeutralizeChannel::default()) as FilterBase,
-            "ExtractChannel" =>  Box::new(ExtractChannel::default()) as FilterBase,
-            _ => {
-                return Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)));
-            }
-        };
-        filter.try_set_from_string(content)?;
-        Ok(filter)
-    }
+    
 
     fn add_step_to_background_worker_and_as_widget(&mut self, filter: FilterBase) {
-        self.bw.unlocked().add_step(filter);
+        self.bw.locked().add_step(filter);
 
         self.scroll_pack.begin();
 
@@ -675,7 +652,7 @@ impl ProcessingLine {
             step_num, 
             self.tx);
 
-        new_step.set_step_descr(&self.bw.unlocked().get_step_descr(step_num));
+        new_step.set_step_descr(&self.bw.locked().get_step_descr(step_num));
         
         self.steps_widgets.push(new_step);
 
