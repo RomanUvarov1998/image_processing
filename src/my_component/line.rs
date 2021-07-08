@@ -214,10 +214,8 @@ impl ProcessingLine {
                 if path.is_empty() { return Ok(()); }
 
                 self.img_presenter.clear_image();
-                self.set_controls_active(false);
-                self.total_progress_bar.show();
-                self.total_progress_bar.reset("Импорт".to_string());
-                self.current_task = Some( CurrentTask::Importing );
+
+                self.set_task_and_freeze_ui(CurrentTask::Importing, "Импорт");
         
                 self.bw.start_task(ImportTask::new(path.to_string()));
             },
@@ -256,10 +254,7 @@ impl ProcessingLine {
             return Ok(());
         }
         
-        self.set_controls_active(false);
-        self.total_progress_bar.show();
-        self.total_progress_bar.reset("Сохранение проекта".to_string());
-        self.current_task = Some( CurrentTask::Saving );
+        self.set_task_and_freeze_ui(CurrentTask::Saving, "Сохранение проекта");
 
         self.bw.start_task(SaveProjectTask::new(proj_path.to_string()));
         
@@ -295,10 +290,7 @@ impl ProcessingLine {
             return Ok(());
         }
 
-        self.set_controls_active(false);
-        self.total_progress_bar.show();
-        self.total_progress_bar.reset("Загрузка проекта".to_string());
-        self.current_task = Some( CurrentTask::Loading );
+        self.set_task_and_freeze_ui(CurrentTask::Loading, "Загрузка проекта");
 
         self.bw.start_task(LoadProjectTask::new(proj_path.to_string()));
         
@@ -330,10 +322,7 @@ impl ProcessingLine {
             return Ok(());
         }
         
-        self.set_controls_active(false);
-        self.total_progress_bar.show();
-        self.total_progress_bar.reset("Экспорт".to_string());
-        self.current_task = Some( CurrentTask::Exporting );
+        self.set_task_and_freeze_ui(CurrentTask::Exporting, "Экспорт");
 
         proj_path.push_str("/");
         let dir_name = format!("Results {}", Self::cur_time_str());
@@ -421,15 +410,13 @@ impl ProcessingLine {
                 Err(MyError::new("Необходим результат предыдущего шага для обработки текущего".to_string()))
             },
             StartProcResult::CanStart => {
-                self.set_controls_active(false);
-                self.total_progress_bar.show();
-                self.total_progress_bar.reset("Общий прогресс".to_string());
+                self.set_task_and_freeze_ui(CurrentTask::Processing { step_num, process_until_end }, "Общий прогресс");
 
                 for step_widget in &mut self.steps_widgets[step_num..] {
                     step_widget.clear_displayed_result();
                 }
 
-                self.start_step_processing(step_num, process_until_end);
+                self.start_step_processing(step_num);
 
                 Ok(())
             }
@@ -477,10 +464,7 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                self.current_task = None;
-
-                self.set_controls_active(true);
-                self.total_progress_bar.hide();
+                self.clear_task_and_unfreeze_ui();
 
                 self.lbl_init_img.set_text(&self.bw.locked().get_init_img_descr());
         
@@ -498,9 +482,7 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                self.current_task = None;
-                self.set_controls_active(true);
-                self.total_progress_bar.hide();
+                self.clear_task_and_unfreeze_ui();
                 self.bw.locked().get_task_result()?;
                 show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
                 Ok(())
@@ -517,19 +499,19 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                let mut bw_unlocked = self.bw.locked();
+                let mut bw_locked = self.bw.locked();
 
-                let drawable = bw_unlocked.get_step_img_drawable(step_num);
-                let processing_was_halted = drawable.is_none();
+                let drawable: Option<fltk::image::RgbImage> = bw_locked.get_step_img_drawable(step_num);
+                let processing_was_halted: bool = drawable.is_none();
         
                 self.steps_widgets[step_num].display_result(drawable);
-                self.steps_widgets[step_num].set_step_descr(&bw_unlocked.get_step_descr(step_num));
+                self.steps_widgets[step_num].set_step_descr(&bw_locked.get_step_descr(step_num));
         
-                let it_is_the_last_step: bool = step_num >= bw_unlocked.get_steps_count() - 1;
+                let it_is_the_last_step: bool = step_num >= bw_locked.get_steps_count() - 1;
                 
-                bw_unlocked.get_task_result()?; 
+                bw_locked.get_task_result()?; 
         
-                drop(bw_unlocked);
+                drop(bw_locked);
         
                 let processing_continues: bool = 
                     process_until_end
@@ -537,11 +519,11 @@ impl ProcessingLine {
                     && !processing_was_halted;
         
                 if processing_continues {
-                    self.start_step_processing(step_num + 1, true);
+                    let next_step_num: usize = step_num + 1;
+                    self.current_task = Some( CurrentTask::Processing { step_num: next_step_num, process_until_end } );
+                    self.start_step_processing(next_step_num);
                 } else {
-                    self.set_controls_active(true);
-                    self.total_progress_bar.hide();
-                    self.current_task = None;
+                    self.clear_task_and_unfreeze_ui();
                 }
         
                 Ok(())
@@ -556,9 +538,7 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                self.current_task = None;
-                self.set_controls_active(true);
-                self.total_progress_bar.hide();
+                self.clear_task_and_unfreeze_ui();
                 self.bw.locked().get_task_result()?;
                 show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
                 Ok(())
@@ -573,9 +553,7 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
-                self.current_task = None;
-                self.set_controls_active(true);
-                self.total_progress_bar.hide();
+                self.clear_task_and_unfreeze_ui();
                 let mut locked_bw = self.bw.locked();
                 locked_bw.get_task_result()?;
 
@@ -603,27 +581,13 @@ impl ProcessingLine {
     }
 
 
-    fn set_controls_active(&mut self, active: bool) {
-        for step in self.steps_widgets.iter_mut() {
-            step.set_buttons_active(active);
-        }
-
-        self.btn_project.set_active(active);
-        self.btn_import.set_active(active);
-        self.btn_add_step.set_active(active);
-        self.btn_export.set_active(active);
-        self.btn_halt_processing.set_active(!active);
-    }
-
     fn get_center_pos(&self) -> Pos { 
         Pos::new(
             self.main_row.x() + self.main_row.w() / 2, 
             self.main_row.y() + self.main_row.h() / 2) 
     }
 
-    fn start_step_processing(&mut self, step_num: usize, process_until_end: bool) {
-        self.current_task = Some( CurrentTask::Processing { step_num, process_until_end } );
-
+    fn start_step_processing(&mut self, step_num: usize) {
         self.steps_widgets[step_num].display_processing_start();
 
         let crop_area = if step_num == 0 {
@@ -661,6 +625,39 @@ impl ProcessingLine {
         self.steps_widgets.push(new_step);
 
         self.scroll_pack.end();
+    }
+
+    fn set_task_and_freeze_ui(&mut self, task: CurrentTask, label: &str) {
+        assert!(self.current_task.is_none());
+        self.current_task = Some(task);
+        
+        for step in self.steps_widgets.iter_mut() {
+            step.set_buttons_active(false);
+        }
+        self.btn_project.set_active(false);
+        self.btn_import.set_active(false);
+        self.btn_add_step.set_active(false);
+        self.btn_export.set_active(false);
+        self.btn_halt_processing.set_active(true);
+
+        self.total_progress_bar.show();
+        self.total_progress_bar.reset(label.to_string());
+    }
+
+    fn clear_task_and_unfreeze_ui(&mut self) {
+        assert!(self.current_task.is_some());
+        self.current_task = None;
+        
+        for step in self.steps_widgets.iter_mut() {
+            step.set_buttons_active(true);
+        }
+        self.btn_project.set_active(true);
+        self.btn_import.set_active(true);
+        self.btn_add_step.set_active(true);
+        self.btn_export.set_active(true);
+        self.btn_halt_processing.set_active(false);
+
+        self.total_progress_bar.hide();
     }
 }
 
