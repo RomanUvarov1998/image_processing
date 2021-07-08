@@ -5,9 +5,7 @@ use super::{ProgressProvider, guarded::Guarded};
 
 
 pub trait Task {
-    fn is_completed(&self) -> bool;
-    fn complete(&mut self, guarded: &mut Guarded);
-    fn take_result(&mut self) -> Result<(), MyError>;
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError>;
 }
 
 pub type TaskBase = Box<dyn Task + Send>;
@@ -16,21 +14,18 @@ pub type TaskBase = Box<dyn Task + Send>;
 pub struct ProcTask {
     step_num: usize, 
     crop_area: Option<PixelsArea>,
-    result: Option<Result<(), MyError>>
 }
 
 impl ProcTask {
     pub fn new(step_num: usize, crop_area: Option<PixelsArea>) -> TaskBase {
-        let task = ProcTask {
-            step_num,
-            crop_area,
-            result: None
-        };
+        let task = ProcTask { step_num, crop_area };
         Box::new(task) as TaskBase
     }
+}
 
-    fn process(&self, guarded: &mut Guarded) -> Result<(), MyError> {
-		for step in &mut guarded.proc_steps[self.step_num + 1..] {
+impl Task for ProcTask {
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+        for step in &mut guarded.proc_steps[self.step_num + 1..] {
 			if let Some(_) = step.img {
 				step.img = None;
 			}
@@ -67,37 +62,21 @@ impl ProcTask {
     }
 }
 
-impl Task for ProcTask {
-    fn is_completed(&self) -> bool {
-        self.result.is_some()
-    }
-
-    fn complete(&mut self, guarded: &mut Guarded) {
-        self.result = Some(self.process(guarded));
-    }
-
-    fn take_result(&mut self) -> Result<(), MyError> {
-        self.result.take().unwrap()
-    }
-}
-
 
 #[derive(Debug)]
 pub struct ExportTask {
     dir_path: String,
-    result: Option<Result<(), MyError>>
 }
 
 impl ExportTask {
     pub fn new(dir_path: String) -> TaskBase {
-        let task = ExportTask {
-            dir_path,
-            result: None
-        };
+        let task = ExportTask { dir_path };
         Box::new(task) as TaskBase
     }
+}
 
-    fn export(&self, guarded: &mut Guarded) -> Result<(), MyError> {
+impl Task for ExportTask {
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
         if let Err(err) = std::fs::create_dir(&self.dir_path) {
             return Err(MyError::new(err.to_string()));
         };
@@ -117,37 +96,21 @@ impl ExportTask {
     }
 }
 
-impl Task for ExportTask {
-    fn is_completed(&self) -> bool {
-        self.result.is_some()
-    }
-
-    fn complete(&mut self, guarded: &mut Guarded) {
-        self.result = Some(self.export(guarded));
-    }
-
-    fn take_result(&mut self) -> Result<(), MyError> {
-        self.result.take().unwrap()
-    }
-}
-
 
 #[derive(Debug)]
 pub struct ImportTask {
     path: String,
-    result: Option<Result<(), MyError>>
 }
 
 impl ImportTask {
     pub fn new(path: String) -> TaskBase {
-        let task = ImportTask {
-            path,
-            result: None
-        };
+        let task = ImportTask { path };
         Box::new(task) as TaskBase
     }
+}
 
-    fn import(&self, guarded: &mut Guarded) -> Result<(), MyError> {
+impl Task for ImportTask {
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
         let sh_im = fltk::image::SharedImage::load(&self.path)?;
 
         guarded.tx_notify.send(TaskMsg::Progress { percents: 50 } ).unwrap();
@@ -167,39 +130,23 @@ impl ImportTask {
     }
 }
 
-impl Task for ImportTask {
-    fn is_completed(&self) -> bool {
-        self.result.is_some()
-    }
-
-    fn complete(&mut self, guarded: &mut Guarded) {
-        self.result = Some(self.import(guarded));
-    }
-
-    fn take_result(&mut self) -> Result<(), MyError> {
-        self.result.take().unwrap()
-    }
-}
-
 const FILTER_SAVE_SEPARATOR: &'static str = "||";
 pub const PROJECT_EXT: &'static str = "ps";
 
 #[derive(Debug)]
 pub struct SaveProjectTask {
     path: String,
-    result: Option<Result<(), MyError>>
 }
 
 impl SaveProjectTask {
     pub fn new(path: String) -> TaskBase {
-        let task = SaveProjectTask {
-            path,
-            result: None
-        };
+        let task = SaveProjectTask { path };
         Box::new(task) as TaskBase
     }
+}
 
-    fn save(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+impl Task for SaveProjectTask {
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
         let mut file = match std::fs::File::create(&self.path) {
             Ok(f) => f,
             Err(err) => { return Err(MyError::new(err.to_string())); }
@@ -232,41 +179,25 @@ impl SaveProjectTask {
     }
 }
 
-impl Task for SaveProjectTask {
-    fn is_completed(&self) -> bool {
-        self.result.is_some()
-    }
-
-    fn complete(&mut self, guarded: &mut Guarded) {
-        self.result = Some(self.save(guarded));
-    }
-
-    fn take_result(&mut self) -> Result<(), MyError> {
-        self.result.take().unwrap()
-    }
-}
-
 
 #[derive(Debug)]
 pub struct LoadProjectTask {
     path: String,
-    result: Option<Result<(), MyError>>
 }
 
 impl LoadProjectTask {
     pub fn new(path: String) -> TaskBase {
-        let task = LoadProjectTask {
-            path,
-            result: None
-        };
+        let task = LoadProjectTask { path };
         Box::new(task) as TaskBase
     }
 
     fn remove_all_steps(guarded: &mut Guarded) {
         guarded.proc_steps.clear();
     }
+}
 
-    fn load(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+impl Task for LoadProjectTask {
+    fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
         Self::remove_all_steps(guarded);
 
         let mut file = match std::fs::File::open(&self.path) {
@@ -298,7 +229,7 @@ impl LoadProjectTask {
                 },
                 Err(err) => {
                     let err_msg = format!(
-                        "Ошибка формата при чтении фильтра '{}': '{}'. Продолжить загрузку следующих шагов проекта?", 
+                        "Ошибка формата при чтении фильтра '{}': '{}'", 
                         filter_name, err.to_string());
                     Self::remove_all_steps(guarded);
                     return Err(MyError::new(err_msg));
@@ -309,21 +240,6 @@ impl LoadProjectTask {
             guarded.tx_notify.send( TaskMsg::Progress { percents } ).unwrap();
         }
 
-
         Ok(())
-    }
-}
-
-impl Task for LoadProjectTask {
-    fn is_completed(&self) -> bool {
-        self.result.is_some()
-    }
-
-    fn complete(&mut self, guarded: &mut Guarded) {
-        self.result = Some(self.load(guarded));
-    }
-
-    fn take_result(&mut self) -> Result<(), MyError> {
-        self.result.take().unwrap()
     }
 }

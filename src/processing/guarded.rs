@@ -6,6 +6,7 @@ pub struct Guarded {
 	pub tx_notify: std::sync::mpsc::Sender<TaskMsg>,
 	pub rx_halt: std::sync::mpsc::Receiver<HaltMessage>,
     pub task: Option<TaskBase>,
+    task_result: Option<Result<(), MyError>>,
     pub initial_step: Step,
     pub proc_steps: Vec<ProcStep>,
 }
@@ -14,18 +15,14 @@ impl Guarded {
 	pub fn new(progress_tx: std::sync::mpsc::Sender<TaskMsg>, rx_halt: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
 		Guarded {
 			tx_notify: progress_tx, rx_halt,
-			task: None,
+			task: None, task_result: None,
 			initial_step: Step { img: None },
 			proc_steps: Vec::new()
 		}
 	}
 
 	pub fn has_task_to_do(&self) -> bool {
-		if let Some(ref task) = self.task {
-			!task.is_completed()
-		} else {
-			false
-		}
+        self.task.is_some() && self.task_result.is_none()
 	}
 
 	pub fn do_task_and_save_result(&mut self) {
@@ -33,11 +30,8 @@ impl Guarded {
 		while let Ok(_) = self.rx_halt.try_recv() {}
 
         let mut task: TaskBase = self.task.take().unwrap();
+        self.task_result = Some(task.complete(self));
 
-        task.complete(self);
-
-        self.task = Some(task);
-        
         self.tx_notify.send( TaskMsg::Finished ).unwrap();
 	}
     
@@ -47,7 +41,7 @@ impl Guarded {
 	}
 
     pub fn get_task_result(&mut self) -> Result<(), MyError> {
-        self.task.take().unwrap().take_result()
+        self.task_result.take().unwrap()
     }
 
 
