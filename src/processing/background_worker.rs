@@ -1,5 +1,5 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use super::{TaskMsg, guarded::{Guarded, StartProcResult}, progress_provider::HaltMessage, task::TaskBase};
+use super::{TaskMsg, guarded::Guarded, progress_provider::HaltMessage, task::TaskBase};
 
 
 pub struct BackgroundWorker {
@@ -34,20 +34,12 @@ impl BackgroundWorker {
     }
 
     pub fn locked(&self) -> MutexGuard<Guarded> {
-        self.inner.guarded.try_lock().expect("Couldn't lock")
+        self.inner.guarded.lock().expect("Couldn't lock")
     }
 
     pub fn start_task(&mut self, task: TaskBase) {
-        let mut guard = self.get_locked_guard();
-        guard.put_task(task);
-        drop(guard);
-
+        self.locked().start_task(task);
         self.inner.cv.notify_one();
-    }
-
-    pub fn check_if_can_start_processing(&self, step_num: usize) -> StartProcResult {
-        let guard = self.get_locked_guard();
-        guard.check_if_can_start_processing(step_num)
     }
     
     pub fn halt_processing(&mut self) {
@@ -58,11 +50,6 @@ impl BackgroundWorker {
                 panic!("Rx_halt disconnected");
             }
         }
-    }
-
-
-    fn get_locked_guard(&self) -> MutexGuard<Guarded> {
-        self.inner.guarded.lock().expect("Couldn't lock")
     }
 }
 

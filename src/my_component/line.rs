@@ -402,7 +402,8 @@ impl ProcessingLine {
 
 
     fn process_proc_start_chain_msg(&mut self, step_num: usize, process_until_end: bool) -> Result<(), MyError> {
-        match self.bw.check_if_can_start_processing(step_num) {
+        let start_proc_result = self.bw.locked().check_if_can_start_processing(step_num);
+        match start_proc_result {
             StartProcResult::NoInitialImg => {
                 Err(MyError::new("Необходимо загрузить изображение для обработки".to_string()))
             },
@@ -466,11 +467,21 @@ impl ProcessingLine {
             TaskMsg::Finished => {
                 self.clear_task_and_unfreeze_ui();
 
-                self.lbl_init_img.set_text(&self.bw.locked().get_init_img_descr());
+                let (init_img_descr, init_img_drawable, task_result)
+                    : (String, fltk::image::RgbImage, Result<(), MyError>)
+                    = {
+                        let mut bw_locked = self.bw.locked();
+                        let init_img_descr = bw_locked.get_init_img_descr();
+                        let init_img_drawable = bw_locked.get_init_img_drawable();
+                        let task_result = bw_locked.get_task_result();
+                        (init_img_descr, init_img_drawable, task_result)
+                    };
+
+                self.lbl_init_img.set_text(&init_img_descr);
         
-                self.img_presenter.set_img(self.bw.locked().get_init_img_drawable());
+                self.img_presenter.set_img(init_img_drawable);
                 
-                self.bw.locked().get_task_result()
+                task_result
             },
         }
     }

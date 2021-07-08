@@ -35,7 +35,7 @@ impl Guarded {
         self.tx_notify.send( TaskMsg::Finished ).unwrap();
 	}
     
-    pub fn put_task(&mut self, task: TaskBase) {
+    pub fn start_task(&mut self, task: TaskBase) {
         assert!(self.task.is_none());
         self.task = Some(task);
 	}
