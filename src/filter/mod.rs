@@ -140,6 +140,7 @@ pub fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, My
         "Rgb2Gray" => Box::new(Rgb2Gray::default()) as FilterBase,
         "NeutralizeChannel" =>  Box::new(NeutralizeChannel::default()) as FilterBase,
         "ExtractChannel" =>  Box::new(ExtractChannel::default()) as FilterBase,
+        "CannyEdgeDetection" =>  Box::new(CannyEdgeDetection::default()) as FilterBase,
         _ => {
             return Err(MyError::new(format!("Не удалось загрузить фильтр '{}'", save_name)));
         }
