@@ -14,8 +14,6 @@ impl NeutralizeChannel {
 
 impl Filter for NeutralizeChannel {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        prog_prov.reset_and_set_total_actions_count(1);
-
         let mut img_res = img.clone();
 
         if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {
@@ -29,14 +27,18 @@ impl Filter for NeutralizeChannel {
         Ok(img_res)
     }
 
+    fn get_steps_num(&self, _img: &Img) -> usize {
+        1
+    }
+
     fn get_description(&self) -> String {
         format!("Подавление канала {}", self.channel)
     }
-
+    
     fn get_save_name(&self) -> String {
         "NeutralizeChannel".to_string()
     }
-    
+
     fn get_copy(&self) -> FilterBase {
         let copy = self.clone();
         Box::new(copy) as FilterBase

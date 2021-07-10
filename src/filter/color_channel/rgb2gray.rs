@@ -11,7 +11,6 @@ impl Filter for Rgb2Gray {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
-                prog_prov.reset_and_set_total_actions_count(1);
                 let res = img.clone();
                 prog_prov.complete_action()?;
                 Ok(res)
@@ -19,12 +18,6 @@ impl Filter for Rgb2Gray {
             ColorDepth::Rgb8 | ColorDepth::Rgba8 => {
                 let mut img_res = img.clone();
                 let layers = img_res.layers_mut();
-
-                {
-                    let pixels_per_layer = img.h() * img.w();
-                    let actions_count = pixels_per_layer;
-                    prog_prov.reset_and_set_total_actions_count(actions_count);
-                }
     
                 const RGB_2_GRAY_RED: f64 = 0.299;
                 const RGB_2_GRAY_GREEN: f64 = 0.587;
@@ -66,14 +59,21 @@ impl Filter for Rgb2Gray {
     
     }
 
+    fn get_steps_num(&self, img: &Img) -> usize {
+        match img.color_depth() {
+            ColorDepth::L8 | ColorDepth::La8 => 1,
+            ColorDepth::Rgb8 | ColorDepth::Rgba8 => img.w() * img.h(),
+        }
+    }
+
     fn get_description(&self) -> String {
         "Цветное => ч/б".to_string()
     }
-
+    
     fn get_save_name(&self) -> String {
         "Rgb2Gray".to_string()
     }
-    
+
     fn get_copy(&self) -> FilterBase {
         let copy = self.clone();
         Box::new(copy) as FilterBase

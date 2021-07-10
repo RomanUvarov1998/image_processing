@@ -14,8 +14,6 @@ impl ExtractChannel {
 
 impl Filter for ExtractChannel {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        prog_prov.reset_and_set_total_actions_count(img.d());
-
         let mut img_res = img.clone();
 
         for layer in img_res.layers_mut() {
@@ -31,14 +29,18 @@ impl Filter for ExtractChannel {
         Ok(img_res)
     }
 
+    fn get_steps_num(&self, img: &Img) -> usize {
+        img.d()
+    }
+
     fn get_description(&self) -> String {
         format!("Выделение канала {}", self.channel)
     }
-
+    
     fn get_save_name(&self) -> String {
         "ExtractChannel".to_string()
     }
-    
+
     fn get_copy(&self) -> FilterBase {
         let copy = self.clone();
         Box::new(copy) as FilterBase

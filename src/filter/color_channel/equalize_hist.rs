@@ -9,18 +9,6 @@ pub struct EqualizeHist {
 
 impl Filter for EqualizeHist {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        {
-            let pixels_per_layer = img.h() * img.w();
-            let layers_count = match img.color_depth() {
-                ColorDepth::L8 => img.d(),
-                ColorDepth::La8 => img.d() - 1,
-                ColorDepth::Rgb8 => img.d(),
-                ColorDepth::Rgba8 => img.d() - 1,
-            };
-            let actions_count = layers_count * (PIXEL_VALUES_COUNT * 2 + pixels_per_layer);
-            prog_prov.reset_and_set_total_actions_count(actions_count);
-        }
-
         let mut buffer: HistBuf = [0_f64; PIXEL_VALUES_COUNT];
 
         let mut img_res = img.clone();
@@ -62,14 +50,26 @@ impl Filter for EqualizeHist {
         Ok(img_res)
     }
 
+    fn get_steps_num(&self, img: &Img) -> usize {
+        let pixels_per_layer = img.h() * img.w();
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+        
+        layers_count * (PIXEL_VALUES_COUNT * 2 + pixels_per_layer)
+    }
+
     fn get_description(&self) -> String {
         "Эквализация гистограммы".to_string()
     }
-
+    
     fn get_save_name(&self) -> String {
         "EqualizeHist".to_string()
     }
-    
+
     fn get_copy(&self) -> FilterBase {
         let copy = self.clone();
         Box::new(copy) as FilterBase

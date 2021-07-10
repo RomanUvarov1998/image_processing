@@ -57,33 +57,38 @@ impl Filter for CannyEdgeDetection {
             },
         };
 
-        let l_layer: &ImgLayer = img.layers()
-            .iter()
-            .find(|l| l.channel() == ImgChannel::L)
-            .as_ref()
-            .unwrap();
-
         // bluring
-        let layer_blured = self.gaussian_filter.process_layer(l_layer, prog_prov)?;
+        let layer_blured = {
+            let l_layer: &ImgLayer = img.layers()
+                .iter()
+                .find(|l| l.channel() == ImgChannel::L)
+                .as_ref()
+                .unwrap();
+
+            self.gaussian_filter.process_layer(l_layer, prog_prov)?
+        };
 
         // derivatives by X and Y
         let dx = self.dx_filter.process_layer(&layer_blured, prog_prov)?;
         let dy = self.dy_filter.process_layer(&layer_blured, prog_prov)?;
-        
+
         // gradient
         let grad: Matrix2D = {
             let mut mat = Matrix2D::empty_size_of(layer_blured.matrix());
             for pos in mat.get_pixels_iter() {
                 mat[pos] = (dx[pos].powi(2) + dy[pos].powi(2)).sqrt();
+                prog_prov.complete_action()?;
             }
             let mut g_max = mat.pixels()[0];
             for val in mat.pixels() {
                 if *val > g_max {
                     g_max = *val;
                 }
+                prog_prov.complete_action()?;
             }
             for pos in mat.get_pixels_iter() {
                 mat[pos] = mat[pos] / g_max * 255.0;
+                prog_prov.complete_action()?;
             }
             mat
         };
@@ -97,6 +102,7 @@ impl Filter for CannyEdgeDetection {
                 // bottom left: 3pi/4
                 // bottom right: 1pi/4
                 mat[pos] = dy[pos].atan2(dx[pos]);
+                prog_prov.complete_action()?;
             }
             mat
         };
@@ -140,6 +146,8 @@ impl Filter for CannyEdgeDetection {
                     } else {
                         grad[pos]
                     };
+                
+                prog_prov.complete_action()?;
             }
             mat
         };
@@ -152,6 +160,7 @@ impl Filter for CannyEdgeDetection {
                     if *val > max_value {
                         max_value = *val;
                     }
+                    prog_prov.complete_action()?;
                 }
                 max_value
             };
@@ -194,6 +203,8 @@ impl Filter for CannyEdgeDetection {
                     } else { // is_strong
                         255.0
                     };
+                
+                prog_prov.complete_action()?;
             }
 
             mat
@@ -211,8 +222,41 @@ impl Filter for CannyEdgeDetection {
         };
         let img_res = Img::new(img.w(), img.h(), vec![layer_l, layer_a], ColorDepth::La8);
 
-
         Ok(img_res)
+    }
+
+    fn get_steps_num(&self, img: &Img) -> usize {
+        let pixels_count: usize = img.w() * img.h();
+        let inner_area_pixels_count: usize = (img.w() - 2) * (img.h() - 2);
+
+        let count = 
+            // to make grayed
+            match img.color_depth() {
+                ColorDepth::L8 | ColorDepth::La8 => 0,
+                ColorDepth::Rgb8 | ColorDepth::Rgba8 => self.rgb2gray_filter.get_steps_num(img),
+            }
+
+            // to make blured
+            + pixels_count
+            
+            // for dx
+            + pixels_count
+            
+            // for dy
+            + pixels_count
+            
+            // for grad
+            + 3 * pixels_count
+            
+            // for angles
+            + pixels_count
+
+            // for non-max supression
+            + inner_area_pixels_count
+
+            // for hysteresis
+            + pixels_count + inner_area_pixels_count;
+        count
     }
 
     fn get_description(&self) -> String {

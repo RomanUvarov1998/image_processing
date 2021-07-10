@@ -31,10 +31,6 @@ impl Task for ProcTask {
 			}
 		}
 
-        let mut prog_prov = ProgressProvider::new(
-            &guarded.tx_notify, 
-            &guarded.rx_halt);
-
         let mut img_to_process: &Img = if self.step_num == 0 {
             guarded.get_initial_img()
         } else {
@@ -48,9 +44,15 @@ impl Task for ProcTask {
         }
 
         let step = &guarded.proc_steps[self.step_num];
+
+        let mut prog_prov = ProgressProvider::new(
+            &guarded.tx_notify, 
+            &guarded.rx_halt,
+            step.filter.get_steps_num(&img_to_process));
+
         let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
             Ok(img) => {
-                // assert!(prog_prov.all_actions_completed());
+                prog_prov.assert_all_actions_completed();
                 Some(img)
             },
             Err(_halted) => None

@@ -30,42 +30,40 @@ impl HistogramLocalContrast {
 
 impl Filter for HistogramLocalContrast {
     fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        {
-            let fil_size_half = self.w() / 2;
-            let mean_filter = 
-                img.h() + fil_size_half * 2 + 1
-                + img.w() + fil_size_half * 2 + 1
-                + (img.h() + 2) * (img.w() + 2);
-
-            let count_hists = (img.h() + 0) * (img.w() + 0);
-
-            let count_c = (img.h() + 2) * (img.w() + 2);
-            let count_c_power = (img.h() + 0) * (img.w() + 0);
-            let write_res = (img.h() + 0) * (img.w() + 0);
-
-            let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
-
-            let layers_count = match img.color_depth() {
-                ColorDepth::L8 => img.d(),
-                ColorDepth::La8 => img.d() - 1,
-                ColorDepth::Rgb8 => img.d(),
-                ColorDepth::Rgba8 => img.d() - 1,
-            };
-
-            let actions_count = layers_count * per_layer;
-
-            prog_prov.reset_and_set_total_actions_count(actions_count);
-        }
-
         process_each_layer(img, self, prog_prov)
     }
 
-    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+    fn get_steps_num(&self, img: &Img) -> usize {
+        let fil_size_half = self.w() / 2;
+        let mean_filter = 
+            img.h() + fil_size_half * 2 + 1
+            + img.w() + fil_size_half * 2 + 1
+            + (img.h() + 2) * (img.w() + 2);
 
+        let count_hists = (img.h() + 0) * (img.w() + 0);
+
+        let count_c = (img.h() + 2) * (img.w() + 2);
+        let count_c_power = (img.h() + 0) * (img.w() + 0);
+        let write_res = (img.h() + 0) * (img.w() + 0);
+
+        let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
+
+        let layers_count = match img.color_depth() {
+            ColorDepth::L8 => img.d(),
+            ColorDepth::La8 => img.d() - 1,
+            ColorDepth::Rgb8 => img.d(),
+            ColorDepth::Rgba8 => img.d() - 1,
+        };
+
+        layers_count * per_layer
+    }
+
+    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+    
     fn get_save_name(&self) -> String {
         "HistogramLocalContrast".to_string()
     }
-    
+
     fn get_copy(&self) -> FilterBase {
         let copy = self.clone();
         Box::new(copy) as FilterBase

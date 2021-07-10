@@ -15,19 +15,18 @@ pub struct ProgressProvider<'own> {
 }
 
 impl<'own> ProgressProvider<'own> {
-    pub fn new(tx_progress: &'own std::sync::mpsc::Sender<TaskMsg>, rx_halt: &'own Receiver<HaltMessage>) -> Self {
+    pub fn new(
+        tx_progress: &'own std::sync::mpsc::Sender<TaskMsg>, 
+        rx_halt: &'own Receiver<HaltMessage>,
+        actions_count: usize
+    ) -> Self {
         ProgressProvider { 
             tx_progress, 
             rx_halt,
-            actions_total: 0,
+            actions_total: actions_count,
             actions_completed: 0,
             prev_time: time::Instant::now(),
         }
-    }
-
-    pub fn reset_and_set_total_actions_count(&mut self, actions_count: usize) {
-        self.actions_completed = 0;
-        self.actions_total = actions_count;
     }
 
     const MS_DELAY: u128 = 100;
@@ -47,8 +46,19 @@ impl<'own> ProgressProvider<'own> {
         return Ok(());
     }
 
-    pub fn all_actions_completed(&self) -> bool {
-        self.actions_total == self.actions_completed
+    pub fn assert_all_actions_completed(&self) {
+        if self.actions_total != self.actions_completed {
+            panic!("not all acions completed: {} of {}", 
+                self.actions_completed,
+                self.actions_total);
+        }
+    }
+
+    #[allow(unused)]
+    pub fn print_completed_actions(&self) {
+        println!("completed {}/{}", 
+            self.actions_completed, 
+            self.actions_total);
     }
 
     fn send_progress_msg(&mut self) {
