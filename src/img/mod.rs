@@ -107,13 +107,15 @@ impl Matrix2D {
         PixelsIterator::for_rect_area( tl, br_excluded)
     }
 
-    pub fn scalar_transform<Tr: Fn(f64) -> f64>(&self, tr: Tr) -> Self {
-        let mut transformed = Self::empty_size_of(self);
-
-        for pos in self.get_pixels_iter() {
-            transformed[pos] = tr(self[pos]);
+    pub fn scalar_transform_into<Tr: Fn(&Matrix2D, PixelPos) -> f64>(&self, area: PixelsArea, tr: Tr, dest_matrix: &mut Matrix2D) {
+        for pos in self.get_pixels_area_iter(area.top_left, area.bottom_right) {
+            dest_matrix[pos] = tr(dest_matrix, pos);
         }
+    }
 
+    pub fn scalar_transform<Tr: Fn(&Matrix2D, PixelPos) -> f64>(&self, area: PixelsArea, tr: Tr) -> Self {
+        let mut transformed = Self::empty_size_of(self);
+        self.scalar_transform_into(area, tr, &mut transformed);
         transformed
     }
 
@@ -122,6 +124,10 @@ impl Matrix2D {
             self.pixels.iter().map(|v| *v as u8).collect::<Vec<u8>>().as_slice(), 
             self.width as i32, self.height as i32,  ColorDepth::L8)?;
         Ok(im_rgb)
+    }
+
+    pub fn pixels<'own>(&'own self) -> &'own Vec<f64> {
+        &self.pixels
     }
 
     fn set_rect(&mut self, tl: PixelPos, br_excluded: PixelPos, value: f64) -> () {

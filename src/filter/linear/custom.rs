@@ -32,7 +32,7 @@ impl WindowFilter for LinearCustom {
             let ind = pos.row * self.width + pos.col;
             sum += window_buffer[ind] * self.coeffs[ind];
         }
-        
+
         sum
     }
 
@@ -169,8 +169,8 @@ impl ByLayer for LinearCustom {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> 
-    {
+        prog_prov: &mut ProgressProvider
+    ) -> Result<ImgLayer, Halted> {
         let result_mat = {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),

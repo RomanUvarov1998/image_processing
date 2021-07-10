@@ -24,6 +24,7 @@ impl From<AddStep> for FilterBase {
             AddStep::Rgb2Gray => Box::new(Rgb2Gray::default()) as FilterBase,
             AddStep::NeutralizeChannel => Box::new(NeutralizeChannel::default()) as FilterBase,
             AddStep::ExtractChannel => Box::new(ExtractChannel::default()) as FilterBase,
+            AddStep::CannyEdgeDetection => Box::new(CannyEdgeDetection::default()) as FilterBase,
         }
     }
 }
@@ -46,19 +47,18 @@ impl Iterator for FilterIterator {
     fn next(&mut self) -> Option<PixelPos> {
         let curr = self.cur_pos;
 
-        assert!(self.fits(self.cur_pos));
-
-        if self.cur_pos.col < self.width - 1 {
-            self.cur_pos.col += 1;
-            return Some(curr);
-        } else if self.cur_pos.row < self.height - 1 {
+        self.cur_pos.col += 1;
+        
+        if self.cur_pos.col >= self.width {
             self.cur_pos.col = 0;
             self.cur_pos.row += 1;
-            return Some(curr);
+        }
+        
+        if self.fits(curr) {
+            Some(curr)
         } else {
-            self.cur_pos = PixelPos::default();
-            return None;
-        }        
+            None
+        }
     }
 }
 

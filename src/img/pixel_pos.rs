@@ -17,6 +17,31 @@ impl PixelPos {
 
     pub fn with_row(&self, row: usize) -> Self { PixelPos::new(row, self.col) }
     pub fn with_col(&self, col: usize) -> Self { PixelPos::new(self.row, col) }
+
+    pub fn lefter(&self) -> Self { 
+        PixelPos::new(self.row + 0, self.col - 1) 
+    }
+    pub fn upper_lefter(&self) -> Self { 
+        PixelPos::new(self.row - 1, self.col - 1) 
+    }
+    pub fn upper(&self) -> Self { 
+        PixelPos::new(self.row - 1, self.col + 0) 
+    }
+    pub fn upper_righter(&self) -> Self { 
+        PixelPos::new(self.row - 1, self.col + 1) 
+    }
+    pub fn righter(&self) -> Self { 
+        PixelPos::new(self.row + 0, self.col + 1) 
+    }
+    pub fn downer_righter(&self) -> Self { 
+        PixelPos::new(self.row + 1, self.col + 1) 
+    }
+    pub fn downer(&self) -> Self { 
+        PixelPos::new(self.row + 1, self.col + 0) 
+    }
+    pub fn downer_lefter(&self) -> Self { 
+        PixelPos::new(self.row + 1, self.col - 1) 
+    }
 }
 
 impl Default for PixelPos {

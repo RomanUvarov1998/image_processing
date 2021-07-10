@@ -42,6 +42,7 @@ pub enum AddStep {
     Rgb2Gray, 
     NeutralizeChannel, 
     ExtractChannel, 
+    CannyEdgeDetection, 
 }
 
 #[derive(Debug, Copy, Clone)]

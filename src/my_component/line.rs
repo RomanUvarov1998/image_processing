@@ -75,6 +75,7 @@ impl ProcessingLine {
         btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramEqualizer ) ) );
         btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::NeutralizeChannel ) ) );
         btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
+        btn_add_step.add_emit("Детектор краев Канни", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::CannyEdgeDetection ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
         btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::Export ) );

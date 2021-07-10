@@ -50,7 +50,7 @@ impl Task for ProcTask {
         let step = &guarded.proc_steps[self.step_num];
         let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
             Ok(img) => {
-                assert!(prog_prov.all_actions_completed());
+                // assert!(prog_prov.all_actions_completed());
                 Some(img)
             },
             Err(_halted) => None
