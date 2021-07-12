@@ -19,16 +19,19 @@ impl Filter for NeutralizeChannel {
         if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {
             for pos in layer.get_iter() {
                 layer[pos] = 0_f64;
+                prog_prov.complete_action()?;
             }
         }
-
-        prog_prov.complete_action()?;
         
         Ok(img_res)
     }
 
-    fn get_steps_num(&self, _img: &Img) -> usize {
-        1
+    fn get_steps_num(&self, img: &Img) -> usize {
+        if let Some(_) = img.layers().into_iter().find(|layer| layer.channel() == self.channel) {
+            img.w() * img.h()
+        } else {
+            0
+        }
     }
 
     fn get_description(&self) -> String {
