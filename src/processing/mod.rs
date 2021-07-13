@@ -1,7 +1,6 @@
 mod progress_provider;
 mod background_worker;
 mod guarded;
-mod task;
 
 #[cfg(test)]
 mod tests;
@@ -11,7 +10,7 @@ pub use progress_provider::ProgressProvider;
 pub use progress_provider::Halted;
 pub use guarded::StartProcResult;
 pub use guarded::StartResultsSavingResult;
-pub use task::*;
+pub use guarded::tasks::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TaskMsg {

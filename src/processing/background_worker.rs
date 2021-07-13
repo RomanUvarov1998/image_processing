@@ -1,5 +1,5 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use super::{TaskMsg, guarded::Guarded, progress_provider::HaltMessage, task::TaskBase};
+use super::{TaskMsg, guarded::{Guarded, tasks::TaskBase}, progress_provider::HaltMessage};
 
 
 pub struct BackgroundWorker {
