@@ -1,9 +1,10 @@
 use std::usize;
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
-use crate::{AssetItem, filter::{FilterBase}, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{Pos}};
+use crate::{filter::{FilterBase}, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{Pos}};
 use super::{PADDING, message::*, step::ProcessingStep};
 use crate::processing::*;
+use super::embedded_images::AssetItem;
 
 
 #[derive(Clone, Copy, Debug)]

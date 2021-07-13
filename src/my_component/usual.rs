@@ -1,6 +1,6 @@
 use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
-use crate::{AssetItem, utils::{Pos, WordsIter}};
-
+use crate::{utils::{Pos, WordsIter}};
+use super::embedded_images::{AssetItem, Asset};
 use super::{Alignable, TEXT_PADDING};
 
 const IMG_PADDING: i32 = 5;
@@ -16,7 +16,7 @@ trait MyComponentWithImage {
         Self: WidgetExt + WidgetBase
     {
         let path = item.to_path();
-        let bytes = crate::Asset::get(path)
+        let bytes = Asset::get(path)
             .expect(&format!("Couldn't load image from embedded asset by path '{}'", path));
         let mut img = fltk::image::PngImage::from_data(&bytes[..])
             .expect(&format!("Couldn't load image from embedded bytes by path '{}'", path));

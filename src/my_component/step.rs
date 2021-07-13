@@ -1,6 +1,7 @@
 use fltk::{app::{Sender}, group, image::RgbImage, prelude::{GroupExt}};
-use crate::{AssetItem, img::PixelsArea, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
+use crate::{img::PixelsArea, my_component::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
 use super::{PADDING, message::*};
+use super::embedded_images::AssetItem;
 
 pub struct ProcessingStep {
     step_num: usize,

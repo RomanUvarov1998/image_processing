@@ -10,6 +10,7 @@ pub mod step_editor;
 pub mod line;
 pub mod message;
 mod step;
+mod embedded_images;
 
 pub trait Alignable {
     fn resize(&mut self, w: i32, h: i32);

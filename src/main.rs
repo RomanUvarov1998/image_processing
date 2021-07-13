@@ -6,47 +6,13 @@ mod small_dlg;
 mod utils;
 mod my_component;
 
+#[macro_use]
+extern crate rust_embed;
+
 use std::{cell::RefCell, rc::Rc};
 use my_err::MyError;
 use crate::{my_component::Alignable};
 
-#[macro_use]
-extern crate rust_embed;
-
-#[derive(RustEmbed)]
-#[folder = "icons\\"]
-pub struct Asset;
-
-#[derive(Clone, Copy, Debug)]
-pub enum AssetItem {
-    AddStep,
-    DeleteStep,
-    EditStep,
-    Export,
-    Import,
-    ReorderSteps,
-    RunStepsChain,
-    HaltProcessing,
-    FitImage,
-    CropImage,
-}
-
-impl AssetItem {
-    pub fn to_path(&self) -> &'static str {
-        match self {
-            AssetItem::AddStep => "add step.png",
-            AssetItem::DeleteStep => "delete step.png",
-            AssetItem::EditStep => "edit step.png",
-            AssetItem::Export => "export.png",
-            AssetItem::Import => "import.png",
-            AssetItem::ReorderSteps => "reorder steps.png",
-            AssetItem::RunStepsChain => "run step.png",
-            AssetItem::HaltProcessing => "stop processing.png",
-            AssetItem::FitImage => "stretch.png",
-            AssetItem::CropImage => "crop.png",
-        }
-    }
-}
 
 fn main() -> Result<(), MyError> {
     use fltk::{prelude::*, app::{App, Scheme}, enums::Damage, window::Window};
