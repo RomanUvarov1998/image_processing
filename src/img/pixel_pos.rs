@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PixelPos { pub col: usize, pub row: usize }
 
 impl PixelPos {

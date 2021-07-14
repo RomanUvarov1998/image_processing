@@ -166,7 +166,6 @@ pub struct Img {
     color_depth: ColorDepth
 }
 
-#[allow(unused)]
 impl Img {
     pub fn new(width: usize, height: usize, layers: Vec<ImgLayer>, color_depth: ColorDepth) -> Self {
         assert!(layers.len() > 0);
@@ -363,7 +362,7 @@ impl Img {
             },
         };
 
-        let mut encoder = Encoder::new_file(path, 100)?;
+        let encoder = Encoder::new_file(path, 100)?;
         encoder.encode(&pixels, self.w() as u16, self.h() as u16, color_type)?;
 
         Ok(())
@@ -464,6 +463,7 @@ impl Iterator for RowsIter {
 }
 
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PixelsRow {
     left: PixelPos,
     right: PixelPos
@@ -550,7 +550,7 @@ impl<'own> Iterator for LayersIterator<'own> {
 }
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PixelsArea {
     top_left: PixelPos,
     bottom_right: PixelPos
@@ -567,5 +567,63 @@ impl PixelsArea {
 
     pub fn bottom_right(&self) -> PixelPos {
         self.bottom_right
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::PixelPos;
+
+    #[test]
+    fn pixels_iter_for_area_returns_all_positions() {
+        let mut iter = super::PixelsIterator::for_rect_area(
+            PixelPos::new(0, 0),
+            PixelPos::new(3, 3));
+
+        assert_eq!(iter.next().unwrap(), PixelPos::new(0, 0));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(0, 1));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(0, 2));
+
+        assert_eq!(iter.next().unwrap(), PixelPos::new(1, 0));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(1, 1));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(1, 2));
+
+        assert_eq!(iter.next().unwrap(), PixelPos::new(2, 0));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(2, 1));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(2, 2));
+
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn rows_iter_for_area_returns_all_positions() {
+        let area = super::PixelsArea::new(
+            PixelPos::new(0, 0),
+            PixelPos::new(3, 3));
+        let mut iter = super::RowsIter::new(area);
+    
+        use super::PixelsRow;
+
+        assert_eq!(iter.next().unwrap(), PixelsRow::new(PixelPos::new(0, 0), PixelPos::new(0, 3)));
+        assert_eq!(iter.next().unwrap(), PixelsRow::new(PixelPos::new(1, 0), PixelPos::new(1, 3)));
+        assert_eq!(iter.next().unwrap(), PixelsRow::new(PixelPos::new(2, 0), PixelPos::new(2, 3)));
+        
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn cols_iter_returns_all_cols() {
+        const ROW: usize = 5;
+        let row = super::PixelsRow::new(
+            PixelPos::new(ROW, 0), 
+            PixelPos::new(ROW, 4));
+        let mut iter = super::ColsIter::new(&row);
+
+        assert_eq!(iter.next().unwrap(), PixelPos::new(ROW, 0));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(ROW, 1));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(ROW, 2));
+        assert_eq!(iter.next().unwrap(), PixelPos::new(ROW, 3));
+        assert_eq!(iter.next(), None);
     }
 }
