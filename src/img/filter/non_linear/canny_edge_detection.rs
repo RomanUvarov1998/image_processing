@@ -83,7 +83,7 @@ impl Filter for CannyEdgeDetection {
                 mat[pos] = (dx[pos].powi(2) + dy[pos].powi(2)).sqrt();
                 prog_prov.complete_action()?;
             }
-            let mut g_max = mat.pixels()[0];
+            let mut g_max = mat[0];
             for val in mat.pixels() {
                 if *val > g_max {
                     g_max = *val;

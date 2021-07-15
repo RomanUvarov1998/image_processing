@@ -1,7 +1,7 @@
 use std::{ops::{Add, AddAssign, Neg, Sub, SubAssign}, vec::IntoIter};
 use fltk::prelude::WidgetExt;
 
-use crate::img::{Img, pixel_pos::PixelPos};
+use crate::img::{Img, PixelPos};
 
 // ---------------------------------- Text ------------------------------------
 
