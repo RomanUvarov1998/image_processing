@@ -1,5 +1,11 @@
 use fltk::enums::ColorDepth;
-use crate::{filter::{*, filter_option::*, filter_trait::*}, img::*, utils::LinesIter};
+use crate::my_err::MyError;
+use crate::processing::{ProgressProvider, Halted};
+use crate::utils::LinesIter;
+use super::super::super::*;
+use super::super::filter_trait::*;
+use super::super::*;
+use super::super::FilterBase;
 
 
 #[derive(Clone)]
@@ -108,8 +114,7 @@ impl ByLayer for LinearMean {
             }
         };
         
-        let mut sum_res = img_ops::extend_matrix(
-            &mat, 
+        let mut sum_res = mat.extended(
             ExtendValue::Given(0_f64), 
             0, 0, 1, 1);
 
@@ -140,8 +145,7 @@ impl ByLayer for LinearMean {
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
         // filter
-        let mat_sum_ext = img_ops::extend_matrix(
-            &sum_res, 
+        let mat_sum_ext = sum_res.extended(
             ExtendValue::Closest,
             win_half.row, win_half.col, win_half.row, win_half.col);
 

@@ -1,5 +1,10 @@
-use crate::{filter::{*, filter_option::*, filter_trait::*}, img::Img, processing::*};
-
+use crate::my_err::MyError;
+use crate::processing::{ProgressProvider, Halted};
+use super::super::super::ImgChannel;
+use super::super::super::Img;
+use super::super::filter_trait::*;
+use super::super::filter_option::*;
+use super::super::FilterBase;
 
 #[derive(Clone)]
 pub struct ExtractChannel {

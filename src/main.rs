@@ -1,5 +1,4 @@
 mod my_err;
-mod filter;
 mod processing;
 mod img;
 mod small_dlg;

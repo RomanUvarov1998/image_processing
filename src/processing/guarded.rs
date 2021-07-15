@@ -1,5 +1,5 @@
 use fltk::{image::RgbImage};
-use crate::{filter::FilterBase, img::Img, my_err::MyError};
+use crate::{img::{filter::FilterBase, Img}, my_err::MyError};
 use super::{TaskMsg, progress_provider::HaltMessage};
 
 pub struct Guarded {
@@ -392,7 +392,7 @@ pub mod tasks {
             let filter_name = lines_iter.next_or_empty().to_string();
             let filter_content = lines_iter.all_left(true);
 
-            match crate::filter::try_parce_filter(&filter_name, &filter_content) {
+            match crate::img::filter::try_parce_filter(&filter_name, &filter_content) {
                 Ok(filter) => {
                     guarded.proc_steps.push(crate::processing::guarded::ProcStep { img: None, filter } );
                 },

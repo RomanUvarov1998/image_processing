@@ -1,5 +1,9 @@
 use fltk::enums::ColorDepth;
-use crate::{filter::{*, filter_option::*, filter_trait::*, utils::*}, img::{Img, PIXEL_VALUES_COUNT}, processing::*};
+use crate::img::filter::FilterBase;
+use crate::processing::{ProgressProvider, Halted};
+use super::traits::*;
+use super::img::*;
+use super::utils::*;
 
 
 #[derive(Clone)]

@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod color_channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, img_ops, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}};
+use crate::{img::{Img, ImgLayer, Matrix2D, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}};
 use self::filter_trait::WindowFilter;
 
 pub type FilterBase = Box<dyn self::filter_trait::Filter>;
@@ -79,7 +79,7 @@ fn process_with_window<T: WindowFilter>(
 
     let fil_half_size = PixelPos::new(filter.h() / 2, filter.w() / 2);
 
-    let layer_ext = img_ops::extend_matrix_for_window_filter(init, filter);
+    let layer_ext = init.extended_for_window_filter(filter);
 
     for pos_im in layer_ext.get_pixels_area_iter(
         fil_half_size, 

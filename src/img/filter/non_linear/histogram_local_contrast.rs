@@ -1,6 +1,11 @@
 use fltk::enums::ColorDepth;
-use crate::{filter::{*, filter_option::*, filter_trait::*}, img::Img, processing::*, utils::LinesIter};
-use super::super::process_each_layer;
+use crate::my_err::MyError;
+use crate::processing::{ProgressProvider, Halted};
+use crate::utils::LinesIter;
+use super::super::super::*;
+use super::super::filter_trait::*;
+use super::super::*;
+use super::super::FilterBase;
 
 
 #[derive(Clone)]
@@ -161,8 +166,7 @@ impl ByLayer for HistogramLocalContrast {
 
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
 
-        let mat_ext = img_ops::extend_matrix(
-            mat,
+        let mat_ext = mat.extended(
             ExtendValue::Closest, 
             win_half.row, win_half.col, win_half.row, win_half.col);
         

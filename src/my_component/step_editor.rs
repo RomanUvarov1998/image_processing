@@ -1,5 +1,5 @@
 use fltk::{app::{self}, frame, prelude::{DisplayExt, GroupExt, WidgetBase, WidgetExt, WindowExt}, text, window};
-use crate::{filter::{FilterBase, filter_trait::Filter}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
+use crate::{img::filter::{FilterBase, filter_trait::Filter}, my_component::{Alignable, container::{MyColumn, MyRow}, usual::MyButton}};
 
 use super::message::AddStep;
 

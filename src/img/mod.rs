@@ -1,10 +1,11 @@
 use std::{ops::{Index, IndexMut}, path::PathBuf, result};
 use fltk::{enums::ColorDepth, image::{self}, prelude::ImageExt};
-use crate::{filter::filter_option::ImgChannel, my_err::MyError};
-use self::pixel_pos::PixelPos;
+use crate::my_err::MyError;
+use self::{filter::filter_trait::WindowFilter, pixel_pos::PixelPos};
+use self::filter::filter_option::*;
 
+pub mod filter;
 pub mod pixel_pos;
-pub mod img_ops;
 
 pub const PIXEL_VALUES_COUNT: usize = 256_usize;
 
@@ -128,6 +129,138 @@ impl Matrix2D {
 
     pub fn pixels<'own>(&'own self) -> &'own Vec<f64> {
         &self.pixels
+    }
+
+    pub fn extended_for_window_filter<F: WindowFilter>(&self, filter: &F) -> Matrix2D {
+        let left = filter.w() / 2;
+        let top = filter.h() / 2;
+        let right = left;
+        let bottom = top;
+    
+        self.extended( filter.get_extend_value(), left, top, right, bottom)
+    }
+    
+    pub fn extended(
+        &self, 
+        with: ExtendValue, 
+        left: usize, top: usize, right: usize, bottom: usize
+    ) -> Matrix2D {
+        let mut mat_ext = Matrix2D::empty_with_size(left + self.w() + right, top + self.h() + bottom);
+    
+        let origin = PixelPos::new(0, 0);
+    
+        let margin_left = PixelPos::new(0, left);
+        let margin_top = PixelPos::new(top, 0);
+        let margin_right = PixelPos::new(0, right);
+        let margin_bottom = PixelPos::new(bottom, 0);
+    
+        let rect_left = PixelPos::new(self.h(), left);
+        let rect_top = PixelPos::new(top, self.w());
+        let rect_right = PixelPos::new(self.h(), right);
+        let rect_bottom = PixelPos::new(bottom, self.w());
+    
+        let mat_size = PixelPos::new(self.h(), self.w());
+    
+        // ------------------------------------ top ------------------------------------
+        if top > 0 {
+            // top left
+            if left > 0 {
+                let tl = origin;
+                let br_excluded = tl + margin_left + margin_top;
+                match with {
+                    ExtendValue::Closest => mat_ext.set_rect(tl, br_excluded, self[origin]),
+                    ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+                }
+            }
+            // top middle
+            let tl = margin_left;
+            let br_excluded = tl + rect_top;
+            match with {
+                ExtendValue::Closest => {
+                    for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
+                        mat_ext[pos] = self[pos.with_row(0) - margin_left];
+                    }  
+                },
+                ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+            }    
+            // top right
+            if right > 0 { 
+                let tl = margin_left + rect_top.col_vec();
+                let br_excluded = tl + margin_right + margin_top;
+                match with {
+                    ExtendValue::Closest => mat_ext.set_rect(tl, br_excluded, self[PixelPos::new(0, self.w() - 1)]),
+                    ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+                }
+            }
+        }
+        // ------------------------------------ middle ------------------------------------   
+        // middle left  
+        if left > 0 {
+            let tl = margin_top;
+            let br_excluded = tl + rect_left;
+            match with {
+                ExtendValue::Closest => {
+                    for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
+                        mat_ext[pos] = self[pos.with_col(0) - margin_top];
+                    }
+                },
+                ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+            }
+        }
+        // middle middle     
+        let tl = margin_left + margin_top;
+        let br_excluded = tl + mat_size;               
+        for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
+            mat_ext[pos] = self[pos - tl];
+        }    
+        // middle right
+        if right > 0 { 
+            let tl = margin_left + rect_top;
+            let br_excluded = tl + rect_right;
+            match with {
+                ExtendValue::Closest => {          
+                    for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
+                        mat_ext[pos] = self[pos.with_col(self.w() - 1) - margin_top];
+                    } 
+                },
+                ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+            }
+        }
+        
+        // ------------------------------------ bottom ------------------------------------
+        if bottom > 0 {
+            // bottom left
+            if left > 0{
+                let tl = margin_top + rect_left.row_vec();
+                let br_excluded = tl + margin_left + margin_bottom;
+                match with {
+                    ExtendValue::Closest => mat_ext.set_rect(tl, br_excluded, self[PixelPos::new(self.h() - 1, 0)]),
+                    ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+                }
+            }
+            // bottom middle
+            let tl = margin_top + rect_left;
+            let br_excluded = tl + rect_bottom;
+            match with {
+                ExtendValue::Closest => {   
+                    for pos in mat_ext.get_pixels_area_iter(tl, br_excluded) {
+                        mat_ext[pos] = self[pos.with_row(self.h() - 1) - margin_left];
+                    } 
+                },
+                ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+            }       
+            // bottom right
+            if right > 0 {
+                let tl = margin_left + margin_top + self.size_vec();
+                let br_excluded = tl + margin_right + margin_bottom;
+                match with {
+                    ExtendValue::Closest => mat_ext.set_rect(tl, br_excluded, self[self.size_vec() - PixelPos::one()]),
+                    ExtendValue::Given(val) => mat_ext.set_rect(tl, br_excluded, val),
+                }
+            }
+        }
+    
+        mat_ext
     }
 
     fn set_rect(&mut self, tl: PixelPos, br_excluded: PixelPos, value: f64) -> () {
@@ -329,6 +462,28 @@ impl Img {
             self.width as i32, self.height as i32,  self.color_depth).unwrap();
 
         im_rgb
+    }
+
+    pub fn extended(&self, with: ExtendValue, left: usize, top: usize, right: usize, bottom: usize) -> Img {
+        let mut ext_layers = Vec::<ImgLayer>::with_capacity(self.d());
+    
+        for layer in self.layers() {
+            let ext_layer = match layer.channel() {
+                ImgChannel::A => {
+                    let mut ext_mat = Matrix2D::empty_with_size(left + layer.w() + right, top + layer.h() + bottom);
+                    ext_mat.set_rect(PixelPos::new(0, 0), ext_mat.size_vec(), 255_f64);
+                    ImgLayer::new(ext_mat, layer.channel())
+                },
+                _ => {
+                    let ext_mat = layer.matrix().extended(with, left, top, right, bottom);
+                    ImgLayer::new(ext_mat, layer.channel())
+                },
+            };
+    
+            ext_layers.push(ext_layer);
+        }
+    
+        Img::new(left + self.w() + right, top + self.h() + bottom, ext_layers, self.color_depth())
     }
 
     pub fn try_save(&self, path: &str) -> Result<(), MyError> {

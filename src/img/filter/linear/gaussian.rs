@@ -1,6 +1,11 @@
 use fltk::enums::ColorDepth;
-use crate::{filter::{*, filter_option::*, filter_trait::*}, img::*, utils::LinesIter};
-use super::super::process_with_window;
+use crate::my_err::MyError;
+use crate::processing::{ProgressProvider, Halted};
+use crate::utils::LinesIter;
+use super::super::super::*;
+use super::super::filter_trait::*;
+use super::super::*;
+use super::super::FilterBase;
 
 
 #[derive(Clone)]
