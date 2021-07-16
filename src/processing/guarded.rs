@@ -45,6 +45,13 @@ impl Guarded {
     }
 
 
+    pub fn set_initial_img(&mut self, img: Img) {
+        self.initial_step.img = Some(img);
+        for step in self.proc_steps.iter_mut() {
+            step.img = None;
+        }
+    }
+
 	pub fn get_initial_img(&self) -> &Img {
         self.initial_step.img.as_ref().unwrap()
 	}
