@@ -1,8 +1,8 @@
 use std::usize;
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
-use crate::{img::filter::FilterBase, my_component::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, small_dlg::{self, *}, utils::{Pos}};
-use super::{PADDING, message::*, step::ProcessingStep};
+use crate::{img::filter::FilterBase, my_ui::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, utils::{Pos}};
+use super::{PADDING, message::*, small_dlg::*, step::ProcessingStep};
 use crate::processing::*;
 use super::embedded_images::AssetItem;
 
@@ -192,7 +192,7 @@ impl ProcessingLine {
 
     fn process_project_import_msg(&mut self, import_type: ImportType) -> Result<(), MyError> {
         if self.bw.locked().has_initial_img() {
-            if small_dlg::confirm_with_dlg(
+            if confirm_with_dlg(
                 self.get_center_pos(), 
                 "Для открытия нового изображения нужно удалить предыдущие результаты. Продолжить?"
             ) {

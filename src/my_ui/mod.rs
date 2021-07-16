@@ -9,6 +9,7 @@ pub mod img_presenter;
 pub mod step_editor;
 pub mod line;
 pub mod message;
+pub mod small_dlg;
 mod step;
 mod embedded_images;
 

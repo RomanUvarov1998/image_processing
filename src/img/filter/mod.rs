@@ -10,7 +10,7 @@ use self::filter_trait::WindowFilter;
 
 pub type FilterBase = Box<dyn self::filter_trait::Filter>;
 
-use crate::my_component::message::AddStep;
+use crate::my_ui::message::AddStep;
 impl From<AddStep> for FilterBase {
     fn from(msg: AddStep) -> Self {
         match msg {

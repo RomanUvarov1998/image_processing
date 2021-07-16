@@ -1,16 +1,5 @@
-mod my_err;
-mod processing;
-mod img;
-mod small_dlg;
-mod utils;
-mod my_component;
-
-#[macro_use]
-extern crate rust_embed;
-
 use std::{cell::RefCell, rc::Rc};
-use my_err::MyError;
-use crate::{my_component::Alignable};
+use image_processing::{EVENT_CONTENT_CHANGED, my_ui::{Alignable, line::ProcessingLine}, my_err::MyError};
 
 
 fn main() -> Result<(), MyError> {
@@ -28,7 +17,6 @@ fn main() -> Result<(), MyError> {
     wind.set_damage_type(Damage::All | Damage::Child | Damage::Scroll);
     wind.make_resizable(true);
     
-    use crate::my_component::line::ProcessingLine;
     let steps_line = ProcessingLine::new(0, 0, WIN_WIDTH, WIN_HEIGHT);
 
     let steps_line = Rc::new(RefCell::new(steps_line));
@@ -66,10 +54,4 @@ fn main() -> Result<(), MyError> {
     }
 
     Ok(())
-}
-
-const EVENT_CONTENT_CHANGED: i32 = 40;
-
-pub fn notify_content_changed() {
-    fltk::app::handle_main(EVENT_CONTENT_CHANGED).unwrap();
 }

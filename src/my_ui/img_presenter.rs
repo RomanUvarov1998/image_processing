@@ -1,6 +1,6 @@
 use std::{cell::{RefCell}, rc::Rc};
 use fltk::{frame, image::RgbImage, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{PixelsArea}, my_component::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
+use crate::{img::{PixelsArea}, my_ui::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
 use super::Alignable;
 use super::embedded_images::AssetItem;
 
