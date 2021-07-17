@@ -13,7 +13,7 @@ pub struct Rgb2Gray {
 }
 
 impl Filter for Rgb2Gray {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
                 let res = img.clone();

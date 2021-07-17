@@ -59,7 +59,7 @@ impl WindowFilter for LinearCustom {
 }
 
 impl Filter for LinearCustom {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         super::super::process_each_layer(img, self, prog_prov)
     }
 

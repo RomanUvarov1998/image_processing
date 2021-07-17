@@ -43,7 +43,7 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         process_each_layer(img, self, prog_prov)
     }
 

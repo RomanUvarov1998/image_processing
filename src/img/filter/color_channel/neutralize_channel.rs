@@ -19,7 +19,7 @@ impl NeutralizeChannel {
 }
 
 impl Filter for NeutralizeChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         let mut img_res = img.clone();
 
         if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {

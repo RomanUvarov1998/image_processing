@@ -51,7 +51,7 @@ use fltk::prelude::ImageExt;
                 &guarded.rx_halt,
                 step.filter.get_steps_num(&img_to_process));
 
-            let img_result = match step.filter.filter(&img_to_process, &mut prog_prov) {
+            let img_result = match step.filter.process(&img_to_process, &mut prog_prov) {
                 Ok(img) => {
                     prog_prov.assert_all_actions_completed();
                     Some(img)

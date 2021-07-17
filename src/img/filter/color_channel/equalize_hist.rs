@@ -12,7 +12,7 @@ pub struct EqualizeHist {
 }
 
 impl Filter for EqualizeHist {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         let mut buffer: HistBuf = [0_f64; PIXEL_VALUES_COUNT];
 
         let mut img_res = img.clone();

@@ -18,7 +18,7 @@ impl ExtractChannel {
 }
 
 impl Filter for ExtractChannel {
-    fn filter(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
         let mut img_res = img.clone();
 
         for layer in img_res.layers_mut() {
