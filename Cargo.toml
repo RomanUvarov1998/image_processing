@@ -20,4 +20,4 @@ name = "filters"
 harness = false
 
 [profile.dev]
-opt-level = 0
+opt-level = 3

@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ProgressProvider, Halted};
+use crate::processing::Halted;
 use super::super::super::*;
 use super::super::filter_trait::*;
 use super::super::*;
@@ -51,12 +51,12 @@ impl CannyEdgeDetection {
 }
 
 impl Filter for CannyEdgeDetection {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
         let grayed: Img;
         let img = match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => img,
             ColorDepth::Rgb8 | ColorDepth::Rgba8 => {
-                grayed = self.rgb2gray_filter.process(img, prog_prov)?;
+                grayed = self.rgb2gray_filter.process(img, executor_handle)?;
                 &grayed
             },
         };
@@ -69,12 +69,12 @@ impl Filter for CannyEdgeDetection {
                 .as_ref()
                 .unwrap();
 
-            self.gaussian_filter.process_layer(l_layer, prog_prov)?
+            self.gaussian_filter.process_layer(l_layer, executor_handle)?
         };
 
         // derivatives by X and Y
-        let dx = self.dx_filter.process_layer(&layer_blured, prog_prov)?;
-        let dy = self.dy_filter.process_layer(&layer_blured, prog_prov)?;
+        let dx = self.dx_filter.process_layer(&layer_blured, executor_handle)?;
+        let dy = self.dy_filter.process_layer(&layer_blured, executor_handle)?;
 
         let (layer_w, layer_h) = (layer_blured.w(), layer_blured.h());
 
@@ -85,15 +85,15 @@ impl Filter for CannyEdgeDetection {
                 |pos| {
                     (dx[pos].powi(2) + dy[pos].powi(2)).sqrt()
                 }, 
-                prog_prov)?;
+                executor_handle)?;
 
-            let g_max: f64 = grad.get_max(prog_prov)?;
+            let g_max: f64 = grad.get_max(executor_handle)?;
 
             grad.scalar_transform_self(
                 |val, _| {
                     *val = *val / g_max * 255.0;
                 }, 
-                prog_prov)?;
+                executor_handle)?;
 
             grad
         };
@@ -108,7 +108,7 @@ impl Filter for CannyEdgeDetection {
                 // bottom right: 1pi/4
                 dy[pos].atan2(dx[pos])
             }, 
-            prog_prov)?;
+            executor_handle)?;
         
         // non-max supression
         let mat_non_max_supressed: Matrix2D = {
@@ -163,12 +163,12 @@ impl Filter for CannyEdgeDetection {
             Matrix2D::generate(
                 layer_w, layer_h, 
                 generate_fcn, 
-                prog_prov)?
+                executor_handle)?
         };
 
         // double thesholding and hysteresis
         let mat_hysteresis: Matrix2D = {
-            let max_pix_value: f64 = mat_non_max_supressed.get_max(prog_prov)?;
+            let max_pix_value: f64 = mat_non_max_supressed.get_max(executor_handle)?;
             let high_tr = 0.09 * max_pix_value;
             let low_tr = 0.05 * high_tr;
 
@@ -220,7 +220,7 @@ impl Filter for CannyEdgeDetection {
             Matrix2D::generate(
                 layer_w, layer_h, 
                 generate_fcn, 
-                prog_prov)?
+                executor_handle)?
         };
 
         // creating result

@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ProgressProvider, Halted};
+use crate::processing::{Halted};
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -34,8 +34,8 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        process_each_layer(img, self, prog_prov)
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+        process_each_layer(img, self, executor_handle)
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
@@ -159,7 +159,7 @@ impl ByLayer for HistogramLocalContrast {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<ImgLayer, Halted> {
         let mat = {
             match layer.channel() {
@@ -178,7 +178,7 @@ impl ByLayer for HistogramLocalContrast {
         
         let mat_ext_filtered = {
             let layer_ext = ImgLayer::new(mat_ext.clone(), layer.channel());
-            let layer_ext_filtered = self.mean_filter.process_layer(&layer_ext, prog_prov)?;
+            let layer_ext_filtered = self.mean_filter.process_layer(&layer_ext, executor_handle)?;
             layer_ext_filtered.matrix().clone()
         };
 
@@ -208,7 +208,7 @@ impl ByLayer for HistogramLocalContrast {
             Matrix2D::generate(
                 mat_ext.w(), mat_ext.h(), 
                 generate_fcn, 
-                prog_prov)?
+                executor_handle)?
         };
 
         //-------------------------------- create C matrix ---------------------------------
@@ -219,7 +219,7 @@ impl ByLayer for HistogramLocalContrast {
                 val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
                 f64::abs(val)
             }, 
-            prog_prov)?;
+            executor_handle)?;
 
         mat_c.scalar_transform_self(
             |val: &mut f64, pos: PixelPos| {
@@ -248,7 +248,7 @@ impl ByLayer for HistogramLocalContrast {
                 
                 *val = val.powf(c_power);
             }, 
-            prog_prov)?;
+            executor_handle)?;
 
         //-------------------------------- create result ---------------------------------         
         let mat_res = Matrix2D::generate(
@@ -269,7 +269,7 @@ impl ByLayer for HistogramLocalContrast {
 
                 val
             }, 
-            prog_prov)?;
+            executor_handle)?;
 
         Ok(ImgLayer::new(mat_res, layer.channel()))
     }

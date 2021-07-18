@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ProgressProvider, Halted};
+use crate::processing::Halted;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -43,8 +43,8 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        process_each_layer(img, self, prog_prov)
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+        process_each_layer(img, self, executor_handle)
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
@@ -104,7 +104,7 @@ impl StringFromTo for LinearMean {
 }
 
 impl ByLayer for LinearMean {
-    fn process_layer(&self, layer: &ImgLayer, prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> {
+    fn process_layer(&self, layer: &ImgLayer, executor_handle: &ExecutorHandle) -> Result<ImgLayer, Halted> {
         let mat = match layer.channel() {
             ImgChannel::A => {
                 return Ok(layer.clone())
@@ -127,7 +127,7 @@ impl ByLayer for LinearMean {
                 sum_res[pos] = row_sum;
             }
 
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
         
         // sum along cols
@@ -139,7 +139,7 @@ impl ByLayer for LinearMean {
                 sum_res[pos] = col_sum;
             }
 
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
 
         let win_half = PixelPos::new(self.h() / 2, self.w() / 2);
@@ -169,7 +169,7 @@ impl ByLayer for LinearMean {
                 mat_res[ext_pos - win_half - one] = result;
             }
 
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
 
         // create layer

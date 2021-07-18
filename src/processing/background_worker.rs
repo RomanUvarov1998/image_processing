@@ -1,18 +1,15 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use super::{TaskMsg, guarded::{Guarded, tasks::TaskBase}, progress_provider::HaltMessage};
+use super::{guarded::{Guarded, tasks::TaskBase}, task_info_channel::ExecutorHandle};
 
 
 pub struct BackgroundWorker {
     inner: Arc<Inner>,
-    tx_halt: std::sync::mpsc::SyncSender<HaltMessage>,
     _processing_thread_handle: JoinHandle<()>
 }
 
 impl BackgroundWorker {
-    pub fn new(progress_tx: std::sync::mpsc::Sender<TaskMsg>) -> Self {
-        let (tx_halt, rx_halt) = std::sync::mpsc::sync_channel::<HaltMessage>(1);
-        
-        let inner = Arc::new(Inner::new(progress_tx, rx_halt));
+    pub fn new(executor_handle: ExecutorHandle) -> Self {        
+        let inner = Arc::new(Inner::new(executor_handle));
 
         let inner_arc = Arc::clone(&inner);
         let _processing_thread_handle: JoinHandle<()> = thread::Builder::new()
@@ -30,7 +27,7 @@ impl BackgroundWorker {
         })
             .expect("Couldn't create a processing thread");
 
-        BackgroundWorker { inner, tx_halt, _processing_thread_handle }
+        BackgroundWorker { inner, _processing_thread_handle }
     }
 
     pub fn locked(&self) -> MutexGuard<Guarded> {
@@ -41,16 +38,6 @@ impl BackgroundWorker {
         self.locked().start_task(task);
         self.inner.cv.notify_one();
     }
-    
-    pub fn halt_processing(&mut self) {
-        use std::sync::mpsc::TrySendError;
-
-        if let Err(err) = self.tx_halt.try_send(HaltMessage) {
-            if let TrySendError::Disconnected(_) = err {
-                panic!("Rx_halt disconnected");
-            }
-        }
-    }
 }
 
 
@@ -60,10 +47,10 @@ struct Inner {
 }
 
 impl Inner {
-    fn new(progress_tx: std::sync::mpsc::Sender<TaskMsg>, rx_halt: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
+    fn new(executor_handle: ExecutorHandle) -> Self {
         Inner {
             cv: Condvar::new(),
-            guarded: Mutex::new(Guarded::new(progress_tx, rx_halt))
+            guarded: Mutex::new(Guarded::new(executor_handle))
         }
     }
 }

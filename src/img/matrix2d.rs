@@ -1,4 +1,4 @@
-use crate::processing::{Halted, ProgressProvider};
+use crate::processing::{ExecutorHandle, Halted};
 
 use super::*;
 
@@ -27,7 +27,7 @@ impl Matrix2D {
     pub fn generate<Tr: FnMut(PixelPos) -> f64>(
         width: usize, height: usize, 
         mut tr: Tr, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<Self, Halted> {
         let mut mat = Self::empty_with_size(width, height);
         
@@ -36,7 +36,7 @@ impl Matrix2D {
                 let pos = PixelPos::new(row, col);
                 mat[pos] = tr(pos);
             }
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
 
         Ok(mat)
@@ -72,14 +72,14 @@ impl Matrix2D {
         area: PixelsArea, 
         tr: Tr, 
         dest_matrix: &mut Matrix2D, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<(), Halted> {
         for row in area.get_rows_range() {
             for col in area.get_cols_range() {
                 let pos = PixelPos::new(row, col);
                 dest_matrix[pos] = tr(dest_matrix, pos);
             }
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
         Ok(())
     }
@@ -88,10 +88,10 @@ impl Matrix2D {
         &self, 
         area: PixelsArea, 
         tr: Tr, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<Self, Halted> {
         let mut transformed = Self::empty_size_of(self);
-        self.scalar_transform_area_into(area, tr, &mut transformed, prog_prov)?;
+        self.scalar_transform_area_into(area, tr, &mut transformed, executor_handle)?;
         Ok(transformed)
     }
 
@@ -99,27 +99,27 @@ impl Matrix2D {
     pub fn scalar_transform_self<Tr: Fn(&mut f64, PixelPos) -> ()>(
         &mut self, 
         tr: Tr, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<(), Halted> {
         let area = PixelsArea::from_zero_to(self.h(), self.w());
         self.scalar_transform_self_area(
             area,
             tr,
-            prog_prov)
+            executor_handle)
     }
 
     pub fn scalar_transform_self_area<Tr: Fn(&mut f64, PixelPos) -> ()>(
         &mut self, 
         area: PixelsArea, 
         tr: Tr, 
-        prog_prov: &mut ProgressProvider
+        executor_handle: &ExecutorHandle
     ) -> Result<(), Halted> {
         for row in area.get_rows_range() {
             for col in area.get_cols_range() {
                 let pos = PixelPos::new(row, col);
                 tr(&mut self[pos], pos);
             }
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
         Ok(())
     }
@@ -136,7 +136,7 @@ impl Matrix2D {
         &self.pixels
     }
 
-    pub fn get_max(&self, prog_prov: &mut ProgressProvider) -> Result<f64, Halted> {
+    pub fn get_max(&self, executor_handle: &ExecutorHandle) -> Result<f64, Halted> {
         let mut max = self.pixels[0];
         
         for row in 0..self.h() {
@@ -147,7 +147,7 @@ impl Matrix2D {
                     max = val;
                 }
             }
-            prog_prov.complete_action()?
+            executor_handle.complete_action()?
         }
 
         Ok(max)

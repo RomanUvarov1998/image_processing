@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{Halted, ProgressProvider};
+use crate::processing::{ExecutorHandle, Halted};
 use crate::utils::LinesIter;
 use super::traits::*;
 use super::options::*;
@@ -23,8 +23,8 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        process_each_layer(img, self, prog_prov)
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+        process_each_layer(img, self, executor_handle)
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
@@ -82,8 +82,8 @@ impl ByLayer for CutBrightness {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> 
-    {
+        executor_handle: &ExecutorHandle
+    ) -> Result<ImgLayer, Halted> {
         let mut mat_res = {
             match layer.channel() {
                 ImgChannel::A => {
@@ -105,7 +105,7 @@ impl ByLayer for CutBrightness {
 
                 mat_res[pos] = result as f64;
 
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
         
         Ok(ImgLayer::new(mat_res, layer.channel()))

@@ -5,7 +5,7 @@ pub mod linear;
 pub mod non_linear;
 pub mod color_channel;
 
-use crate::{img::{Img, ImgLayer, Matrix2D, pixel_pos::PixelPos}, my_err::MyError, processing::{Halted, ProgressProvider}};
+use crate::{img::{Img, ImgLayer, Matrix2D, pixel_pos::PixelPos}, my_err::MyError, processing::{ExecutorHandle, Halted}};
 use self::filter_trait::WindowFilter;
 
 pub type FilterBase = Box<dyn self::filter_trait::Filter>;
@@ -66,9 +66,8 @@ impl Iterator for FilterIterator {
 fn process_with_window<T: WindowFilter>(
     init: &Matrix2D,      
     filter: &T, 
-    prog_prov: &mut ProgressProvider) 
-    -> Result<Matrix2D, Halted>
-{
+    executor_handle: &ExecutorHandle
+) -> Result<Matrix2D, Halted> {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
 
@@ -98,7 +97,7 @@ fn process_with_window<T: WindowFilter>(
             res[pos_im - fil_half_size] = filter_result;
         }
 
-        prog_prov.complete_action()?;
+        executor_handle.complete_action()?;
     }
 
     Ok(res)
@@ -111,18 +110,19 @@ trait ByLayer {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted>;
+        executor_handle: &ExecutorHandle
+    ) -> Result<ImgLayer, Halted>;
 }
 
 fn process_each_layer<F: ByLayer>(
     img: &Img, 
     filter: &F, 
-    prog_prov: &mut ProgressProvider) -> Result<Img, Halted> 
-{
+    executor_handle: &ExecutorHandle
+) -> Result<Img, Halted> {
     let mut res_layers = Vec::<ImgLayer>::with_capacity(img.d());
 
     for layer in img.get_layers_iter() {
-        let res_layer = filter.process_layer(layer, prog_prov)?;        
+        let res_layer = filter.process_layer(layer, executor_handle)?;        
         res_layers.push(res_layer);
     }        
 
@@ -155,7 +155,7 @@ pub fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, My
 
 #[cfg(test)]
 mod tests {
-    use crate::{img::{Img, filter::{FilterBase, linear::*, non_linear::*, color_channel::*}}, processing::{HaltMessage, ProgressProvider, TaskMsg}};
+    use crate::{img::{Img, filter::{FilterBase, linear::*, non_linear::*, color_channel::*}}, processing::task_info_channel};
 
     #[test]
     fn all_actions_are_completed() {
@@ -176,15 +176,10 @@ mod tests {
         let img = Img::empty_with_size(100, 100, fltk::enums::ColorDepth::Rgba8);
 
         for filter in filters.iter() {
-            let (tx_prog, _rx_prog) = std::sync::mpsc::channel::<TaskMsg>();
-            let (_tx_halt, rx_halt) = std::sync::mpsc::channel::<HaltMessage>();
-            let actions_count = filter.get_steps_num(&img);
-    
-            let mut prog_prov = ProgressProvider::new(&tx_prog, &rx_halt, actions_count);
-
-            let _res = filter.process(&img, &mut prog_prov);
-
-            prog_prov.assert_all_actions_completed();
+            let (mut executor_handle, _delegator_handle) = task_info_channel();
+            executor_handle.reset(filter.get_steps_num(&img));
+            let _res = filter.process(&img, &mut executor_handle);
+            executor_handle.assert_all_actions_completed();
             println!("{} is ok", filter.get_description());
         }
     }

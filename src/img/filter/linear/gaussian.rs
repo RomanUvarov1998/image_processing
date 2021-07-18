@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ProgressProvider, Halted};
+use crate::processing::Halted;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -52,8 +52,8 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
-        process_each_layer(img, self, prog_prov)
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+        process_each_layer(img, self, executor_handle)
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
@@ -84,14 +84,14 @@ impl ByLayer for LinearGaussian {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted>
-    {
+        executor_handle: &ExecutorHandle
+    ) -> Result<ImgLayer, Halted> {
         let result_mat = match layer.channel() {
             ImgChannel::A => layer.matrix().clone(),
             _ => process_with_window(
                 layer.matrix(), 
                 self, 
-                prog_prov)?,
+                executor_handle)?,
         };
 
         Ok(ImgLayer::new(result_mat, layer.channel()))

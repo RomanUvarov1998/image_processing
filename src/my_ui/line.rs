@@ -21,7 +21,7 @@ pub struct ProcessingLine {
     steps_widgets: Vec<ProcessingStep>,
     tx: Sender<Msg>, rx: Receiver<Msg>,
     bw: BackgroundWorker,
-    rx_task: std::sync::mpsc::Receiver<TaskMsg>,
+    delegator_handle: DelegatorHandle,
     current_task: Option<CurrentTask>,
 
     // graphical parts
@@ -111,15 +111,15 @@ impl ProcessingLine {
         processing_col.end();
 
         main_row.end();
-
-        let (tx_task, rx_task) = std::sync::mpsc::channel::<TaskMsg>();
-        let background_worker = BackgroundWorker::new(tx_task);
+        
+        let (executor_handle, delegator_handle) = task_info_channel();
+        let background_worker = BackgroundWorker::new(executor_handle);
 
         let mut line = ProcessingLine {
             steps_widgets: Vec::<ProcessingStep>::new(),
             tx, rx,
             bw: background_worker,
-            rx_task,
+            delegator_handle,
             current_task: None,
             
             // graphical parts
@@ -426,35 +426,35 @@ impl ProcessingLine {
     }
 
     fn process_proc_halt_msg(&mut self) -> Result<(), MyError> {
-        self.bw.halt_processing();
+        self.delegator_handle.halt_task();
         Ok(())
     }
 
     
 
     pub fn process_task_message_loop(&mut self) -> Result<(), MyError> {
-        let mut received_task_msg = false;
+        if self.current_task.is_none() { return Ok(()); }
 
-        while let Ok(msg) = self.rx_task.try_recv() {
-            received_task_msg = true;
+        let msg: TaskMsg = match self.delegator_handle.get_completed_percents() {
+            percents @ 0..=99 => TaskMsg::Progress { percents },
+            100 => TaskMsg::Finished,
+            _ => unreachable!()
+        };
 
-            let current_task = self.current_task.unwrap();
+        let current_task: CurrentTask = self.current_task.unwrap();
 
-            if let Err(err) = match current_task {
-                CurrentTask::Importing => self.process_task_import_msg(msg),
-                CurrentTask::Loading => self.process_task_loading_msg(msg),
-                CurrentTask::Processing { step_num, process_until_end } => 
-                    self.process_task_processing_msg(msg, step_num, process_until_end),
-                CurrentTask::Saving => self.process_task_saving_msg(msg),
-                CurrentTask::Exporting => self.process_task_export_msg(msg),
-            } {
-                show_err_msg(self.get_center_pos(), err);
-            }
+        if let Err(err) = match current_task {
+            CurrentTask::Importing => self.process_task_import_msg(msg),
+            CurrentTask::Loading => self.process_task_loading_msg(msg),
+            CurrentTask::Processing { step_num, process_until_end } => 
+                self.process_task_processing_msg(msg, step_num, process_until_end),
+            CurrentTask::Saving => self.process_task_saving_msg(msg),
+            CurrentTask::Exporting => self.process_task_export_msg(msg),
+        } {
+            show_err_msg(self.get_center_pos(), err);
         }
-    
-        if received_task_msg {
-            crate::notify_content_changed();
-        }
+
+        crate::notify_content_changed();
 
         Ok(())
     }

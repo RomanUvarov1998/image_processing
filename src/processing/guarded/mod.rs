@@ -1,16 +1,14 @@
 use crate::{img::{Img, filter::FilterBase}, my_err::MyError};
 use fltk::image::RgbImage;
 use proc_step::ProcStep;
-
-use super::{TaskMsg, progress_provider::HaltMessage};
+use super::ExecutorHandle;
 
 mod proc_step;
 pub mod tasks;
 
 
 pub struct Guarded {
-	tx_notify: std::sync::mpsc::Sender<TaskMsg>,
-	rx_halt: std::sync::mpsc::Receiver<HaltMessage>,
+	executor_handle: ExecutorHandle,
     task: Option<tasks::TaskBase>,
     task_result: Option<Result<(), MyError>>,
     initial_img: Option<Img>,
@@ -18,9 +16,9 @@ pub struct Guarded {
 }
 
 impl Guarded {
-	pub fn new(progress_tx: std::sync::mpsc::Sender<TaskMsg>, rx_halt: std::sync::mpsc::Receiver<HaltMessage>) -> Self {
+	pub fn new(executor_handle: ExecutorHandle) -> Self {
 		Guarded {
-			tx_notify: progress_tx, rx_halt,
+			executor_handle,
 			task: None, task_result: None,
 			initial_img: None,
 			proc_steps: Vec::new()
@@ -32,13 +30,9 @@ impl Guarded {
 	}
 
 	pub fn do_task_and_save_result(&mut self) {
-		// make the halt message buffer clean
-		while let Ok(_) = self.rx_halt.try_recv() {}
-
         let mut task: tasks::TaskBase = self.task.take().unwrap();
         self.task_result = Some(task.complete(self));
-
-        self.tx_notify.send( TaskMsg::Finished ).unwrap();
+        self.executor_handle.assert_all_actions_completed();
 	}
     
     pub fn start_task(&mut self, task: tasks::TaskBase) {

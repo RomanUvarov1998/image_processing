@@ -1,5 +1,5 @@
 use crate::my_err::MyError;
-use crate::processing::{Halted, ProgressProvider};
+use crate::processing::{ExecutorHandle, Halted};
 
 use super::{FilterBase, filter_option::ExtendValue, FilterIterator};
 use super::super::Img;
@@ -10,7 +10,7 @@ pub trait StringFromTo {
 }
 
 pub trait Filter : StringFromTo + Send {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted>;
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted>;
     fn get_steps_num(&self, img: &Img) -> usize;
     fn get_description(&self) -> String;
     fn get_save_name(&self) -> String;

@@ -1,5 +1,6 @@
 use crate::my_err::MyError;
-use crate::processing::{ProgressProvider, Halted};
+use crate::processing::ExecutorHandle;
+use crate::processing::Halted;
 use super::super::super::ImgChannel;
 use super::super::super::Img;
 use super::super::filter_trait::*;
@@ -18,7 +19,7 @@ impl ExtractChannel {
 }
 
 impl Filter for ExtractChannel {
-    fn process(&self, img: &Img, prog_prov: &mut ProgressProvider) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
         let mut img_res = img.clone();
 
         for layer in img_res.layers_mut() {
@@ -28,7 +29,7 @@ impl Filter for ExtractChannel {
                 }
             }
 
-            prog_prov.complete_action()?;
+            executor_handle.complete_action()?;
         }
         
         Ok(img_res)

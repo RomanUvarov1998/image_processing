@@ -1,7 +1,6 @@
 use fltk::prelude::ImageExt;
-    use crate::{img::{Img, PixelsArea}, my_err::MyError, processing::TaskMsg};
+    use crate::{img::{Img, PixelsArea}, my_err::MyError};
     use super::Guarded;
-    use super::super::ProgressProvider;
     use super::proc_step::ProcStep;
 
 
@@ -46,16 +45,10 @@ use fltk::prelude::ImageExt;
 
             let step = &guarded.proc_steps[self.step_num];
 
-            let mut prog_prov = ProgressProvider::new(
-                &guarded.tx_notify, 
-                &guarded.rx_halt,
-                step.filter.get_steps_num(&img_to_process));
+            guarded.executor_handle.reset(step.filter.get_steps_num(&img_to_process));
 
-            let img_result = match step.filter.process(&img_to_process, &mut prog_prov) {
-                Ok(img) => {
-                    prog_prov.assert_all_actions_completed();
-                    Some(img)
-                },
+            let img_result = match step.filter.process(&img_to_process, &guarded.executor_handle) {
+                Ok(img) => Some(img),
                 Err(_halted) => None
             };
 
@@ -80,9 +73,14 @@ use fltk::prelude::ImageExt;
 
     impl Task for ExportTask {
         fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+
+            guarded.executor_handle.reset(1 + guarded.proc_steps.len());
+
             if let Err(err) = std::fs::create_dir(&self.dir_path) {
                 return Err(MyError::new(err.to_string()));
             };
+
+            guarded.executor_handle.complete_action()?;
 
             for step_num in 0..guarded.proc_steps.len() {
                 let mut file_path = self.dir_path.clone();
@@ -91,8 +89,7 @@ use fltk::prelude::ImageExt;
                 let step = &guarded.proc_steps[step_num];
                 step.img.as_ref().unwrap().try_save(&file_path)?;
                 
-                let percents = step_num * 100 / guarded.proc_steps.len();
-                guarded.tx_notify.send( TaskMsg::Progress { percents } ).unwrap();
+                guarded.executor_handle.complete_action()?;
             }
 
             Ok(())
@@ -114,9 +111,11 @@ use fltk::prelude::ImageExt;
 
     impl Task for ImportTask {
         fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+            guarded.executor_handle.reset(2);
+
             let sh_im = fltk::image::SharedImage::load(&self.path)?;
 
-            guarded.tx_notify.send(TaskMsg::Progress { percents: 50 } ).unwrap();
+            guarded.executor_handle.complete_action()?;
 
             if sh_im.w() < 0 { 
                 return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); 
@@ -128,6 +127,8 @@ use fltk::prelude::ImageExt;
             let img = Img::from(sh_im);
 
             guarded.initial_img = Some(img);
+
+            guarded.executor_handle.complete_action()?;
 
             Ok(())
         }
@@ -150,10 +151,14 @@ use fltk::prelude::ImageExt;
 
     impl Task for SaveProjectTask {
         fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+            guarded.executor_handle.reset(1 + guarded.proc_steps.len() + 1);
+
             let mut file = match std::fs::File::create(&self.path) {
                 Ok(f) => f,
                 Err(err) => { return Err(MyError::new(err.to_string())); }
             };
+
+            guarded.executor_handle.complete_action()?;
 
             let mut file_content = String::new();
 
@@ -172,11 +177,15 @@ use fltk::prelude::ImageExt;
                     file_content.push_str(FILTER_SAVE_SEPARATOR);
                     file_content.push_str("\n");
                 }
+
+                guarded.executor_handle.complete_action()?;
             }
 
             use std::io::Write;
             file.write_all(&file_content.as_bytes())?;
             file.sync_all()?;
+
+            guarded.executor_handle.complete_action()?;
 
             Ok(())
         }
@@ -201,7 +210,11 @@ use fltk::prelude::ImageExt;
 
     impl Task for LoadProjectTask {
     fn complete(&mut self, guarded: &mut Guarded) -> Result<(), MyError> {
+        guarded.executor_handle.reset(1 + 1 + 1);
+
         Self::remove_all_steps(guarded);
+
+        guarded.executor_handle.complete_action()?;
 
         let mut file = match std::fs::File::open(&self.path) {
             Ok(f) => f,
@@ -214,14 +227,14 @@ use fltk::prelude::ImageExt;
             return Err(MyError::new(format!("Ошибка при чтении файла проекта: {}", err.to_string())));
         };
 
+        guarded.executor_handle.complete_action()?;
+
         let mut filters_iter = crate::utils::TextBlocksIter::new(
             &file_content, FILTER_SAVE_SEPARATOR);
 
         guarded.proc_steps.reserve(filters_iter.len());
 
-        let steps_count = filters_iter.len();
-
-        for (step_num, filter_str) in filters_iter.iter().enumerate() {
+        for filter_str in filters_iter.iter() {
             let mut lines_iter = crate::utils::LinesIter::new(filter_str);
             let filter_name = lines_iter.next_or_empty().to_string();
             let filter_content = lines_iter.all_left(true);
@@ -238,10 +251,9 @@ use fltk::prelude::ImageExt;
                     return Err(MyError::new(err_msg));
                 },
             }
-
-            let percents = step_num * 100 / steps_count;
-            guarded.tx_notify.send( TaskMsg::Progress { percents } ).unwrap();
         }
+
+        guarded.executor_handle.complete_action()?;
 
         Ok(())
     }
