@@ -43,15 +43,21 @@ impl Filter for HistogramLocalContrast {
         let mean_filter = 
             img.h() + fil_size_half * 2 + 1
             + img.w() + fil_size_half * 2 + 1
-            + (img.h() + 2) * (img.w() + 2);
+            + (img.h() + 2);
 
-        let count_hists = (img.h() + 0) * (img.w() + 0);
+        let count_hists = img.h() + 2;
 
-        let count_c = (img.h() + 2) * (img.w() + 2);
-        let count_c_power = (img.h() + 0) * (img.w() + 0);
-        let write_res = (img.h() + 0) * (img.w() + 0);
+        let count_c = img.h() + 2;
+        let count_c_power = img.h() + 2;
+        let write_res = img.h();
 
-        let per_layer = mean_filter + count_hists + count_c + count_c_power + write_res;
+        let per_layer = 
+            mean_filter 
+            + count_hists 
+            + count_c 
+            + count_c_power 
+            + write_res
+            ;
 
         let layers_count = match img.color_depth() {
             ColorDepth::L8 => img.d(),
@@ -153,8 +159,8 @@ impl ByLayer for HistogramLocalContrast {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        prog_prov: &mut ProgressProvider) -> Result<ImgLayer, Halted> 
-    {
+        prog_prov: &mut ProgressProvider
+    ) -> Result<ImgLayer, Halted> {
         let mat = {
             match layer.channel() {
                 ImgChannel::A => {
@@ -177,76 +183,93 @@ impl ByLayer for HistogramLocalContrast {
         };
 
         //-------------------------------- create hist matrix ---------------------------------
-        let mut mat_hist = Matrix2D::empty_size_of(&mat_ext);
+        let inner_area = PixelsArea::new(
+            win_half, 
+            win_half + mat.size_vec() - PixelPos::one());
 
-        let mut pixel_buf = Vec::<f64>::new();
-        pixel_buf.resize(self.w() * self.h(), 0_f64);
-
-        for pos_im in mat_ext.get_pixels_area_iter(win_half, win_half + mat.size_vec()) {
-            for pos_w in self.get_iter() {
-                let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
-                let pix_pos: PixelPos = pos_im + pos_w - win_half;
-                pixel_buf[buf_ind] = mat_ext[pix_pos];
-            }            
+        let mat_hist: Matrix2D = {
+            let mut pixel_buf = Vec::<f64>::new();
+            pixel_buf.resize(self.w() * self.h(), 0_f64);
             
-            mat_hist[pos_im] = self.process_window(&mut pixel_buf[..]);
+            let generate_fcn = |pos: PixelPos| -> f64 {
+                if !inner_area.contains(pos) {
+                    return 0.0;
+                }
 
-            prog_prov.complete_action()?;
-        }
-
-        //-------------------------------- create C matrix ---------------------------------
-        let mut mat_c = Matrix2D::empty_size_of(&mat_ext);
-
-        for pos in mat_ext_filtered.get_pixels_iter() {
-            let mut val = mat_ext[pos] - mat_ext_filtered[pos];
-            val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
-            mat_c[pos] = f64::abs(val);
-
-            prog_prov.complete_action()?;
-        }
-
-        for m_pos in mat_hist.get_pixels_area_iter(win_half, win_half + mat.size_vec()) {
-            let mut max_value = mat_hist[m_pos];
-            let mut min_value = mat_hist[m_pos];
-
-            for w_pos in mat_hist.get_pixels_area_iter(
-                m_pos - win_half, 
-                m_pos + win_half) 
-            {
-                let v = mat_hist[w_pos];
-                if f64::abs(v) < f64::EPSILON { continue; }
-                if max_value < v { max_value = v; }
-                if min_value < v { min_value = v; }
-            }
-
-            let mut c_power = (mat_hist[m_pos] - min_value) 
-                / (max_value - min_value + f64::EPSILON);
-            
-            c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
-            
-            mat_c[m_pos] = mat_c[m_pos].powf(c_power);
-
-            prog_prov.complete_action()?;
-        }
-
-        //-------------------------------- create result ---------------------------------         
-        let mut mat_res = Matrix2D::empty_size_of(&mat);   
-
-        for pos in mat_hist.get_pixels_area_iter(win_half, win_half + mat.size_vec()) 
-        {
-            let mut val = if mat_ext[pos] > mat_ext_filtered[pos] {
-                mat_ext_filtered[pos] * (1_f64 + mat_c[pos]) / (1_f64 - mat_c[pos])
-            } else {
-                mat_ext_filtered[pos] * (1_f64 - mat_c[pos]) / (1_f64 + mat_c[pos])
+                for pos_w in self.get_iter() {
+                    let buf_ind: usize = pos_w.row * self.w() + pos_w.col;
+                    let pix_pos: PixelPos = pos + pos_w - win_half;
+                    pixel_buf[buf_ind] = mat_ext[pix_pos];
+                }            
+                
+                self.process_window(&mut pixel_buf[..])
             };
 
-            if val < 0_f64 { val = 0_f64; }
-            if val > 255_f64 { val = 255_f64; }
+            Matrix2D::generate(
+                mat_ext.w(), mat_ext.h(), 
+                generate_fcn, 
+                prog_prov)?
+        };
 
-            mat_res[pos - win_half] = val;
+        //-------------------------------- create C matrix ---------------------------------
+        let mut mat_c = Matrix2D::generate(
+            mat_ext.w(), mat_ext.h(), 
+            |pos: PixelPos| -> f64 {
+                let mut val = mat_ext[pos] - mat_ext_filtered[pos];
+                val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
+                f64::abs(val)
+            }, 
+            prog_prov)?;
 
-            prog_prov.complete_action()?;
-        }
+        mat_c.scalar_transform_self(
+            |val: &mut f64, pos: PixelPos| {
+                if !inner_area.contains(pos) {
+                    *val = 0.0;
+                    return;
+                }
+
+                let mut max_value = mat_hist[pos];
+                let mut min_value = mat_hist[pos];
+
+                for w_pos in mat_hist.get_pixels_area_iter(
+                    pos - win_half, 
+                    pos + win_half) 
+                {
+                    let v = mat_hist[w_pos];
+                    if f64::abs(v) < f64::EPSILON { continue; }
+                    if max_value < v { max_value = v; }
+                    if min_value < v { min_value = v; }
+                }
+
+                let mut c_power = (mat_hist[pos] - min_value) 
+                    / (max_value - min_value + f64::EPSILON);
+                
+                c_power = self.a_values.min + (self.a_values.max - self.a_values.min) * c_power;
+                
+                *val = val.powf(c_power);
+            }, 
+            prog_prov)?;
+
+        //-------------------------------- create result ---------------------------------         
+        let mat_res = Matrix2D::generate(
+            mat.w(), mat.h(), 
+            |pos: PixelPos| -> f64 {
+                if !inner_area.contains(pos) {
+                    return 0.0;
+                }
+
+                let mut val = if mat_ext[pos] > mat_ext_filtered[pos] {
+                    mat_ext_filtered[pos] * (1_f64 + mat_c[pos]) / (1_f64 - mat_c[pos])
+                } else {
+                    mat_ext_filtered[pos] * (1_f64 - mat_c[pos]) / (1_f64 + mat_c[pos])
+                };
+    
+                if val < 0_f64 { val = 0_f64; }
+                if val > 255_f64 { val = 255_f64; }
+
+                val
+            }, 
+            prog_prov)?;
 
         Ok(ImgLayer::new(mat_res, layer.channel()))
     }

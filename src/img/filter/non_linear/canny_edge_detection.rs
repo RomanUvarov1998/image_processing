@@ -90,7 +90,7 @@ impl Filter for CannyEdgeDetection {
             let g_max: f64 = grad.get_max(prog_prov)?;
 
             grad.scalar_transform_self(
-                |val| {
+                |val, _| {
                     *val = *val / g_max * 255.0;
                 }, 
                 prog_prov)?;

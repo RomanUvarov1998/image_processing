@@ -201,6 +201,11 @@ impl PixelsArea {
         }
     }
 
+    pub fn contains(&self, pos: PixelPos) -> bool {
+        self.top_left.row <= pos.row && pos.row <= self.bottom_right.row
+        && self.top_left.col <= pos.col && pos.col <= self.bottom_right.col
+    }
+
     pub fn top_left(&self) -> PixelPos {
         self.top_left
     }

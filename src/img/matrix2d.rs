@@ -24,9 +24,9 @@ impl Matrix2D {
         Matrix2D { width: other.w(), height: other.h(), pixels }
     }
 
-    pub fn generate<Tr: Fn(PixelPos) -> f64>(
+    pub fn generate<Tr: FnMut(PixelPos) -> f64>(
         width: usize, height: usize, 
-        tr: Tr, 
+        mut tr: Tr, 
         prog_prov: &mut ProgressProvider
     ) -> Result<Self, Halted> {
         let mut mat = Self::empty_with_size(width, height);
@@ -96,7 +96,7 @@ impl Matrix2D {
     }
 
 
-    pub fn scalar_transform_self<Tr: Fn(&mut f64) -> ()>(
+    pub fn scalar_transform_self<Tr: Fn(&mut f64, PixelPos) -> ()>(
         &mut self, 
         tr: Tr, 
         prog_prov: &mut ProgressProvider
@@ -108,7 +108,7 @@ impl Matrix2D {
             prog_prov)
     }
 
-    pub fn scalar_transform_self_area<Tr: Fn(&mut f64) -> ()>(
+    pub fn scalar_transform_self_area<Tr: Fn(&mut f64, PixelPos) -> ()>(
         &mut self, 
         area: PixelsArea, 
         tr: Tr, 
@@ -117,7 +117,7 @@ impl Matrix2D {
         for row in area.get_rows_range() {
             for col in area.get_cols_range() {
                 let pos = PixelPos::new(row, col);
-                tr(&mut self[pos]);
+                tr(&mut self[pos], pos);
             }
             prog_prov.complete_action()?;
         }
