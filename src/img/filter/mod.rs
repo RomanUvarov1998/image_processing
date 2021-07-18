@@ -81,19 +81,22 @@ fn process_with_window<T: WindowFilter>(
 
     let layer_ext = init.extended_for_window_filter(filter);
 
-    for pos_im in layer_ext.get_pixels_area_iter(
-        fil_half_size, 
-        PixelPos::new(init.h(), init.w()) + fil_half_size)
-    {
-        for pos_w in filter.get_iter() {            
-            let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
-            let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
-            pixel_buf[buf_ind] = layer_ext[pix_pos];
+    // for row in fil_half_size, 
+    //     PixelPos::new(init.h(), init.w()) + fil_half_size)
+    for row in fil_half_size.row..init.h() + fil_half_size.row {
+        for col in fil_half_size.col..init.w() + fil_half_size.col {
+            let pos_im = PixelPos::new(row, col);
+            
+            for pos_w in filter.get_iter() {            
+                let buf_ind: usize = pos_w.row * filter.w() + pos_w.col;
+                let pix_pos: PixelPos = pos_im + pos_w - fil_half_size;
+                pixel_buf[buf_ind] = layer_ext[pix_pos];
+            }
+            
+            let filter_result: f64 = filter.process_window(&mut pixel_buf[..]);
+            
+            res[pos_im - fil_half_size] = filter_result;
         }
-        
-        let filter_result: f64 = filter.process_window(&mut pixel_buf[..]);
-        
-        res[pos_im - fil_half_size] = filter_result;
 
         prog_prov.complete_action()?;
     }
@@ -147,4 +150,42 @@ pub fn try_parce_filter(save_name: &str, content: &str) -> Result<FilterBase, My
     };
     filter.try_set_from_string(content)?;
     Ok(filter)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{img::{Img, filter::{FilterBase, linear::*, non_linear::*, color_channel::*}}, processing::{HaltMessage, ProgressProvider, TaskMsg}};
+
+    #[test]
+    fn all_actions_are_completed() {
+        let filters: Vec<FilterBase> = vec![
+            Box::new(LinearCustom::default()) as FilterBase,
+            Box::new(LinearGaussian::default()) as FilterBase,
+            Box::new(LinearMean::default()) as FilterBase,
+            Box::new(CannyEdgeDetection::default()) as FilterBase,
+            Box::new(HistogramLocalContrast::default()) as FilterBase,
+            Box::new(MedianFilter::default()) as FilterBase,
+            Box::new(CutBrightness::default()) as FilterBase,
+            Box::new(EqualizeHist::default()) as FilterBase,
+            Box::new(ExtractChannel::default()) as FilterBase,
+            Box::new(NeutralizeChannel::default()) as FilterBase,
+            Box::new(Rgb2Gray::default()) as FilterBase,
+        ];
+    
+        let img = Img::empty_with_size(100, 100, fltk::enums::ColorDepth::Rgba8);
+
+        for filter in filters.iter() {
+            let (tx_prog, _rx_prog) = std::sync::mpsc::channel::<TaskMsg>();
+            let (_tx_halt, rx_halt) = std::sync::mpsc::channel::<HaltMessage>();
+            let actions_count = filter.get_steps_num(&img);
+    
+            let mut prog_prov = ProgressProvider::new(&tx_prog, &rx_halt, actions_count);
+
+            let _res = filter.process(&img, &mut prog_prov);
+
+            prog_prov.assert_all_actions_completed();
+            println!("{} is ok", filter.get_description());
+        }
+    }
 }

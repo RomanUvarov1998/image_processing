@@ -57,6 +57,7 @@ impl Iterator for PixelsIterator {
 }
 
 
+/*
 pub struct RowsIter {
     left_col: usize,
     right_col_excluded: usize,
@@ -65,7 +66,7 @@ pub struct RowsIter {
 }
 
 impl RowsIter {
-    pub fn new(area: PixelsArea) -> Self {
+    pub fn new(range: Range<usize>) -> Self {
         RowsIter {
             left_col: area.top_left().col,
             right_col_excluded: area.bottom_right().col,
@@ -147,6 +148,7 @@ impl Iterator for ColsIter {
         }
     }
 }
+ */
 
 
 pub struct LayersIterator<'own> {
@@ -192,12 +194,27 @@ impl PixelsArea {
         PixelsArea { top_left, bottom_right }
     }
 
+    pub fn from_zero_to(bottom: usize, right: usize) -> Self {
+        PixelsArea {
+            top_left: PixelPos::new(0, 0),
+            bottom_right: PixelPos::new(bottom, right),
+        }
+    }
+
     pub fn top_left(&self) -> PixelPos {
         self.top_left
     }
 
     pub fn bottom_right(&self) -> PixelPos {
         self.bottom_right
+    }
+
+    pub fn get_rows_range(&self) -> std::ops::Range<usize> {
+        self.top_left.row..self.bottom_right.row
+    }
+
+    pub fn get_cols_range(&self) -> std::ops::Range<usize> {
+        self.top_left.col..self.bottom_right.col
     }
 }
 
@@ -227,6 +244,7 @@ mod tests {
         assert_eq!(iter.next(), None);
     }
 
+    /*
     #[test]
     fn rows_iter_for_area_returns_all_positions() {
         let area = super::PixelsArea::new(
@@ -257,4 +275,5 @@ mod tests {
         assert_eq!(iter.next().unwrap(), PixelPos::new(ROW, 3));
         assert_eq!(iter.next(), None);
     }
+     */
 }

@@ -1,3 +1,5 @@
+use crate::processing::{Halted, ProgressProvider};
+
 use super::*;
 
 
@@ -20,6 +22,24 @@ impl Matrix2D {
         let mut pixels = Vec::<f64>::new();
         pixels.resize(other.w() * other.h(), 0_f64);        
         Matrix2D { width: other.w(), height: other.h(), pixels }
+    }
+
+    pub fn generate<Tr: Fn(PixelPos) -> f64>(
+        width: usize, height: usize, 
+        tr: Tr, 
+        prog_prov: &mut ProgressProvider
+    ) -> Result<Self, Halted> {
+        let mut mat = Self::empty_with_size(width, height);
+        
+        for row in 0..height {
+            for col in 0..width {
+                let pos = PixelPos::new(row, col);
+                mat[pos] = tr(pos);
+            }
+            prog_prov.complete_action()?;
+        }
+
+        Ok(mat)
     }
 
     pub fn w(&self) -> usize { self.width }
@@ -46,17 +66,64 @@ impl Matrix2D {
         PixelsIterator::for_rect_area( tl, br_excluded)
     }
 
-    pub fn scalar_transform_into<Tr: Fn(&Matrix2D, PixelPos) -> f64>(&self, area: PixelsArea, tr: Tr, dest_matrix: &mut Matrix2D) {
-        for pos in self.get_pixels_area_iter(area.top_left(), area.bottom_right()) {
-            dest_matrix[pos] = tr(dest_matrix, pos);
+
+    pub fn scalar_transform_area_into<Tr: Fn(&Matrix2D, PixelPos) -> f64>(
+        &self, 
+        area: PixelsArea, 
+        tr: Tr, 
+        dest_matrix: &mut Matrix2D, 
+        prog_prov: &mut ProgressProvider
+    ) -> Result<(), Halted> {
+        for row in area.get_rows_range() {
+            for col in area.get_cols_range() {
+                let pos = PixelPos::new(row, col);
+                dest_matrix[pos] = tr(dest_matrix, pos);
+            }
+            prog_prov.complete_action()?;
         }
+        Ok(())
     }
 
-    pub fn scalar_transform<Tr: Fn(&Matrix2D, PixelPos) -> f64>(&self, area: PixelsArea, tr: Tr) -> Self {
+    pub fn scalar_transform_area_to_copy<Tr: Fn(&Matrix2D, PixelPos) -> f64>(
+        &self, 
+        area: PixelsArea, 
+        tr: Tr, 
+        prog_prov: &mut ProgressProvider
+    ) -> Result<Self, Halted> {
         let mut transformed = Self::empty_size_of(self);
-        self.scalar_transform_into(area, tr, &mut transformed);
-        transformed
+        self.scalar_transform_area_into(area, tr, &mut transformed, prog_prov)?;
+        Ok(transformed)
     }
+
+
+    pub fn scalar_transform_self<Tr: Fn(&mut f64) -> ()>(
+        &mut self, 
+        tr: Tr, 
+        prog_prov: &mut ProgressProvider
+    ) -> Result<(), Halted> {
+        let area = PixelsArea::from_zero_to(self.h(), self.w());
+        self.scalar_transform_self_area(
+            area,
+            tr,
+            prog_prov)
+    }
+
+    pub fn scalar_transform_self_area<Tr: Fn(&mut f64) -> ()>(
+        &mut self, 
+        area: PixelsArea, 
+        tr: Tr, 
+        prog_prov: &mut ProgressProvider
+    ) -> Result<(), Halted> {
+        for row in area.get_rows_range() {
+            for col in area.get_cols_range() {
+                let pos = PixelPos::new(row, col);
+                tr(&mut self[pos]);
+            }
+            prog_prov.complete_action()?;
+        }
+        Ok(())
+    }
+
 
     pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> { 
         let im_rgb = image::RgbImage::new(
@@ -67,6 +134,23 @@ impl Matrix2D {
 
     pub fn pixels<'own>(&'own self) -> &'own Vec<f64> {
         &self.pixels
+    }
+
+    pub fn get_max(&self, prog_prov: &mut ProgressProvider) -> Result<f64, Halted> {
+        let mut max = self.pixels[0];
+        
+        for row in 0..self.h() {
+            for col in 0..self.w() {
+                let pos = PixelPos::new(row, col);
+                let val = self[pos];
+                if val > max {
+                    max = val;
+                }
+            }
+            prog_prov.complete_action()?
+        }
+
+        Ok(max)
     }
 
     pub fn extended_for_window_filter<F: WindowFilter>(&self, filter: &F) -> Matrix2D {

@@ -64,7 +64,7 @@ impl Filter for LinearCustom {
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
-        let pixels_per_layer = img.h() * img.w();
+        let rows_per_layer = img.h();
         let layers_count = match img.color_depth() {
             ColorDepth::L8 => img.d(),
             ColorDepth::La8 => img.d() - 1,
@@ -72,7 +72,7 @@ impl Filter for LinearCustom {
             ColorDepth::Rgba8 => img.d() - 1,
         };
 
-        layers_count * pixels_per_layer
+        layers_count * rows_per_layer
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
@@ -164,8 +164,12 @@ impl StringFromTo for LinearCustom {
 
 impl Default for LinearCustom {
     fn default() -> Self {
-        let coeffs = vec![1_f64];
-        LinearCustom::with_coeffs(coeffs, 1, 1, ExtendValue::Closest, NormalizeOption::Normalized)
+        let coeffs: Vec<f64> = vec![
+            1.0, 2.0, 1.0,
+            0.0, 0.0, 0.0,
+            -1.0, -2.0, -1.0,
+        ];
+        LinearCustom::with_coeffs(coeffs, 3, 3, ExtendValue::Closest, NormalizeOption::Normalized)
     }
 }
 

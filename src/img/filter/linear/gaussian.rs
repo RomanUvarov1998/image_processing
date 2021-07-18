@@ -57,7 +57,7 @@ impl Filter for LinearGaussian {
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
-        let pixels_per_layer = img.h() * img.w();
+        let rows_per_layer = img.h();
         let layers_count = match img.color_depth() {
             ColorDepth::L8 => img.d(),
             ColorDepth::La8 => img.d() - 1,
@@ -65,7 +65,7 @@ impl Filter for LinearGaussian {
             ColorDepth::Rgba8 => img.d() - 1,
         };
         
-        layers_count * pixels_per_layer
+        layers_count * rows_per_layer
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }

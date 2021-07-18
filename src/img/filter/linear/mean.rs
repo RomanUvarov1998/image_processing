@@ -50,7 +50,7 @@ impl Filter for LinearMean {
     fn get_steps_num(&self, img: &Img) -> usize {
         let row_sums = img.w() + 1;
         let col_sums = img.h() + 1;
-        let diffs = img.h() * img.w();
+        let rows = img.h();
         let layers_count = match img.color_depth() {
             ColorDepth::L8 => img.d(),
             ColorDepth::La8 => img.d() - 1,
@@ -58,7 +58,7 @@ impl Filter for LinearMean {
             ColorDepth::Rgba8 => img.d() - 1,
         };
         
-        layers_count * (row_sums + col_sums + diffs)
+        layers_count * (row_sums + col_sums + rows)
     }
 
     fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
@@ -155,16 +155,19 @@ impl ByLayer for LinearMean {
 
         let coeff = 1_f64 / (self.w() * self.h()) as f64;
         
-        for pos in mat_res.get_pixels_iter() {
-            let ext_pos = pos + one + win_half;
-
-            let sum_top_left        = mat_sum_ext[ext_pos - win_half - one];
-            let sum_top_right       = mat_sum_ext[ext_pos - win_half.row_vec() + win_half.col_vec() - one.row_vec()];
-            let sum_bottom_left     = mat_sum_ext[ext_pos + win_half.row_vec() - win_half.col_vec() - one.col_vec()];
-            let sum_bottom_right    = mat_sum_ext[ext_pos + win_half];
-
-            let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
-            mat_res[ext_pos - win_half - one] = result;
+        for row in 0..mat_res.h() {
+            for col in 0..mat_res.w() {
+                let pos = PixelPos::new(row, col);
+                let ext_pos = pos + one + win_half;
+    
+                let sum_top_left        = mat_sum_ext[ext_pos - win_half - one];
+                let sum_top_right       = mat_sum_ext[ext_pos - win_half.row_vec() + win_half.col_vec() - one.row_vec()];
+                let sum_bottom_left     = mat_sum_ext[ext_pos + win_half.row_vec() - win_half.col_vec() - one.col_vec()];
+                let sum_bottom_right    = mat_sum_ext[ext_pos + win_half];
+    
+                let result = (sum_bottom_right - sum_top_right - sum_bottom_left + sum_top_left) * coeff;
+                mat_res[ext_pos - win_half - one] = result;
+            }
 
             prog_prov.complete_action()?;
         }
