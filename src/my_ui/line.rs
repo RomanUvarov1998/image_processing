@@ -19,7 +19,7 @@ enum CurrentTask {
 
 pub struct ProcessingLine {
     steps_widgets: Vec<ProcessingStep>,
-    tx: Sender<Msg>, rx: Receiver<Msg>,
+    tx_ui: Sender<Msg>, rx_ui: Receiver<Msg>,
     bw: BackgroundWorker,
     delegator_handle: DelegatorHandle,
     current_task: Option<CurrentTask>,
@@ -46,7 +46,7 @@ pub struct ProcessingLine {
 
 impl ProcessingLine {
     pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
-        let (tx, rx) = app::channel::<Msg>();
+        let (tx_ui, rx_ui) = app::channel::<Msg>();
 
         let mut main_row = MyRow::new(w).with_pos(x, y);
             
@@ -55,33 +55,33 @@ impl ProcessingLine {
         let mut btns_row = MyRow::new(w / 2);
 
         let mut btn_project = MyMenuButton::with_label("Проект");
-        btn_project.add_emit("Зарузить", tx, Msg::Project ( Project::LoadProject ) );
-        btn_project.add_emit("Сохранить как", tx, Msg::Project ( Project::SaveProject ) );
+        btn_project.add_emit("Зарузить", tx_ui, Msg::Project ( Project::LoadProject ) );
+        btn_project.add_emit("Сохранить как", tx_ui, Msg::Project ( Project::SaveProject ) );
 
         let mut btn_import = MyMenuButton::with_img_and_tooltip(AssetItem::Import, "Импорт");
-        btn_import.add_emit("Файл", tx, 
+        btn_import.add_emit("Файл", tx_ui, 
             Msg::Project(Project::Import ( ImportType::File ) ) );
-        btn_import.add_emit("Системный буфер обмена", tx, 
+        btn_import.add_emit("Системный буфер обмена", tx_ui, 
             Msg::Project(Project::Import ( ImportType::SystemClipoard ) ) );
             
         let mut btn_add_step = MyMenuButton::with_img_and_tooltip(AssetItem::AddStep, "Добавить шаг");
-        btn_add_step.add_emit("Цветной => ч\\/б", tx, Msg::StepOp ( StepOp::AddStep( AddStep::Rgb2Gray ) ) );
-        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinMean ) ) );
-        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinGauss ) ) );
-        btn_add_step.add_emit("Линейный фильтр (другой)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::LinCustom ) ) );
-        btn_add_step.add_emit("Медианный фильтр", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::Median ) ) );
-        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramLocalContrast ) ) );
-        btn_add_step.add_emit("Обрезание яркости", tx, Msg::StepOp( StepOp::AddStep ( AddStep::CutBrightness ) ) );
-        btn_add_step.add_emit("Эквализация гистограммы", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramEqualizer ) ) );
-        btn_add_step.add_emit("Убрать канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::NeutralizeChannel ) ) );
-        btn_add_step.add_emit("Выделить канал", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
-        btn_add_step.add_emit("Детектор краев Канни", tx, Msg::StepOp ( StepOp::AddStep ( AddStep::CannyEdgeDetection ) ) );
+        btn_add_step.add_emit("Цветной => ч\\/б", tx_ui, Msg::StepOp ( StepOp::AddStep( AddStep::Rgb2Gray ) ) );
+        btn_add_step.add_emit("Линейный фильтр (усредняющий)", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::LinMean ) ) );
+        btn_add_step.add_emit("Линейный фильтр (гауссовский)", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::LinGauss ) ) );
+        btn_add_step.add_emit("Линейный фильтр (другой)", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::LinCustom ) ) );
+        btn_add_step.add_emit("Медианный фильтр", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::Median ) ) );
+        btn_add_step.add_emit("Локальный контраст (гистограмма)", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramLocalContrast ) ) );
+        btn_add_step.add_emit("Обрезание яркости", tx_ui, Msg::StepOp( StepOp::AddStep ( AddStep::CutBrightness ) ) );
+        btn_add_step.add_emit("Эквализация гистограммы", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::HistogramEqualizer ) ) );
+        btn_add_step.add_emit("Убрать канал", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::NeutralizeChannel ) ) );
+        btn_add_step.add_emit("Выделить канал", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::ExtractChannel ) ) );
+        btn_add_step.add_emit("Детектор краев Канни", tx_ui, Msg::StepOp ( StepOp::AddStep ( AddStep::CannyEdgeDetection ) ) );
 
         let mut btn_export = MyMenuButton::with_img_and_tooltip(AssetItem::Export, "Экспорт");
-        btn_export.add_emit("Сохранить результаты", tx, Msg::Project ( Project::Export ) );
+        btn_export.add_emit("Сохранить результаты", tx_ui, Msg::Project ( Project::Export ) );
 
         let mut btn_halt_processing = MyButton::with_img_and_tooltip(AssetItem::HaltProcessing, "Прервать обработку");
-        btn_halt_processing.set_emit(tx, Msg::Proc ( Proc::HaltStepsChain ) );
+        btn_halt_processing.set_emit(tx_ui, Msg::Proc ( Proc::HaltStepsChain ) );
         btn_halt_processing.set_active(false);
         
         btns_row.end();
@@ -117,7 +117,7 @@ impl ProcessingLine {
 
         let mut line = ProcessingLine {
             steps_widgets: Vec::<ProcessingStep>::new(),
-            tx, rx,
+            tx_ui, rx_ui,
             bw: background_worker,
             delegator_handle,
             current_task: None,
@@ -147,7 +147,8 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
-        while let Some(msg) = self.rx.recv() {
+        let mut got_msg = false;
+        while let Some(msg) = self.rx_ui.recv() {
             if let Err(err) = match msg {
                 Msg::Project(msg) => self.process_project_msg(msg),
                 Msg::StepOp(msg) => self.process_step_op_msg(msg, app),
@@ -155,9 +156,13 @@ impl ProcessingLine {
             } {
                 show_err_msg(self.get_center_pos(), err);
             }
+
+            got_msg = true;
         }      
 
-        crate::notify_content_changed();  
+        if got_msg {
+            crate::notify_content_changed();  
+        }
         
         Ok(())
     }
@@ -579,7 +584,7 @@ impl ProcessingLine {
                     let mut new_step = ProcessingStep::new(
                         self.w() / 2, self.h(), 
                         step_num, 
-                        self.tx);
+                        self.tx_ui);
 
                     new_step.set_step_descr(&locked_bw.get_step_descr(step_num));
                     
@@ -630,7 +635,7 @@ impl ProcessingLine {
         let mut new_step = ProcessingStep::new(
             self.w() / 2, self.h(), 
             step_num, 
-            self.tx);
+            self.tx_ui);
 
         new_step.set_step_descr(&self.bw.locked().get_step_descr(step_num));
         
