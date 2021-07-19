@@ -379,6 +379,7 @@ impl MyComponentWithImage for menu::MenuButton {}
 
 pub struct MyProgressBar {
     bar: misc::Progress,
+    progress_percents: usize,
     label: String
 }
 
@@ -391,7 +392,7 @@ impl MyProgressBar {
         bar.set_maximum(100_f64);
         bar.set_selection_color(fltk::enums::Color::Green);
 
-        MyProgressBar { bar, label: String::new() }
+        MyProgressBar { bar, progress_percents: 0, label: String::new() }
     }
 
     pub fn set_width(&mut self, new_w: i32) {
@@ -404,8 +405,11 @@ impl MyProgressBar {
     }
 
     pub fn set_value(&mut self, progress_percents: usize) {
-        self.bar.set_value(progress_percents as f64);
-        self.bar.set_label(&format!("{}: {}%", self.label, progress_percents));
+        if self.progress_percents != progress_percents {
+            self.progress_percents = progress_percents;
+            self.bar.set_value(progress_percents as f64);
+            self.bar.set_label(&format!("{}: {}%", self.label, progress_percents));
+        }
     }
 
     pub fn show(&mut self) { 
