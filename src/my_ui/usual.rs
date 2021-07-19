@@ -197,6 +197,7 @@ impl MyLabel {
     pub fn set_text<'text>(&mut self, text: &'text str) {
         self.text = text.to_string();
         self.inner.draw(Self::create_draw_callback(text));
+        self.inner.redraw();
     }
 
     fn create_draw_callback(text: &str) -> Box<dyn FnMut(&mut frame::Frame) -> ()> {
@@ -407,8 +408,14 @@ impl MyProgressBar {
         self.bar.set_label(&format!("{}: {}%", self.label, progress_percents));
     }
 
-    pub fn show(&mut self) { self.bar.show(); }
-    pub fn hide(&mut self) { self.bar.hide(); }
+    pub fn show(&mut self) { 
+        self.bar.show(); 
+        self.bar.parent().as_mut().unwrap().redraw();
+    }
+    pub fn hide(&mut self) { 
+        self.bar.hide(); 
+        self.bar.parent().as_mut().unwrap().redraw();
+    }
 }
 
 impl Alignable for MyProgressBar {

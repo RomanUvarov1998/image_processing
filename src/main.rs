@@ -1,5 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
-use image_processing::{EVENT_CONTENT_CHANGED, my_ui::{Alignable, line::ProcessingLine}, my_err::MyError};
+use image_processing::{my_ui::{Alignable, line::ProcessingLine}, my_err::MyError};
 
 
 fn main() -> Result<(), MyError> {
@@ -23,11 +23,6 @@ fn main() -> Result<(), MyError> {
     let steps_line_rc = Rc::clone(&steps_line);
 
     wind.handle(move |w, event| {
-        if event.bits() == EVENT_CONTENT_CHANGED {
-            w.redraw();
-            return true;
-        }
-
         use fltk::enums::Event;
         match event {
             Event::Resize => {

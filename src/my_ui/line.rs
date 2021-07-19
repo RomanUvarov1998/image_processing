@@ -147,7 +147,6 @@ impl ProcessingLine {
     }
 
     pub fn process_event_loop(&mut self, app: app::App) -> Result<(), MyError> {
-        let mut got_msg = false;
         while let Some(msg) = self.rx_ui.recv() {
             if let Err(err) = match msg {
                 Msg::Project(msg) => self.process_project_msg(msg),
@@ -156,13 +155,7 @@ impl ProcessingLine {
             } {
                 show_err_msg(self.get_center_pos(), err);
             }
-
-            got_msg = true;
-        }      
-
-        if got_msg {
-            crate::notify_content_changed();  
-        }
+        } 
         
         Ok(())
     }
@@ -178,12 +171,16 @@ impl ProcessingLine {
     }
 
     fn process_step_op_msg(&mut self, msg: StepOp, app: app::App) -> Result<(), MyError> {
-        match msg {
+        let res = match msg {
             StepOp::AddStep(msg) => self.process_step_op_add_step_msg(msg, app),
             StepOp::Edit { step_num } => self.process_step_op_edit_step_msg(step_num, app),
             StepOp::Delete { step_num } => self.process_step_op_remove_step_msg(step_num),
             StepOp::Move { step_num, direction } => self.process_step_op_reorder_step_msg(step_num, direction),
-        }
+        };
+
+        self.scroll_area.redraw();
+
+        res
     }
 
     fn process_proc_msg(&mut self, msg: Proc) -> Result<(), MyError> {
@@ -458,8 +455,6 @@ impl ProcessingLine {
         } {
             show_err_msg(self.get_center_pos(), err);
         }
-
-        crate::notify_content_changed();
 
         Ok(())
     }
