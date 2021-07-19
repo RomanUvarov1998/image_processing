@@ -23,6 +23,7 @@ impl ExecutorHandle {
 	pub fn reset(&self, actions_total: usize) {
 		self.inner.actions_total.set(actions_total);
 		self.inner.actions_completed.set(0);
+		self.inner.percents.store(0, Ordering::Relaxed);
 	}
 
 	pub fn task_is_halted(&self) -> bool {
@@ -33,8 +34,13 @@ impl ExecutorHandle {
 		if self.task_is_halted() {
 			Err(Halted)
 		} else {
-			self.inner.actions_completed.set(self.inner.actions_completed.get() + 1);
-			let percents = self.inner.actions_completed.get() * 100 / self.inner.actions_total.get();
+			let (mut completed, total) = (self.inner.actions_completed.get(), self.inner.actions_total.get());
+			assert!(completed < total);
+
+			completed += 1;
+			self.inner.actions_completed.set(completed);
+
+			let percents = completed * 100 / total;
 			self.inner.percents.store(percents, Ordering::Relaxed);
 			Ok(())
 		}
