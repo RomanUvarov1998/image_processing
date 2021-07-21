@@ -1,5 +1,5 @@
 use std::{sync::{Arc, Condvar, Mutex, MutexGuard}, thread::{self, JoinHandle}};
-use super::{guarded::{Guarded, tasks::TaskBase}, task_info_channel::ExecutorHandle};
+use super::{guarded::{Guarded, TaskSetup}, task_info_channel::ExecutorHandle};
 
 
 pub struct BackgroundWorker {
@@ -34,8 +34,10 @@ impl BackgroundWorker {
         self.inner.guarded.lock().expect("Couldn't lock")
     }
 
-    pub fn start_task(&mut self, task: TaskBase) {
-        self.locked().start_task(task);
+    pub fn start_task(&mut self, setup: TaskSetup) {
+        print!("notified ");
+
+        self.locked().start_task(setup);
         self.inner.cv.notify_one();
     }
 }

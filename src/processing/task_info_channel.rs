@@ -21,9 +21,15 @@ impl ExecutorHandle {
 	}
 
 	pub fn reset(&self, actions_total: usize) {
+		if !self.task_is_halted() {
+			assert!(self.completed() == self.total());
+		}
+
+		print!("reset ");
 		self.inner.actions_total.set(actions_total);
 		self.inner.actions_completed.set(0);
 		self.inner.percents.store(0, Ordering::Relaxed);
+		self.inner.is_halted.store(false, Ordering::Relaxed);
 	}
 
 	pub fn task_is_halted(&self) -> bool {
@@ -32,9 +38,10 @@ impl ExecutorHandle {
 
 	pub fn complete_action(&self) -> Result<(), Halted> {
 		if self.task_is_halted() {
+			println!("HALT DETECTED");
 			Err(Halted)
 		} else {
-			let (mut completed, total) = (self.inner.actions_completed.get(), self.inner.actions_total.get());
+			let (mut completed, total) = (self.completed(), self.total());
 			assert!(completed < total);
 
 			completed += 1;
@@ -47,14 +54,23 @@ impl ExecutorHandle {
 	}
 
 	pub fn assert_all_actions_completed(&self) {
-		let (completed, total) = (self.inner.actions_completed.get(), self.inner.actions_total.get());
+		let (completed, total) = (self.completed(), self.total());
 		if completed != total {
             panic!("not all acions completed: {} of {}", completed, total);
         }
 	}
+
+	fn total(&self) -> usize {
+		self.inner.actions_total.get()
+	}
+
+	fn completed(&self) -> usize {
+		self.inner.actions_completed.get()
+	}
 }
 
 
+#[derive(Debug)]
 pub struct DelegatorHandle {
 	inner: Arc<TaskInfo>
 }
@@ -70,12 +86,17 @@ impl DelegatorHandle {
 		self.inner.is_halted.store(true, Ordering::Relaxed);
 	}
 
+	pub fn task_is_halted(&self) -> bool {
+		self.inner.is_halted.load(Ordering::Relaxed)
+	}
+
 	pub fn get_completed_percents(&self) -> usize {
 		self.inner.percents.load(Ordering::Relaxed)
 	}
 }
 
 
+#[derive(Debug)]
 struct TaskInfo {
 	actions_completed: Cell<usize>,
 	actions_total: Cell<usize>,

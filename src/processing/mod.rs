@@ -13,7 +13,8 @@ pub use progress_provider::Halted;
 pub use progress_provider::HaltMessage;
 pub use guarded::StartProcResult;
 pub use guarded::StartResultsSavingResult;
-pub use guarded::tasks::*;
+pub use guarded::TaskSetup;
+pub use guarded::PROJECT_EXT;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TaskMsg {

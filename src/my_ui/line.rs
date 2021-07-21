@@ -1,7 +1,7 @@
 use std::usize;
 use chrono::{Local, format::{DelayedFormat, StrftimeItems}};
 use fltk::{app::{self, Receiver, Sender}, dialog, group, prelude::{GroupExt, WidgetExt}};
-use crate::{img::filter::FilterBase, my_ui::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, my_err::MyError, utils::{Pos}};
+use crate::{img::{PixelsArea, filter::FilterBase}, my_err::MyError, my_ui::{Alignable, container::*, img_presenter::MyImgPresenter, step_editor, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}, utils::{Pos}};
 use super::{PADDING, message::*, small_dlg::*, step::ProcessingStep};
 use crate::processing::*;
 use super::embedded_images::AssetItem;
@@ -220,7 +220,7 @@ impl ProcessingLine {
 
                 self.set_task_and_freeze_ui(CurrentTask::Importing, "Импорт");
         
-                self.bw.start_task(crate::processing::ImportTask::new(path.to_string()));
+                self.bw.start_task(TaskSetup::Import { file_path: path.to_string() });
             },
             ImportType::SystemClipoard => {
                 todo!()
@@ -259,7 +259,7 @@ impl ProcessingLine {
         
         self.set_task_and_freeze_ui(CurrentTask::Saving, "Сохранение проекта");
 
-        self.bw.start_task(SaveProjectTask::new(proj_path.to_string()));
+        self.bw.start_task(TaskSetup::SaveProject { file_path: proj_path.to_string() });
         
         Ok(())
     }
@@ -295,7 +295,7 @@ impl ProcessingLine {
 
         self.set_task_and_freeze_ui(CurrentTask::Loading, "Загрузка проекта");
 
-        self.bw.start_task(LoadProjectTask::new(proj_path.to_string()));
+        self.bw.start_task(TaskSetup::LoadProject { file_path: proj_path.to_string() });
         
         Ok(())
     }
@@ -331,7 +331,7 @@ impl ProcessingLine {
         let dir_name = format!("Results {}", Self::cur_time_str());
         proj_path.push_str(&dir_name);
         
-        self.bw.start_task(ExportTask::new(proj_path));
+        self.bw.start_task(TaskSetup::Export { dir_path: proj_path });
 
         Ok(())        
     }
@@ -429,6 +429,10 @@ impl ProcessingLine {
 
     fn process_proc_halt_msg(&mut self) -> Result<(), MyError> {
         self.delegator_handle.halt_task();
+        if let CurrentTask::Processing { step_num, .. } = self.current_task.as_ref().unwrap() {
+            self.steps_widgets[*step_num].display_result(None);
+        }
+        self.clear_task_and_unfreeze_ui();
         Ok(())
     }
 
@@ -511,6 +515,8 @@ impl ProcessingLine {
                 Ok(())
             },
             TaskMsg::Finished => {
+                println!("finished processing");
+
                 let mut bw_locked = self.bw.locked();
 
                 let drawable: Option<fltk::image::RgbImage> = bw_locked.get_step_img_drawable(step_num);
@@ -602,13 +608,13 @@ impl ProcessingLine {
     fn start_step_processing(&mut self, step_num: usize) {
         self.steps_widgets[step_num].display_processing_start();
 
-        let crop_area = if step_num == 0 {
+        let crop_area: Option<PixelsArea> = if step_num == 0 {
             self.img_presenter.get_selection_rect()
         } else {
             self.steps_widgets[step_num - 1].get_selection_rect()
         };
 
-        self.bw.start_task(ProcTask::new(step_num, crop_area));
+        self.bw.start_task(TaskSetup::ProcessStep { step_num, crop_area } );
     }
 
 
