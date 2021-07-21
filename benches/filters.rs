@@ -19,9 +19,9 @@ fn create_img(w: usize, h: usize) -> Img {
 }
 
 fn run_filter<F: filter_trait::Filter>(img: &Img, filter: F) {
-	let (executor_handle, _delegator_handle) = task_info_channel();
+	let (mut executor_handle, _delegator_handle) = task_info_channel();
 	executor_handle.reset(filter.get_steps_num(img));
-	let _res = filter.process(&img, &executor_handle);
+	let _res = filter.process(&img, &mut executor_handle);
 	executor_handle.assert_all_actions_completed();
 }
 

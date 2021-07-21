@@ -52,7 +52,7 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -84,7 +84,7 @@ impl ByLayer for LinearGaussian {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<ImgLayer, Halted> {
         let result_mat = match layer.channel() {
             ImgChannel::A => layer.matrix().clone(),

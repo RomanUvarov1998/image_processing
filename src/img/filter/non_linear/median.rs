@@ -94,7 +94,7 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         process_each_layer(img, self, executor_handle)
     }
     
@@ -156,7 +156,7 @@ impl ByLayer for MedianFilter {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle) -> Result<ImgLayer, Halted>
+        executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, Halted>
     {
         let result_mat = {
             match layer.channel() {

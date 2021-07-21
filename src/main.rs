@@ -44,7 +44,7 @@ fn main() -> Result<(), MyError> {
 
     while app.wait() {    
         let mut line_mut = steps_line.borrow_mut();
-        line_mut.process_task_message_loop()?;
+        line_mut.process_task_message_loop();
         line_mut.process_event_loop(app)?;
     }
 

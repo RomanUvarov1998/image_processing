@@ -59,7 +59,7 @@ impl WindowFilter for LinearCustom {
 }
 
 impl Filter for LinearCustom {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         super::super::process_each_layer(img, self, executor_handle)
     }
 
@@ -177,7 +177,7 @@ impl ByLayer for LinearCustom {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<ImgLayer, Halted> {
         let result_mat = {
             match layer.channel() {

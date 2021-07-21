@@ -66,7 +66,7 @@ impl Iterator for FilterIterator {
 fn process_with_window<T: WindowFilter>(
     init: &Matrix2D,      
     filter: &T, 
-    executor_handle: &ExecutorHandle
+    executor_handle: &mut ExecutorHandle
 ) -> Result<Matrix2D, Halted> {
     assert!(filter.w() > 1);
     assert!(filter.h() > 1);
@@ -110,14 +110,14 @@ trait ByLayer {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<ImgLayer, Halted>;
 }
 
 fn process_each_layer<F: ByLayer>(
     img: &Img, 
     filter: &F, 
-    executor_handle: &ExecutorHandle
+    executor_handle: &mut ExecutorHandle
 ) -> Result<Img, Halted> {
     let mut res_layers = Vec::<ImgLayer>::with_capacity(img.d());
 

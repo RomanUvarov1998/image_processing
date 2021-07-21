@@ -23,7 +23,7 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -82,7 +82,7 @@ impl ByLayer for CutBrightness {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<ImgLayer, Halted> {
         let mut mat_res = {
             match layer.channel() {

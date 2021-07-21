@@ -43,7 +43,7 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -104,7 +104,7 @@ impl StringFromTo for LinearMean {
 }
 
 impl ByLayer for LinearMean {
-    fn process_layer(&self, layer: &ImgLayer, executor_handle: &ExecutorHandle) -> Result<ImgLayer, Halted> {
+    fn process_layer(&self, layer: &ImgLayer, executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, Halted> {
         let mat = match layer.channel() {
             ImgChannel::A => {
                 return Ok(layer.clone())

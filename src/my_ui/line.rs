@@ -438,164 +438,120 @@ impl ProcessingLine {
 
     
 
-    pub fn process_task_message_loop(&mut self) -> Result<(), MyError> {
-        if self.current_task.is_none() { return Ok(()); }
-
-        let msg: TaskMsg = match self.delegator_handle.get_completed_percents() {
-            percents @ 0..=99 => TaskMsg::Progress { percents },
-            100 => TaskMsg::Finished,
-            _ => unreachable!()
+    pub fn process_task_message_loop(&mut self) {
+        let current_task = match self.current_task {
+            Some(task) => task,
+            None => return,
         };
 
-        let current_task: CurrentTask = self.current_task.unwrap();
+        let state: TaskState = self.delegator_handle.get_task_state();
 
-        if let Err(err) = match current_task {
-            CurrentTask::Importing => self.process_task_import_msg(msg),
-            CurrentTask::Loading => self.process_task_loading_msg(msg),
-            CurrentTask::Processing { step_num, process_until_end } => 
-                self.process_task_processing_msg(msg, step_num, process_until_end),
-            CurrentTask::Saving => self.process_task_saving_msg(msg),
-            CurrentTask::Exporting => self.process_task_export_msg(msg),
-        } {
-            show_err_msg(self.get_center_pos(), err);
-        }
-
-        Ok(())
-    }
-
-    fn process_task_import_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
-        match msg {
-            TaskMsg::Progress { percents } => {
-                self.total_progress_bar.set_value(percents);
-                Ok(())
+        match state {
+            TaskState::Empty => unreachable!(),
+            TaskState::InProgress { percents } => match current_task {
+                CurrentTask::Importing | CurrentTask::Loading | CurrentTask::Saving | CurrentTask::Exporting => {
+                    self.total_progress_bar.set_value(percents);
+                },
+                CurrentTask::Processing { step_num, .. } => {
+                    let total_percents = (step_num * 100 + percents) / self.steps_widgets.len();
+                    self.total_progress_bar.set_value(total_percents);
+                    self.steps_widgets[step_num].display_progress(percents);
+                },
             },
-            TaskMsg::Finished => {
-                self.clear_task_and_unfreeze_ui();
-
-                let (init_img_descr, init_img_drawable, task_result)
-                    : (String, fltk::image::RgbImage, Result<(), MyError>)
-                    = {
-                        let mut bw_locked = self.bw.locked();
-                        let init_img_descr = bw_locked.get_init_img_descr();
-                        let init_img_drawable = bw_locked.get_init_img_drawable();
-                        let task_result = bw_locked.get_task_result();
-                        (init_img_descr, init_img_drawable, task_result)
-                    };
-
-                self.lbl_init_img.set_text(&init_img_descr);
-        
-                self.img_presenter.set_img(init_img_drawable);
-                
-                task_result
+            TaskState::Finished { result } => {
+                match result {
+                    TaskResult::Err(err) => show_err_msg(self.get_center_pos(), err),
+                    TaskResult::Ok | TaskResult::Halted => {},
+                }
+                match current_task {
+                    CurrentTask::Importing => self.process_import_finish(),
+                    CurrentTask::Loading => self.process_project_loading_finish(),
+                    CurrentTask::Processing { step_num, process_until_end } => 
+                        self.process_processing_finish(step_num, process_until_end),
+                    CurrentTask::Saving => self.process_project_saving_finish(),
+                    CurrentTask::Exporting => self.process_export_finish(),
+                }
             },
         }
     }
 
-    fn process_task_export_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
-        match msg {
-            TaskMsg::Progress { percents } => {
-                self.total_progress_bar.set_value(percents);
-                Ok(())
-            },
-            TaskMsg::Finished => {
-                self.clear_task_and_unfreeze_ui();
-                self.bw.locked().get_task_result()?;
-                show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
-                Ok(())
-            },
-        }
+    fn process_import_finish(&mut self) {
+        self.clear_task_and_unfreeze_ui();
+
+        let (init_img_descr, init_img_drawable)
+            : (String, fltk::image::RgbImage)
+            = {
+                let bw_locked = self.bw.locked();
+                let init_img_descr = bw_locked.get_init_img_descr();
+                let init_img_drawable = bw_locked.get_init_img_drawable();
+                (init_img_descr, init_img_drawable)
+            };
+
+        self.lbl_init_img.set_text(&init_img_descr);
+
+        self.img_presenter.set_img(init_img_drawable);
+    }
+
+    fn process_export_finish(&mut self) {
+        self.clear_task_and_unfreeze_ui();
+        show_info_msg(self.get_center_pos(), "Результаты успешно сохранены");
     }
     
-    fn process_task_processing_msg(&mut self, msg: TaskMsg, step_num: usize, process_until_end: bool) -> Result<(), MyError> {
-        match msg {
-            TaskMsg::Progress { percents } => {
-                let total_percents = (step_num * 100 + percents) / self.steps_widgets.len();
-                self.total_progress_bar.set_value(total_percents);
-                self.steps_widgets[step_num].display_progress(percents);
-                Ok(())
-            },
-            TaskMsg::Finished => {
-                println!("finished processing");
+    fn process_processing_finish(&mut self, step_num: usize, process_until_end: bool) {
+        println!("finished processing");
 
-                let mut bw_locked = self.bw.locked();
+        let bw_locked = self.bw.locked();
 
-                let drawable: Option<fltk::image::RgbImage> = bw_locked.get_step_img_drawable(step_num);
-                let processing_was_halted: bool = drawable.is_none();
+        let drawable: Option<fltk::image::RgbImage> = bw_locked.get_step_img_drawable(step_num);
+        let processing_was_halted: bool = drawable.is_none();
+
+        self.steps_widgets[step_num].display_result(drawable);
+        self.steps_widgets[step_num].set_step_descr(&bw_locked.get_step_descr(step_num));
+
+        let it_is_the_last_step: bool = step_num >= bw_locked.get_steps_count() - 1;
         
-                self.steps_widgets[step_num].display_result(drawable);
-                self.steps_widgets[step_num].set_step_descr(&bw_locked.get_step_descr(step_num));
-        
-                let it_is_the_last_step: bool = step_num >= bw_locked.get_steps_count() - 1;
-                
-                bw_locked.get_task_result()?; 
-        
-                drop(bw_locked);
-        
-                let processing_continues: bool = 
-                    process_until_end
-                    && !it_is_the_last_step
-                    && !processing_was_halted;
-        
-                if processing_continues {
-                    let next_step_num: usize = step_num + 1;
-                    self.current_task = Some( CurrentTask::Processing { step_num: next_step_num, process_until_end } );
-                    self.start_step_processing(next_step_num);
-                } else {
-                    self.clear_task_and_unfreeze_ui();
-                }
-        
-                Ok(())
-            },
+        drop(bw_locked);
+
+        let processing_continues: bool = 
+            process_until_end
+            && !it_is_the_last_step
+            && !processing_was_halted;
+
+        if processing_continues {
+            let next_step_num: usize = step_num + 1;
+            self.current_task = Some( CurrentTask::Processing { step_num: next_step_num, process_until_end } );
+            self.start_step_processing(next_step_num);
+        } else {
+            self.clear_task_and_unfreeze_ui();
         }
     }
 
-    fn process_task_saving_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
-        match msg {
-            TaskMsg::Progress { percents } => {
-                self.total_progress_bar.set_value(percents);
-                Ok(())
-            },
-            TaskMsg::Finished => {
-                self.clear_task_and_unfreeze_ui();
-                self.bw.locked().get_task_result()?;
-                show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
-                Ok(())
-            },
-        }
+    fn process_project_saving_finish(&mut self) {
+        self.clear_task_and_unfreeze_ui();
+        show_info_msg(self.get_center_pos(), "Проект успешно сохранен");
     }
     
-    fn process_task_loading_msg(&mut self, msg: TaskMsg) -> Result<(), MyError> {
-        match msg {
-            TaskMsg::Progress { percents } => {
-                self.total_progress_bar.set_value(percents);
-                Ok(())
-            },
-            TaskMsg::Finished => {
-                self.clear_task_and_unfreeze_ui();
-                let mut locked_bw = self.bw.locked();
-                locked_bw.get_task_result()?;
+    fn process_project_loading_finish(&mut self) {
+        self.clear_task_and_unfreeze_ui();
+        let locked_bw = self.bw.locked();
 
-                self.scroll_pack.set_size(self.scroll_pack.w(), 0);
-                self.scroll_pack.begin();
-                for _ in 0..locked_bw.get_steps_count() {
-                    self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
+        self.scroll_pack.set_size(self.scroll_pack.w(), 0);
+        self.scroll_pack.begin();
+        for _ in 0..locked_bw.get_steps_count() {
+            self.scroll_pack.set_size(self.scroll_pack.w(), self.scroll_pack.h() + self.h());
 
-                    let step_num = self.steps_widgets.len();
+            let step_num = self.steps_widgets.len();
 
-                    let mut new_step = ProcessingStep::new(
-                        self.w() / 2, self.h(), 
-                        step_num, 
-                        self.tx_ui);
+            let mut new_step = ProcessingStep::new(
+                self.w() / 2, self.h(), 
+                step_num, 
+                self.tx_ui);
 
-                    new_step.set_step_descr(&locked_bw.get_step_descr(step_num));
-                    
-                    self.steps_widgets.push(new_step);
-                }
-                self.scroll_pack.end();
-
-                Ok(())
-            },
+            new_step.set_step_descr(&locked_bw.get_step_descr(step_num));
+            
+            self.steps_widgets.push(new_step);
         }
+        self.scroll_pack.end();
     }
 
 

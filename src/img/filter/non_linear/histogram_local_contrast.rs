@@ -34,7 +34,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -159,7 +159,7 @@ impl ByLayer for HistogramLocalContrast {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<ImgLayer, Halted> {
         let mat = {
             match layer.channel() {

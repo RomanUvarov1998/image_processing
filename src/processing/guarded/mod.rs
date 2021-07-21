@@ -1,4 +1,6 @@
-use crate::{img::{Img, PixelsArea, filter::FilterBase}, my_err::MyError};
+use core::panic;
+
+use crate::{img::{Img, PixelsArea, filter::FilterBase}, my_err::MyError, processing::task_info_channel::{TaskResult, TaskState}};
 use fltk::image::RgbImage;
 use proc_step::ProcStep;
 use super::ExecutorHandle;
@@ -8,7 +10,7 @@ mod proc_step;
 
 pub struct Guarded {
 	executor_handle: ExecutorHandle,
-    task: Option<Task>,
+    task_setup: Option<TaskSetup>,
     initial_img: Option<Img>,
     proc_steps: Vec<ProcStep>,
 }
@@ -17,77 +19,67 @@ impl Guarded {
 	pub fn new(executor_handle: ExecutorHandle) -> Self {
 		Guarded {
 			executor_handle,
-			task: None,
+			task_setup: None,
 			initial_img: None,
 			proc_steps: Vec::new()
 		}
 	}
 
 	pub fn has_task_to_do(&self) -> bool {
-        match self.task {
-            Some(ref task) => task.result.is_none(),
-            None => false
-        }
+        self.task_setup.is_some()
 	}
 
 	pub fn do_task_and_save_result(&mut self) {
         print!("started ");
+        
+        let task_setup: TaskSetup = self.task_setup.take().expect("No task was set up!");
 
-        let task: &Task = self.task.as_ref().expect("No task was set up!");
-        let result: Result<(), MyError> = match &task.setup {
+        let result: Result<(), MyError> = match &task_setup {
             TaskSetup::ProcessStep { step_num, crop_area } => Self::process_step(
-                &self.executor_handle,
+                &mut self.executor_handle,
                 &self.initial_img, 
                 &mut self.proc_steps, 
                 *step_num, *crop_area),
             TaskSetup::Export { ref dir_path } => Self::export_results(
-                &self.executor_handle,
+                &mut self.executor_handle,
                 &self.proc_steps,
                 dir_path),
             TaskSetup::Import { file_path } => Self::import(
-                &self.executor_handle,
+                &mut self.executor_handle,
                 &mut self.initial_img, 
                 file_path),
             TaskSetup::SaveProject { file_path } => Self::save_project(
-                &self.executor_handle,
+                &mut self.executor_handle,
                 &self.proc_steps,
                 file_path),
             TaskSetup::LoadProject { file_path } => Self::load_project(
-                &self.executor_handle,
+                &mut self.executor_handle,
                 &mut self.proc_steps, 
                 file_path),
         };
-        
-        let task: &mut Task = self.task.as_mut().expect("No task was set up!");
-        task.result = Some(result);
 
-        if !self.executor_handle.task_is_halted() {
-            println!("completed ");
-            self.executor_handle.assert_all_actions_completed();
-        } else {
-            self.task.take();
-            println!("halted ");
+        match self.executor_handle.get_task_state() {
+            TaskState::Empty => panic!("No task detected"),
+            TaskState::Finished { result } => {
+                match result {
+                    TaskResult::Ok | TaskResult::Err(_) => panic!("Task was already finished"),
+                    TaskResult::Halted => println!("halted "),
+                }
+            },
+            TaskState::InProgress { .. } => {
+                println!("completed ");
+                self.executor_handle.assert_all_actions_completed();
+                self.executor_handle.finish_task(result);
+            },
         }
 
-        println!("{:?}", self.task);
+        println!("{:?}", self.task_setup);
 	}
     
     pub fn start_task(&mut self, setup: TaskSetup) {
-        assert!(self.task.is_none());
-
-        let task = Task { setup, result: None };
-        
-        if !self.executor_handle.task_is_halted() {
-            self.executor_handle.assert_all_actions_completed();
-        }
-        
-        self.task = Some(task);            
+        assert!(self.task_setup.is_none());
+        self.task_setup = Some(setup);            
 	}
-
-    pub fn get_task_result(&mut self) -> Result<(), MyError> {
-        let mut task: Task = self.task.take().unwrap();
-        task.result.take().unwrap()
-    }
 
 
     pub fn set_initial_img(&mut self, img: Img) {
@@ -189,7 +181,7 @@ impl Guarded {
 
 
     fn process_step(
-        executor_handle: &ExecutorHandle, 
+        executor_handle: &mut ExecutorHandle, 
         initial_img: &Option<Img>, 
         proc_steps: &mut Vec<ProcStep>, 
         step_num: usize, crop_area: Option<PixelsArea>
@@ -200,11 +192,12 @@ impl Guarded {
             }
         }
 
-        let mut img_to_process: &Img = if step_num == 0 {
-            initial_img.as_ref().unwrap()
-        } else {
-            proc_steps[step_num - 1].img.as_ref().unwrap()
-        };
+        let mut img_to_process: &Img = 
+            if step_num == 0 {
+                initial_img.as_ref().unwrap()
+            } else {
+                proc_steps[step_num - 1].img.as_ref().unwrap()
+            };
 
         let cropped_copy: Img;
         if let Some(crop_area) = crop_area {
@@ -216,7 +209,7 @@ impl Guarded {
 
         executor_handle.reset(step.filter.get_steps_num(&img_to_process));
 
-        let img_result = match step.filter.process(&img_to_process, &executor_handle) {
+        let img_result = match step.filter.process(&img_to_process, executor_handle) {
             Ok(img) => Some(img),
             Err(_halted) => None
         };
@@ -227,7 +220,7 @@ impl Guarded {
     }
 
     fn export_results(
-        executor_handle: &ExecutorHandle, 
+        executor_handle: &mut ExecutorHandle, 
         proc_steps: &Vec<ProcStep>, 
         dir_path: &str
     ) -> Result<(), MyError> {
@@ -253,7 +246,7 @@ impl Guarded {
     }
 
     fn import(
-        executor_handle: &ExecutorHandle, 
+        executor_handle: &mut ExecutorHandle, 
         initial_img: &mut Option<Img>, 
         file_path: &str
     )-> Result<(), MyError> {
@@ -281,7 +274,7 @@ impl Guarded {
     }
 
     fn save_project(
-        executor_handle: &ExecutorHandle, 
+        executor_handle: &mut ExecutorHandle, 
         proc_steps: &Vec<ProcStep>, 
         file_path: &str
     ) -> Result<(), MyError> {
@@ -325,7 +318,7 @@ impl Guarded {
     }
 
     fn load_project(
-        executor_handle: &ExecutorHandle, 
+        executor_handle: &mut ExecutorHandle, 
         proc_steps: &mut Vec<ProcStep>, 
         file_path: &str
     ) -> Result<(), MyError> {
@@ -389,12 +382,6 @@ pub enum TaskSetup {
     Import { file_path: String },
     SaveProject { file_path: String },
     LoadProject { file_path: String },
-}
-
-#[derive(Debug)]
-struct Task {
-    setup: TaskSetup,
-    result: Option<Result<(), MyError>>,
 }
 
 

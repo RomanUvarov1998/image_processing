@@ -51,7 +51,7 @@ impl CannyEdgeDetection {
 }
 
 impl Filter for CannyEdgeDetection {
-    fn process(&self, img: &Img, executor_handle: &ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
         let grayed: Img;
         let img = match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => img,

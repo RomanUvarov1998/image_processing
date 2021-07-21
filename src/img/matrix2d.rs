@@ -27,7 +27,7 @@ impl Matrix2D {
     pub fn generate<Tr: FnMut(PixelPos) -> f64>(
         width: usize, height: usize, 
         mut tr: Tr, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<Self, Halted> {
         let mut mat = Self::empty_with_size(width, height);
         
@@ -72,7 +72,7 @@ impl Matrix2D {
         area: PixelsArea, 
         tr: Tr, 
         dest_matrix: &mut Matrix2D, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<(), Halted> {
         for row in area.get_rows_range() {
             for col in area.get_cols_range() {
@@ -88,7 +88,7 @@ impl Matrix2D {
         &self, 
         area: PixelsArea, 
         tr: Tr, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<Self, Halted> {
         let mut transformed = Self::empty_size_of(self);
         self.scalar_transform_area_into(area, tr, &mut transformed, executor_handle)?;
@@ -99,7 +99,7 @@ impl Matrix2D {
     pub fn scalar_transform_self<Tr: Fn(&mut f64, PixelPos) -> ()>(
         &mut self, 
         tr: Tr, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<(), Halted> {
         let area = PixelsArea::from_zero_to(self.h(), self.w());
         self.scalar_transform_self_area(
@@ -112,7 +112,7 @@ impl Matrix2D {
         &mut self, 
         area: PixelsArea, 
         tr: Tr, 
-        executor_handle: &ExecutorHandle
+        executor_handle: &mut ExecutorHandle
     ) -> Result<(), Halted> {
         for row in area.get_rows_range() {
             for col in area.get_cols_range() {
@@ -136,7 +136,7 @@ impl Matrix2D {
         &self.pixels
     }
 
-    pub fn get_max(&self, executor_handle: &ExecutorHandle) -> Result<f64, Halted> {
+    pub fn get_max(&self, executor_handle: &mut ExecutorHandle) -> Result<f64, Halted> {
         let mut max = self.pixels[0];
         
         for row in 0..self.h() {
