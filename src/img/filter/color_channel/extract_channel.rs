@@ -24,7 +24,7 @@ impl Filter for ExtractChannel {
 
         for layer in img_res.layers_mut() {
             if layer.channel() != self.channel && layer.channel() != ImgChannel::A { 
-                for pos in layer.get_area().get_pixels_iter() {
+                for pos in layer.get_area().iter_pixels() {
                     layer[pos] = 0_f64;
                 }
             }

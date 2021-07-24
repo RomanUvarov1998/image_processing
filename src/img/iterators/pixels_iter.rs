@@ -129,7 +129,7 @@ mod tests {
         
         ex.reset(3);
 
-        let mut iter = area.get_pixels_iter().track_progress(&mut ex);
+        let mut iter = area.iter_pixels().track_progress(&mut ex);
 
         let check_percents = |d: &DelegatorHandle, p: usize| {
             if let TaskState::InProgress { percents } = d.get_task_state() {
@@ -175,7 +175,7 @@ mod tests {
         
         ex.reset(3);
 
-        let mut iter = area.get_pixels_iter().track_progress(&mut ex);
+        let mut iter = area.iter_pixels().track_progress(&mut ex);
 
         let check_percents = |d: &DelegatorHandle, p: usize| {
             if let TaskState::InProgress { percents } = d.get_task_state() {

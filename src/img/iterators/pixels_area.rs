@@ -34,7 +34,7 @@ impl PixelsArea {
             top_left + self.bottom_right)
     }
 
-    pub fn apply_margin(self, margin: Margin) -> Self {
+    pub fn with_margin(self, margin: Margin) -> Self {
         let (left, top, right, bottom) = margin.get_margins();
         let top_left_offset = PixelPos::new(top, left);
         let bottom_right_offset = PixelPos::new(bottom, right);
@@ -69,7 +69,7 @@ impl PixelsArea {
     }
 
 
-    pub fn get_pixels_iter(&self) -> PixelsIter {
+    pub fn iter_pixels(&self) -> PixelsIter {
         PixelsIter::for_area(self)
     }
 }
@@ -161,13 +161,13 @@ mod tests {
     fn apply_margin() {
         let area = PixelsArea::with_size(12, 11);
         {
-            let area2 = area.apply_margin(Margin::All(2));
+            let area2 = area.with_margin(Margin::All(2));
             assert_eq!(area2.top_left(), PixelPos::new(2, 2));
             assert_eq!(area2.bottom_right(), PixelPos::new(12 - 1 - 2, 11 - 1 - 2));
         }
         {
             let m = Margin::Sides { left: 1, top: 2, right: 3, bottom: 4 };
-            let area2 = area.apply_margin(m);
+            let area2 = area.with_margin(m);
             assert_eq!(area2.top_left(), PixelPos::new(2, 1));
             assert_eq!(area2.bottom_right(), PixelPos::new(12 - 1 - 4, 11 - 1 - 3));
         }
@@ -175,7 +175,7 @@ mod tests {
             let top_left = PixelPos::new(2, 1);
             let bottom_right = PixelPos::new(4, 3);
             let m = Margin::TwoPoints { top_left, bottom_right };
-            let area2 = area.apply_margin(m);
+            let area2 = area.with_margin(m);
             assert_eq!(area2.top_left(), PixelPos::new(2, 1));
             assert_eq!(area2.bottom_right(), PixelPos::new(12 - 1 - 4, 11 - 1 - 3));
         }
@@ -263,7 +263,7 @@ mod tests {
             PixelPos::new(1, 2),
             PixelPos::new(3, 4));
             
-        let mut iter = area.get_pixels_iter();
+        let mut iter = area.iter_pixels();
 
         assert_eq!(iter.next(), Some(PixelPos::new(1, 2)));
         assert_eq!(iter.next(), Some(PixelPos::new(1, 3)));

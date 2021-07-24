@@ -48,7 +48,7 @@ impl Matrix2D {
         pos.col <= self.max_col() && pos.row <= self.max_row()
     }
 
-    pub fn get_area(&self) -> PixelsArea {
+    pub fn area(&self) -> PixelsArea {
         PixelsArea::size_of(self)
     }
 
@@ -183,7 +183,7 @@ impl Matrix2D {
             let top_moddle_area = PixelsArea::with_size(top, self.w()).with_pos(0, left);
             match with {
                 ExtendValue::Closest => {
-                    for pos in top_moddle_area.get_pixels_iter() {
+                    for pos in top_moddle_area.iter_pixels() {
                         mat_ext[pos] = self[pos.with_row(0) - margin_left];
                     }  
                 },
@@ -204,7 +204,7 @@ impl Matrix2D {
             let middle_left_area = PixelsArea::with_size(self.h(), left).with_pos(top, 0);
             match with {
                 ExtendValue::Closest => {
-                    for pos in middle_left_area.get_pixels_iter() {
+                    for pos in middle_left_area.iter_pixels() {
                         mat_ext[pos] = self[pos.with_col(0) - margin_top];
                     }
                 },
@@ -213,7 +213,7 @@ impl Matrix2D {
         }
         // middle middle     
         let middle_middle_area = PixelsArea::size_of(self).with_pos(top, left);            
-        for pos in middle_middle_area.get_pixels_iter() {
+        for pos in middle_middle_area.iter_pixels() {
             mat_ext[pos] = self[pos - PixelPos::new(top, left)];
         }    
         // middle right
@@ -221,7 +221,7 @@ impl Matrix2D {
             let middle_right_area = PixelsArea::with_size(self.h(), right).with_pos(top, left + self.w());
             match with {
                 ExtendValue::Closest => {          
-                    for pos in middle_right_area.get_pixels_iter() {
+                    for pos in middle_right_area.iter_pixels() {
                         mat_ext[pos] = self[pos.with_col(self.w() - 1) - margin_top];
                     } 
                 },
@@ -243,7 +243,7 @@ impl Matrix2D {
             let bottom_middle_area = PixelsArea::with_size(bottom, self.w()).with_pos(top + self.h(), left);
             match with {
                 ExtendValue::Closest => {   
-                    for pos in bottom_middle_area.get_pixels_iter() {
+                    for pos in bottom_middle_area.iter_pixels() {
                         mat_ext[pos] = self[pos.with_row(self.h() - 1) - margin_left];
                     } 
                 },
@@ -263,7 +263,7 @@ impl Matrix2D {
     }
 
     pub fn set_rect(&mut self, area: PixelsArea, value: f64) {
-        for pos in area.get_pixels_iter() {
+        for pos in area.iter_pixels() {
             self[pos] = value;
         }
     }
@@ -347,7 +347,7 @@ mod tests {
         let area = PixelsArea::with_size(3, 2);
         
         let m = Matrix2D::generate(
-            area.get_pixels_iter(), 
+            area.iter_pixels(), 
             gen).unwrap();
 
         let positions: [PixelPos; 6] = [

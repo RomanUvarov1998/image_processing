@@ -43,7 +43,7 @@ impl Filter for EqualizeHist {
             }
 
             // apply coeff        
-            for pos in layer.get_area().get_pixels_iter() {
+            for pos in layer.get_area().iter_pixels() {
                 let pix_value = layer[pos] as u8 as usize;
                 layer[pos] = buffer[pix_value];
 

@@ -79,7 +79,7 @@ impl Filter for CannyEdgeDetection {
         // gradient
         let grad: Matrix2D = {
             let mut grad = Matrix2D::generate(
-                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle),
+                layer_blured.get_area().iter_pixels().track_progress(executor_handle),
                 |pos| {
                     (dx[pos].powi(2) + dy[pos].powi(2)).sqrt()
                 })?;
@@ -97,7 +97,7 @@ impl Filter for CannyEdgeDetection {
 
         // angles
         let angles = Matrix2D::generate(
-            layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
+            layer_blured.get_area().iter_pixels().track_progress(executor_handle), 
             |pos| {
                 // top left: -3pi/4
                 // top right: -1pi/4
@@ -157,7 +157,7 @@ impl Filter for CannyEdgeDetection {
             };
 
             Matrix2D::generate(
-                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
+                layer_blured.get_area().iter_pixels().track_progress(executor_handle), 
                 generate_fcn)?
         };
 
@@ -213,7 +213,7 @@ impl Filter for CannyEdgeDetection {
             };
 
             Matrix2D::generate(
-                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
+                layer_blured.get_area().iter_pixels().track_progress(executor_handle), 
                 generate_fcn)?
         };
 
@@ -221,7 +221,7 @@ impl Filter for CannyEdgeDetection {
         let layer_l = ImgLayer::new(mat_hysteresis, ImgChannel::L);
         let layer_a: ImgLayer = {
             let mut layer_a = Matrix2D::empty_size_of(layer_l.matrix());
-            for pos in layer_a.get_area().get_pixels_iter() {
+            for pos in layer_a.area().iter_pixels() {
                 layer_a[pos] = 255.0;
             }
             ImgLayer::new(layer_a, ImgChannel::A)

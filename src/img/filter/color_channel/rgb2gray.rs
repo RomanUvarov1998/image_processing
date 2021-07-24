@@ -30,7 +30,7 @@ impl Filter for Rgb2Gray {
     
                 let mut grayed_layer = Matrix2D::empty_with_size(img.w(), img.h());
     
-                for pos in img.get_area().get_pixels_iter() {
+                for pos in img.get_area().iter_pixels() {
                     let r = layers[0][pos];
                     let g = layers[1][pos];
                     let b = layers[2][pos];

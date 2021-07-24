@@ -95,7 +95,7 @@ impl ByLayer for CutBrightness {
 
         let mat = layer.matrix();
 
-        for pos in mat.get_area().get_pixels_iter() {
+        for pos in mat.area().iter_pixels() {
             let pix_val = mat[pos] as u8;
             let before_min = pix_val < self.cut_range.min;
             let after_max = pix_val > self.cut_range.max;

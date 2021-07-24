@@ -23,7 +23,7 @@ impl Filter for NeutralizeChannel {
         let mut img_res = img.clone();
 
         if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {
-            for pos in layer.get_area().get_pixels_iter() {
+            for pos in layer.get_area().iter_pixels() {
                 layer[pos] = 0_f64;
                 executor_handle.complete_action()?;
             }

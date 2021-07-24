@@ -140,7 +140,7 @@ impl Img {
             area.bottom_right().row - area.top_left().row, 
             self.color_depth());
         
-        for pos in area.get_pixels_iter() {
+        for pos in area.iter_pixels() {
             for ch_num in 0..self.d() {
                 img.layer_mut(ch_num)[pos - area.top_left()] = self.layer(ch_num)[pos];
             }
@@ -177,7 +177,7 @@ impl Img {
             let ext_layer = match layer.channel() {
                 ImgChannel::A => {
                     let mut ext_mat = Matrix2D::empty_with_size(left + layer.w() + right, top + layer.h() + bottom);
-                    ext_mat.set_rect(ext_mat.get_area(), 255_f64);
+                    ext_mat.set_rect(ext_mat.area(), 255_f64);
                     ImgLayer::new(ext_mat, layer.channel())
                 },
                 _ => {
