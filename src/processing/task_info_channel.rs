@@ -1,11 +1,11 @@
 use std::{ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
 
+use fltk::prelude::FltkError;
+
 use crate::my_err::MyError;
 
-pub struct Halted;
 
-
-pub fn task_info_channel() -> (ExecutorHandle, DelegatorHandle) {
+pub fn create_task_info_channel() -> (ExecutorHandle, DelegatorHandle) {
 	let inner = Arc::new(Mutex::new(TaskState::Empty));
 	(ExecutorHandle::new(&inner), DelegatorHandle::new(&inner))
 }
@@ -34,8 +34,13 @@ impl ExecutorHandle {
 		self.actions_total = actions_total;
 		self.actions_completed = 0;
 
-		state.assert_can_start_new_task();
-		*state = TaskState::InProgress { percents: 0 };
+		match state {
+			TaskState::Empty => {
+				*state = TaskState::InProgress { percents: 0 }
+			},
+			TaskState::InProgress { .. } => panic!("Previous task wasn't completed"),
+			TaskState::Finished { .. } => panic!("Previous task's result wasn't taken"),
+		}
 
 		drop(guard);
 	}
@@ -44,11 +49,11 @@ impl ExecutorHandle {
 		self.inner.lock().unwrap().deref().clone()
 	}
 
-	pub fn complete_action(&mut self) -> Result<(), Halted> {		
+	pub fn complete_action(&mut self) -> Result<(), TaskStop> {		
 		let mut guard = self.inner.lock().unwrap();
 		let state: &mut TaskState = guard.deref_mut();
 
-		let result: Result<(), Halted> = 
+		let result: Result<(), TaskStop> = 
 			match state {
 				TaskState::Empty => panic!("Task is empty!"),
 				TaskState::InProgress { .. } => {
@@ -61,15 +66,7 @@ impl ExecutorHandle {
 					
 					Ok(())
 				},
-				TaskState::Finished { result } => {
-					match result {
-						TaskResult::Ok | TaskResult::Err(_) => unreachable!(),
-						TaskResult::Halted => {
-							println!("HALT DETECTED");
-							Err(Halted)
-						},
-					}
-				},
+				TaskState::Finished { result } => result.clone(),
 			};
 
 		drop(guard);
@@ -77,14 +74,19 @@ impl ExecutorHandle {
 		result
 	}
 
-	pub fn finish_task(&self, result: Result<(), MyError>) {	
+	pub fn finish_task(&self, result: Result<(), TaskStop>) {	
 		let mut guard = self.inner.lock().unwrap();
 		let state: &mut TaskState = guard.deref_mut();
 		match state {
-			TaskState::InProgress { percents } => assert_eq!(*percents, 100),
+			TaskState::InProgress { percents } => {
+				if let Ok(_) = result {
+					self.assert_all_actions_completed();
+					assert_eq!(*percents, 100);
+				}
+			},
 			TaskState::Empty | TaskState::Finished { .. } => unreachable!(),
 		}
-		*state = TaskState::finish_with_result(result);
+		*state = TaskState::Finished { result };
 		drop(guard);
 	}
 
@@ -111,8 +113,13 @@ impl DelegatorHandle {
 	pub fn halt_task(&self) {
 		let mut guard = self.inner.lock().unwrap();
 		let state: &mut TaskState = guard.deref_mut();
-		*state = TaskState::Finished { result: TaskResult::Halted };
+		*state = TaskState::Finished { result: Err(TaskStop::Halted) };
 		drop(guard);
+	}
+
+	pub fn get_task_state(&self) -> TaskState {
+		let guard = self.inner.lock().unwrap();
+		guard.deref().clone()
 	}
 
 	pub fn clear_task(&self) {
@@ -122,8 +129,12 @@ impl DelegatorHandle {
 		drop(guard);
 	}
 
-	pub fn get_task_state(&self) -> TaskState {
-		self.inner.lock().unwrap().deref().clone()
+	pub fn get_task_result(&self) -> Result<(), TaskStop> {
+		let mut guard = self.inner.lock().unwrap();
+		let state: &mut TaskState = guard.deref_mut();
+		let result = state.take_result();
+		drop(guard);
+		result
 	}
 }
 
@@ -132,29 +143,42 @@ impl DelegatorHandle {
 pub enum TaskState {
 	Empty,
 	InProgress { percents: usize },
-	Finished { result: TaskResult },
+	Finished { result: Result<(), TaskStop> },
 }
 
 impl TaskState {
-	fn assert_can_start_new_task(&self) {
+	fn take_result(&mut self) -> Result<(), TaskStop> {
 		match self {
-			TaskState::Empty | TaskState::Finished { .. } => {},
-			TaskState::InProgress { .. } => panic!("Previous task is not completed!"),
+			TaskState::Empty | TaskState::InProgress { .. } => panic!("No task result yet!"),
+			TaskState::Finished { result } => {
+				let res = result.clone();
+				*self = TaskState::Empty;
+				res
+			},
 		}
-	}
-
-	fn finish_with_result(result: Result<(), MyError>) -> Self {
-		let result: TaskResult = match result {
-			Ok(()) => TaskResult::Ok,
-			Err(err) => TaskResult::Err(err),
-		};
-		TaskState::Finished { result }
 	}
 }
 
 #[derive(Clone, Debug)]
-pub enum TaskResult {
-	Ok,
+pub enum TaskStop {
 	Err(MyError),
 	Halted
+}
+
+impl From<std::io::Error> for TaskStop { 
+	fn from(err: std::io::Error) -> Self {
+		TaskStop::Err(err.into())
+	}
+}
+
+impl From<MyError> for TaskStop { 
+	fn from(err: MyError) -> Self {
+		TaskStop::Err(err)
+	}
+}
+
+impl From<FltkError> for TaskStop { 
+	fn from(err: FltkError) -> Self {
+		TaskStop::Err(err.into())
+	}
 }

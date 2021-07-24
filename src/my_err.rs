@@ -2,7 +2,6 @@ use std::{error, fmt};
 use fltk::prelude::FltkError;
 use jpeg_encoder::EncodingError;
 
-use crate::processing::Halted;
 
 #[derive(Debug, Clone)]
 pub struct MyError {
@@ -49,14 +48,6 @@ impl From<EncodingError> for MyError {
 	fn from(err: EncodingError) -> Self {
 		MyError {
 			msg: err.to_string()
-		}
-	}
-}
-
-impl From<Halted> for MyError { 
-	fn from(_: Halted) -> Self {
-		MyError {
-			msg: "Задача была прервана".to_string()
 		}
 	}
 }

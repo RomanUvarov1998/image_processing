@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::Halted;
+use crate::processing::TaskStop;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -52,7 +52,7 @@ impl LinearGaussian {
 }
 
 impl Filter for LinearGaussian {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -85,7 +85,7 @@ impl ByLayer for LinearGaussian {
         &self,
         layer: &ImgLayer, 
         executor_handle: &mut ExecutorHandle
-    ) -> Result<ImgLayer, Halted> {
+    ) -> Result<ImgLayer, TaskStop> {
         let result_mat = match layer.channel() {
             ImgChannel::A => layer.matrix().clone(),
             _ => process_with_window(

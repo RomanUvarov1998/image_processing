@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::Halted;
+use crate::processing::TaskStop;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -94,7 +94,7 @@ impl WindowFilter for MedianFilter {
 }
 
 impl Filter for MedianFilter {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
     
@@ -156,7 +156,7 @@ impl ByLayer for MedianFilter {
     fn process_layer(
         &self,
         layer: &ImgLayer, 
-        executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, Halted>
+        executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, TaskStop>
     {
         let result_mat = {
             match layer.channel() {

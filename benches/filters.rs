@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use image_processing::{img::{*, filter::{filter_option::*, filter_trait}}, processing::task_info_channel};
+use image_processing::{img::{*, filter::{filter_option::*, filter_trait}}, processing::create_task_info_channel};
 use image_processing::img::filter::{linear::*, non_linear::*, color_channel::*};
 use fltk::enums::ColorDepth;
 
@@ -19,7 +19,7 @@ fn create_img(w: usize, h: usize) -> Img {
 }
 
 fn run_filter<F: filter_trait::Filter>(img: &Img, filter: F) {
-	let (mut executor_handle, _delegator_handle) = task_info_channel();
+	let (mut executor_handle, _delegator_handle) = create_task_info_channel();
 	executor_handle.reset(filter.get_steps_num(img));
 	let _res = filter.process(&img, &mut executor_handle);
 	executor_handle.assert_all_actions_completed();

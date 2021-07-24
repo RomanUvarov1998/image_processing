@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ExecutorHandle, Halted};
+use crate::processing::{ExecutorHandle, TaskStop};
 use super::super::super::ImgChannel;
 use super::super::super::{Img, Matrix2D, ImgLayer};
 use super::super::filter_trait::*;
@@ -13,7 +13,7 @@ pub struct Rgb2Gray {
 }
 
 impl Filter for Rgb2Gray {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => { 
                 let res = img.clone();
@@ -30,7 +30,7 @@ impl Filter for Rgb2Gray {
     
                 let mut grayed_layer = Matrix2D::empty_with_size(img.w(), img.h());
     
-                for pos in img.get_pixels_iter() {
+                for pos in img.get_area().get_pixels_iter() {
                     let r = layers[0][pos];
                     let g = layers[1][pos];
                     let b = layers[2][pos];

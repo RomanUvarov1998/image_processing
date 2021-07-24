@@ -25,8 +25,8 @@ impl ImgLayer {
 
     pub fn matrix_mut(&mut self) -> &mut Matrix2D { &mut self.mat }
 
-    pub fn get_iter(&self) -> PixelsIterator {
-        PixelsIterator::for_full_image(self.matrix())
+    pub fn get_area(&self) -> PixelsArea {
+        PixelsArea::with_size(self.h(), self.w())
     }
 }
 

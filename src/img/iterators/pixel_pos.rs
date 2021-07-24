@@ -1,7 +1,10 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PixelPos { pub col: usize, pub row: usize }
+pub struct PixelPos { 
+    pub row: usize,
+    pub col: usize, 
+}
 
 impl PixelPos {
     pub fn new(row: usize, col: usize) -> Self {
@@ -9,7 +12,7 @@ impl PixelPos {
     }
 
     pub fn one() -> Self {
-        PixelPos { col: 1, row: 1 }
+        PixelPos { row: 1, col: 1 }
     }
 
     pub fn row_vec(&self) -> Self { PixelPos::new(self.row, 0) }

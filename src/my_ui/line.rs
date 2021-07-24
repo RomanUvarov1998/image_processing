@@ -112,7 +112,7 @@ impl ProcessingLine {
 
         main_row.end();
         
-        let (executor_handle, delegator_handle) = task_info_channel();
+        let (executor_handle, delegator_handle) = create_task_info_channel();
         let background_worker = BackgroundWorker::new(executor_handle);
 
         let mut line = ProcessingLine {
@@ -460,8 +460,13 @@ impl ProcessingLine {
             },
             TaskState::Finished { result } => {
                 match result {
-                    TaskResult::Err(err) => show_err_msg(self.get_center_pos(), err),
-                    TaskResult::Ok | TaskResult::Halted => {},
+                    Ok(()) => {},
+                    Err(stop) => {
+                        match stop {
+                            TaskStop::Err(err) => show_err_msg(self.get_center_pos(), err),
+                            TaskStop::Halted => {},
+                        }
+                    }
                 }
                 match current_task {
                     CurrentTask::Importing => self.process_import_finish(),

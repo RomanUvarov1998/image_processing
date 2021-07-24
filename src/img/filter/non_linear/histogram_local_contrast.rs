@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{Halted};
+use crate::processing::TaskStop;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -34,7 +34,7 @@ impl HistogramLocalContrast {
 }
 
 impl Filter for HistogramLocalContrast {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -160,7 +160,7 @@ impl ByLayer for HistogramLocalContrast {
         &self,
         layer: &ImgLayer, 
         executor_handle: &mut ExecutorHandle
-    ) -> Result<ImgLayer, Halted> {
+    ) -> Result<ImgLayer, TaskStop> {
         let mat = {
             match layer.channel() {
                 ImgChannel::A => {
@@ -206,20 +206,18 @@ impl ByLayer for HistogramLocalContrast {
             };
 
             Matrix2D::generate(
-                mat_ext.w(), mat_ext.h(), 
-                generate_fcn, 
-                executor_handle)?
+                mat_ext.get_area().get_pixels_iter().track_progress(executor_handle),
+                generate_fcn)?
         };
 
         //-------------------------------- create C matrix ---------------------------------
         let mut mat_c = Matrix2D::generate(
-            mat_ext.w(), mat_ext.h(), 
+            mat_ext.get_area().get_pixels_iter().track_progress(executor_handle), 
             |pos: PixelPos| -> f64 {
                 let mut val = mat_ext[pos] - mat_ext_filtered[pos];
                 val /= mat_ext[pos] + mat_ext_filtered[pos] + f64::EPSILON;
                 f64::abs(val)
-            }, 
-            executor_handle)?;
+            })?;
 
         mat_c.scalar_transform_self(
             |val: &mut f64, pos: PixelPos| {
@@ -231,10 +229,10 @@ impl ByLayer for HistogramLocalContrast {
                 let mut max_value = mat_hist[pos];
                 let mut min_value = mat_hist[pos];
 
-                for w_pos in mat_hist.get_pixels_area_iter(
-                    pos - win_half, 
-                    pos + win_half) 
-                {
+                let top_left = win_half;
+                let bottom_right = win_half;
+                let inner_area = mat_hist.get_area().apply_margin(Margin::TwoPoints { top_left, bottom_right });
+                for w_pos in inner_area.get_pixels_iter() {
                     let v = mat_hist[w_pos];
                     if f64::abs(v) < f64::EPSILON { continue; }
                     if max_value < v { max_value = v; }
@@ -252,7 +250,7 @@ impl ByLayer for HistogramLocalContrast {
 
         //-------------------------------- create result ---------------------------------         
         let mat_res = Matrix2D::generate(
-            mat.w(), mat.h(), 
+            mat.get_area().get_pixels_iter().track_progress(executor_handle), 
             |pos: PixelPos| -> f64 {
                 if !inner_area.contains(pos) {
                     return 0.0;
@@ -268,8 +266,7 @@ impl ByLayer for HistogramLocalContrast {
                 if val > 255_f64 { val = 255_f64; }
 
                 val
-            }, 
-            executor_handle)?;
+            })?;
 
         Ok(ImgLayer::new(mat_res, layer.channel()))
     }

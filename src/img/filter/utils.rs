@@ -7,7 +7,7 @@ pub fn count_histogram(layer: &Matrix2D, buffer: &mut HistBuf) {
         *elem = 0_f64;
     }
     
-    for pos in layer.get_pixels_iter() {
+    for pos in layer.get_area().get_pixels_iter() {
         let pix_value = layer[pos] as u8 as usize;
         buffer[pix_value] += 1.0;
     }

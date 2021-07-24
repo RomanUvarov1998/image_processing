@@ -1,6 +1,6 @@
 use core::panic;
 
-use crate::{img::{Img, PixelsArea, filter::FilterBase}, my_err::MyError, processing::task_info_channel::{TaskResult, TaskState}};
+use crate::{img::{Img, PixelsArea, filter::FilterBase}, my_err::MyError, processing::task_info_channel::{TaskStop, TaskState}};
 use fltk::image::RgbImage;
 use proc_step::ProcStep;
 use super::ExecutorHandle;
@@ -34,7 +34,7 @@ impl Guarded {
         
         let task_setup: TaskSetup = self.task_setup.take().expect("No task was set up!");
 
-        let result: Result<(), MyError> = match &task_setup {
+        let result: Result<(), TaskStop> = match &task_setup {
             TaskSetup::ProcessStep { step_num, crop_area } => Self::process_step(
                 &mut self.executor_handle,
                 &self.initial_img, 
@@ -58,19 +58,12 @@ impl Guarded {
                 file_path),
         };
 
+        println!("result {:?}", result);
+
         match self.executor_handle.get_task_state() {
             TaskState::Empty => panic!("No task detected"),
-            TaskState::Finished { result } => {
-                match result {
-                    TaskResult::Ok | TaskResult::Err(_) => panic!("Task was already finished"),
-                    TaskResult::Halted => println!("halted "),
-                }
-            },
-            TaskState::InProgress { .. } => {
-                println!("completed ");
-                self.executor_handle.assert_all_actions_completed();
-                self.executor_handle.finish_task(result);
-            },
+            TaskState::InProgress { .. } => panic!("Task wasn't completed "),
+            TaskState::Finished { .. } => {},
         }
 
         println!("{:?}", self.task_setup);
@@ -185,7 +178,7 @@ impl Guarded {
         initial_img: &Option<Img>, 
         proc_steps: &mut Vec<ProcStep>, 
         step_num: usize, crop_area: Option<PixelsArea>
-    ) -> Result<(), MyError> {
+    ) -> Result<(), TaskStop> {
         for step in &mut proc_steps[step_num + 1..] {
             if let Some(_) = step.img {
                 step.img = None;
@@ -223,12 +216,10 @@ impl Guarded {
         executor_handle: &mut ExecutorHandle, 
         proc_steps: &Vec<ProcStep>, 
         dir_path: &str
-    ) -> Result<(), MyError> {
+    ) -> Result<(), TaskStop> {
         executor_handle.reset(1 + proc_steps.len());
 
-        if let Err(err) = std::fs::create_dir(&dir_path) {
-            return Err(MyError::new(err.to_string()));
-        };
+        std::fs::create_dir(&dir_path)?;
 
         executor_handle.complete_action()?;
 
@@ -249,19 +240,21 @@ impl Guarded {
         executor_handle: &mut ExecutorHandle, 
         initial_img: &mut Option<Img>, 
         file_path: &str
-    )-> Result<(), MyError> {
+    )-> Result<(), TaskStop> {
         executor_handle.reset(2);
 
+        println!("loadeding...");
         let sh_im = fltk::image::SharedImage::load(file_path)?;
+        println!("loaded");
 
         executor_handle.complete_action()?;
 
         use fltk::prelude::ImageExt;
         if sh_im.w() < 0 { 
-            return Err(MyError::new("Ширина загруженного изображения < 0".to_string())); 
+            return Err(MyError::new("Ширина загруженного изображения < 0".to_string()).into()); 
         }
         if sh_im.h() < 0 { 
-            return Err(MyError::new("Высота загруженного изображения < 0".to_string())); 
+            return Err(MyError::new("Высота загруженного изображения < 0".to_string()).into()); 
         }
 
         let img = Img::from(sh_im);
@@ -277,13 +270,10 @@ impl Guarded {
         executor_handle: &mut ExecutorHandle, 
         proc_steps: &Vec<ProcStep>, 
         file_path: &str
-    ) -> Result<(), MyError> {
+    ) -> Result<(), TaskStop> {
         executor_handle.reset(1 + proc_steps.len() + 1);
 
-        let mut file = match std::fs::File::create(file_path) {
-            Ok(f) => f,
-            Err(err) => { return Err(MyError::new(err.to_string())); }
-        };
+        let mut file = std::fs::File::create(file_path)?;
 
         executor_handle.complete_action()?;
 
@@ -321,23 +311,18 @@ impl Guarded {
         executor_handle: &mut ExecutorHandle, 
         proc_steps: &mut Vec<ProcStep>, 
         file_path: &str
-    ) -> Result<(), MyError> {
+    ) -> Result<(), TaskStop> {
         executor_handle.reset(1 + 1 + 1);
 
         proc_steps.clear();
 
         executor_handle.complete_action()?;
 
-        let mut file = match std::fs::File::open(file_path) {
-            Ok(f) => f,
-            Err(err) => { return Err(MyError::new(format!("Ошибка при открытии файла проекта: {}", err.to_string()))); },
-        };
+        let mut file = std::fs::File::open(file_path)?;
 
         let mut file_content = String::new();
         use std::io::Read;
-        if let Err(err) = file.read_to_string(&mut file_content) {
-            return Err(MyError::new(format!("Ошибка при чтении файла проекта: {}", err.to_string())));
-        };
+        file.read_to_string(&mut file_content)?;
 
         executor_handle.complete_action()?;
 
@@ -351,18 +336,9 @@ impl Guarded {
             let filter_name = lines_iter.next_or_empty().to_string();
             let filter_content = lines_iter.all_left(true);
 
-            match crate::img::filter::try_parce_filter(&filter_name, &filter_content) {
-                Ok(filter) => {
-                    proc_steps.push(ProcStep { img: None, filter } );
-                },
-                Err(err) => {
-                    let err_msg = format!(
-                        "Ошибка формата при чтении фильтра '{}': '{}'", 
-                        filter_name, err.to_string());
-                    proc_steps.clear();
-                    return Err(MyError::new(err_msg));
-                },
-            }
+            use crate::img::filter::try_parce_filter;
+            let filter = try_parce_filter(&filter_name, &filter_content)?;
+            proc_steps.push(ProcStep { img: None, filter } );
         }
 
         executor_handle.complete_action()?;

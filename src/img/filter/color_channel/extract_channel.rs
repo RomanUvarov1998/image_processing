@@ -1,6 +1,6 @@
 use crate::my_err::MyError;
 use crate::processing::ExecutorHandle;
-use crate::processing::Halted;
+use crate::processing::TaskStop;
 use super::super::super::ImgChannel;
 use super::super::super::Img;
 use super::super::filter_trait::*;
@@ -19,12 +19,12 @@ impl ExtractChannel {
 }
 
 impl Filter for ExtractChannel {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let mut img_res = img.clone();
 
         for layer in img_res.layers_mut() {
             if layer.channel() != self.channel && layer.channel() != ImgChannel::A { 
-                for pos in layer.get_iter() {
+                for pos in layer.get_area().get_pixels_iter() {
                     layer[pos] = 0_f64;
                 }
             }

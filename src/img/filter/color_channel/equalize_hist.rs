@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::img::filter::FilterBase;
-use crate::processing::{ExecutorHandle, Halted};
+use crate::processing::{ExecutorHandle, TaskStop};
 use super::traits::*;
 use super::img::*;
 use super::utils::*;
@@ -12,7 +12,7 @@ pub struct EqualizeHist {
 }
 
 impl Filter for EqualizeHist {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let mut buffer: HistBuf = [0_f64; PIXEL_VALUES_COUNT];
 
         let mut img_res = img.clone();
@@ -43,7 +43,7 @@ impl Filter for EqualizeHist {
             }
 
             // apply coeff        
-            for pos in layer.matrix().get_pixels_iter() {
+            for pos in layer.get_area().get_pixels_iter() {
                 let pix_value = layer[pos] as u8 as usize;
                 layer[pos] = buffer[pix_value];
 

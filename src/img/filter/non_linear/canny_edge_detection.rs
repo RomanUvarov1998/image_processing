@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::Halted;
+use crate::processing::TaskStop;
 use super::super::super::*;
 use super::super::filter_trait::*;
 use super::super::*;
@@ -51,7 +51,7 @@ impl CannyEdgeDetection {
 }
 
 impl Filter for CannyEdgeDetection {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let grayed: Img;
         let img = match img.color_depth() {
             ColorDepth::L8 | ColorDepth::La8 => img,
@@ -76,16 +76,13 @@ impl Filter for CannyEdgeDetection {
         let dx = self.dx_filter.process_layer(&layer_blured, executor_handle)?;
         let dy = self.dy_filter.process_layer(&layer_blured, executor_handle)?;
 
-        let (layer_w, layer_h) = (layer_blured.w(), layer_blured.h());
-
         // gradient
         let grad: Matrix2D = {
             let mut grad = Matrix2D::generate(
-                layer_w, layer_h, 
+                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle),
                 |pos| {
                     (dx[pos].powi(2) + dy[pos].powi(2)).sqrt()
-                }, 
-                executor_handle)?;
+                })?;
 
             let g_max: f64 = grad.get_max(executor_handle)?;
 
@@ -100,15 +97,14 @@ impl Filter for CannyEdgeDetection {
 
         // angles
         let angles = Matrix2D::generate(
-            layer_blured.w(), layer_blured.h(), 
+            layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
             |pos| {
                 // top left: -3pi/4
                 // top right: -1pi/4
                 // bottom left: 3pi/4
                 // bottom right: 1pi/4
                 dy[pos].atan2(dx[pos])
-            }, 
-            executor_handle)?;
+            })?;
         
         // non-max supression
         let mat_non_max_supressed: Matrix2D = {
@@ -161,9 +157,8 @@ impl Filter for CannyEdgeDetection {
             };
 
             Matrix2D::generate(
-                layer_w, layer_h, 
-                generate_fcn, 
-                executor_handle)?
+                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
+                generate_fcn)?
         };
 
         // double thesholding and hysteresis
@@ -218,16 +213,15 @@ impl Filter for CannyEdgeDetection {
             };
 
             Matrix2D::generate(
-                layer_w, layer_h, 
-                generate_fcn, 
-                executor_handle)?
+                layer_blured.get_area().get_pixels_iter().track_progress(executor_handle), 
+                generate_fcn)?
         };
 
         // creating result
         let layer_l = ImgLayer::new(mat_hysteresis, ImgChannel::L);
         let layer_a: ImgLayer = {
             let mut layer_a = Matrix2D::empty_size_of(layer_l.matrix());
-            for pos in layer_a.get_pixels_iter() {
+            for pos in layer_a.get_area().get_pixels_iter() {
                 layer_a[pos] = 255.0;
             }
             ImgLayer::new(layer_a, ImgChannel::A)

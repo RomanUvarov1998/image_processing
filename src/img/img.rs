@@ -140,7 +140,7 @@ impl Img {
             area.bottom_right().row - area.top_left().row, 
             self.color_depth());
         
-        for pos in PixelsIterator::for_rect_area(area.top_left(), area.bottom_right() + PixelPos::one()) {
+        for pos in area.get_pixels_iter() {
             for ch_num in 0..self.d() {
                 img.layer_mut(ch_num)[pos - area.top_left()] = self.layer(ch_num)[pos];
             }
@@ -149,12 +149,8 @@ impl Img {
         img
     }
 
-    pub fn get_pixels_iter(&self) -> PixelsIterator {
-        PixelsIterator::for_full_image(self.layer(0).matrix())
-    }
-
-    pub fn get_layers_iter<'own>(&'own self) -> LayersIterator<'own> {
-        LayersIterator::new(self)
+    pub fn get_area(&self) -> PixelsArea {
+        PixelsArea::with_size(self.h(), self.w())
     }
 
     pub fn get_drawable_copy(&self) -> image::RgbImage { 
@@ -162,7 +158,7 @@ impl Img {
 
         let layer_length = self.w() * self.h(); 
         for pix_num in 0..layer_length {
-            for layer in self.get_layers_iter() {
+            for layer in self.layers().iter() {
                 all_pixels.push(layer[pix_num] as u8);
             }
         }
@@ -181,7 +177,7 @@ impl Img {
             let ext_layer = match layer.channel() {
                 ImgChannel::A => {
                     let mut ext_mat = Matrix2D::empty_with_size(left + layer.w() + right, top + layer.h() + bottom);
-                    ext_mat.set_rect(PixelPos::new(0, 0), ext_mat.size_vec(), 255_f64);
+                    ext_mat.set_rect(ext_mat.get_area(), 255_f64);
                     ImgLayer::new(ext_mat, layer.channel())
                 },
                 _ => {

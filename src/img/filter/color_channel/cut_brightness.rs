@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::{ExecutorHandle, Halted};
+use crate::processing::{ExecutorHandle, TaskStop};
 use crate::utils::LinesIter;
 use super::traits::*;
 use super::options::*;
@@ -23,7 +23,7 @@ impl CutBrightness {
 }
 
 impl Filter for CutBrightness {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -83,7 +83,7 @@ impl ByLayer for CutBrightness {
         &self,
         layer: &ImgLayer, 
         executor_handle: &mut ExecutorHandle
-    ) -> Result<ImgLayer, Halted> {
+    ) -> Result<ImgLayer, TaskStop> {
         let mut mat_res = {
             match layer.channel() {
                 ImgChannel::A => {
@@ -95,7 +95,7 @@ impl ByLayer for CutBrightness {
 
         let mat = layer.matrix();
 
-        for pos in mat.get_pixels_iter() {
+        for pos in mat.get_area().get_pixels_iter() {
             let pix_val = mat[pos] as u8;
             let before_min = pix_val < self.cut_range.min;
             let after_max = pix_val > self.cut_range.max;

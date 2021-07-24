@@ -5,13 +5,11 @@ use self::{filter::filter_trait::WindowFilter};
 use self::filter::filter_option::*;
 
 pub mod filter;
-mod pixel_pos;
 mod img_layer;
 mod matrix2d;
 mod iterators;
 mod img;
 
-pub use pixel_pos::PixelPos;
 pub use img_layer::ImgLayer;
 pub use matrix2d::Matrix2D;
 pub use iterators::*;

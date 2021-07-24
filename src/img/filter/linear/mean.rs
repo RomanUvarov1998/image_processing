@@ -1,6 +1,6 @@
 use fltk::enums::ColorDepth;
 use crate::my_err::MyError;
-use crate::processing::Halted;
+use crate::processing::TaskStop;
 use crate::utils::LinesIter;
 use super::super::super::*;
 use super::super::filter_trait::*;
@@ -43,7 +43,7 @@ impl WindowFilter for LinearMean {
 }
 
 impl Filter for LinearMean {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
 
@@ -104,7 +104,7 @@ impl StringFromTo for LinearMean {
 }
 
 impl ByLayer for LinearMean {
-    fn process_layer(&self, layer: &ImgLayer, executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, Halted> {
+    fn process_layer(&self, layer: &ImgLayer, executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, TaskStop> {
         let mat = match layer.channel() {
             ImgChannel::A => {
                 return Ok(layer.clone())

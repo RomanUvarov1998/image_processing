@@ -1,5 +1,5 @@
 use crate::my_err::MyError;
-use crate::processing::{ExecutorHandle, Halted};
+use crate::processing::{ExecutorHandle, TaskStop};
 use super::super::super::ImgChannel;
 use super::super::super::Img;
 use super::super::filter_trait::*;
@@ -19,11 +19,11 @@ impl NeutralizeChannel {
 }
 
 impl Filter for NeutralizeChannel {
-    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, Halted> {
+    fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let mut img_res = img.clone();
 
         if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {
-            for pos in layer.get_iter() {
+            for pos in layer.get_area().get_pixels_iter() {
                 layer[pos] = 0_f64;
                 executor_handle.complete_action()?;
             }
