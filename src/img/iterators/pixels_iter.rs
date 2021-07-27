@@ -1,11 +1,9 @@
+use super::{PixelPos, PixelsArea};
 use crate::processing::ExecutorHandle;
-use super::{ PixelPos, PixelsArea};
 
-
-pub trait PixelsAreaIter<'area> : Iterator<Item = PixelPos> {
+pub trait PixelsAreaIter<'area>: Iterator<Item = PixelPos> {
     fn area(&self) -> &'area PixelsArea;
 }
-
 
 pub struct PixelsIter<'area> {
     area: &'area PixelsArea,
@@ -52,25 +50,24 @@ impl<'area> Iterator for PixelsIter<'area> {
     }
 }
 
-
 pub struct PixelsProgressIter<'handle_and_area> {
-	iter: PixelsIter<'handle_and_area>,
-	executor_handle: &'handle_and_area mut ExecutorHandle,
-	cur_row_num: usize,
+    iter: PixelsIter<'handle_and_area>,
+    executor_handle: &'handle_and_area mut ExecutorHandle,
+    cur_row_num: usize,
 }
 
 impl<'handle_and_area> PixelsProgressIter<'handle_and_area> {
-	fn new(
-        iter: PixelsIter<'handle_and_area>, 
-        executor_handle: &'handle_and_area mut ExecutorHandle
+    fn new(
+        iter: PixelsIter<'handle_and_area>,
+        executor_handle: &'handle_and_area mut ExecutorHandle,
     ) -> Self {
         let cur_row_num = iter.area().top_left().row;
-		PixelsProgressIter {
-			iter,
-			executor_handle,
-			cur_row_num
-		}
-	}
+        PixelsProgressIter {
+            iter,
+            executor_handle,
+            cur_row_num,
+        }
+    }
 }
 
 impl<'handle_and_area> PixelsAreaIter<'handle_and_area> for PixelsProgressIter<'handle_and_area> {
@@ -91,22 +88,24 @@ impl Iterator for PixelsProgressIter<'_> {
                 }
 
                 Some(p)
-            },
+            }
             None => {
                 self.executor_handle.complete_action().ok()?;
                 None
-            },
+            }
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use crate::processing::{DelegatorHandle, TaskState, TaskStop};
 
-    use crate::{img::{PixelPos, PixelsArea, PixelsAreaIter}, processing::create_task_info_channel};
     use super::PixelsIter;
+    use crate::{
+        img::{PixelPos, PixelsArea, PixelsAreaIter},
+        processing::create_task_info_channel,
+    };
 
     #[test]
     fn for_area() {
@@ -121,12 +120,10 @@ mod tests {
 
     #[test]
     fn progress_iter() {
-        let area = PixelsArea::new(
-            PixelPos::new(1, 2),
-            PixelPos::new(3, 4));
-            
+        let area = PixelsArea::new(PixelPos::new(1, 2), PixelPos::new(3, 4));
+
         let (mut ex, del) = create_task_info_channel();
-        
+
         ex.reset(3);
 
         let mut iter = area.iter_pixels().track_progress(&mut ex);
@@ -146,33 +143,31 @@ mod tests {
         check_percents(&del, 100 * 0 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(1, 4)));
         check_percents(&del, 100 * 0 / 3);
-        
+
         assert_eq!(iter.next(), Some(PixelPos::new(2, 2)));
         check_percents(&del, 100 * 1 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(2, 3)));
         check_percents(&del, 100 * 1 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(2, 4)));
         check_percents(&del, 100 * 1 / 3);
-        
+
         assert_eq!(iter.next(), Some(PixelPos::new(3, 2)));
         check_percents(&del, 100 * 2 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(3, 3)));
         check_percents(&del, 100 * 2 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(3, 4)));
         check_percents(&del, 100 * 2 / 3);
-        
+
         assert_eq!(iter.next(), None);
         check_percents(&del, 100 * 3 / 3);
     }
 
     #[test]
     fn progress_iter_halt() {
-        let area = PixelsArea::new(
-            PixelPos::new(1, 2),
-            PixelPos::new(3, 4));
-            
+        let area = PixelsArea::new(PixelPos::new(1, 2), PixelPos::new(3, 4));
+
         let (mut ex, del) = create_task_info_channel();
-        
+
         ex.reset(3);
 
         let mut iter = area.iter_pixels().track_progress(&mut ex);
@@ -192,15 +187,15 @@ mod tests {
         check_percents(&del, 100 * 0 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(1, 4)));
         check_percents(&del, 100 * 0 / 3);
-        
+
         assert_eq!(iter.next(), Some(PixelPos::new(2, 2)));
         check_percents(&del, 100 * 1 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(2, 3)));
         check_percents(&del, 100 * 1 / 3);
         assert_eq!(iter.next(), Some(PixelPos::new(2, 4)));
         check_percents(&del, 100 * 1 / 3);
-        
-        del.halt_task();       
+
+        del.halt_task();
         assert_eq!(iter.next(), None);
         if let TaskState::Finished { result } = del.get_task_state() {
             if let Err(TaskStop::Halted) = result {

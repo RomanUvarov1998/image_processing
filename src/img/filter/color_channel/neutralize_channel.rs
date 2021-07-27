@@ -1,15 +1,14 @@
+use super::super::super::Img;
+use super::super::super::ImgChannel;
+use super::super::filter_option::*;
+use super::super::filter_trait::*;
+use super::super::FilterBase;
 use crate::my_err::MyError;
 use crate::processing::{ExecutorHandle, TaskStop};
-use super::super::super::ImgChannel;
-use super::super::super::Img;
-use super::super::filter_trait::*;
-use super::super::filter_option::*;
-use super::super::FilterBase;
-
 
 #[derive(Clone)]
 pub struct NeutralizeChannel {
-    channel: ImgChannel
+    channel: ImgChannel,
 }
 
 impl NeutralizeChannel {
@@ -22,18 +21,26 @@ impl Filter for NeutralizeChannel {
     fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let mut img_res = img.clone();
 
-        if let Some(layer) = img_res.layers_mut().into_iter().find(|layer| layer.channel() == self.channel) {
+        if let Some(layer) = img_res
+            .layers_mut()
+            .into_iter()
+            .find(|layer| layer.channel() == self.channel)
+        {
             for pos in layer.get_area().iter_pixels() {
                 layer[pos] = 0_f64;
                 executor_handle.complete_action()?;
             }
         }
-        
+
         Ok(img_res)
     }
 
     fn get_steps_num(&self, img: &Img) -> usize {
-        if let Some(_) = img.layers().into_iter().find(|layer| layer.channel() == self.channel) {
+        if let Some(_) = img
+            .layers()
+            .into_iter()
+            .find(|layer| layer.channel() == self.channel)
+        {
             img.w() * img.h()
         } else {
             0
@@ -43,7 +50,7 @@ impl Filter for NeutralizeChannel {
     fn get_description(&self) -> String {
         format!("Подавление канала {}", self.channel)
     }
-    
+
     fn get_save_name(&self) -> String {
         "NeutralizeChannel".to_string()
     }

@@ -1,28 +1,31 @@
-use fltk::enums::ColorDepth;
+use super::super::super::*;
+use super::super::filter_trait::*;
+use super::super::FilterBase;
+use super::super::*;
 use crate::my_err::MyError;
 use crate::processing::TaskStop;
 use crate::utils::LinesIter;
-use super::super::super::*;
-use super::super::filter_trait::*;
-use super::super::*;
-use super::super::FilterBase;
-
+use fltk::enums::ColorDepth;
 
 #[derive(Clone)]
 pub struct MedianFilter {
     size: FilterWindowSize,
     extend_value: ExtendValue,
-    name: String
+    name: String,
 }
 
 impl MedianFilter {
-    pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {        
-        MedianFilter { size, extend_value, name: "Медианный фильтр".to_string() }
+    pub fn new(size: FilterWindowSize, extend_value: ExtendValue) -> Self {
+        MedianFilter {
+            size,
+            extend_value,
+            name: "Медианный фильтр".to_string(),
+        }
     }
 }
 
 impl WindowFilter for MedianFilter {
-    /*fn process_window(&self, window_buffer: &mut [f64]) -> f64 {        
+    /*fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         /*
             * Algorithm from N. Wirth's book, implementation by N. Devillard.
             * This code in public domain.
@@ -33,12 +36,12 @@ impl WindowFilter for MedianFilter {
         let mut inner_end: usize;
         let med_ind: usize = window_buffer.len() / 2;
         let mut median: f64;
-        
+
         while outer_beg < outer_end {
             median = window_buffer[med_ind];
             inner_beg = outer_beg;
             inner_end = outer_end;
-            
+
             loop {
                 while window_buffer[inner_beg] < median { inner_beg += 1; }
                 while median < window_buffer[inner_end] { inner_end -= 1; }
@@ -57,15 +60,15 @@ impl WindowFilter for MedianFilter {
 
         window_buffer[med_ind]
     }*/
-    
+
     fn process_window(&self, window_buffer: &mut [f64]) -> f64 {
         let mut hist_buffer = [0_usize; 256];
-        
+
         for val in window_buffer.iter() {
             let ind = (*val as u8) as usize;
             hist_buffer[ind] += 1_usize;
         }
-        
+
         let mut values_until_median = window_buffer.len() / 2;
         let mut bin_ind = 0_usize;
         while bin_ind < hist_buffer.len() && values_until_median > hist_buffer[bin_ind] {
@@ -76,9 +79,13 @@ impl WindowFilter for MedianFilter {
         bin_ind as f64
     }
 
-    fn w(&self) -> usize { self.size.width }
+    fn w(&self) -> usize {
+        self.size.width
+    }
 
-    fn h(&self) -> usize { self.size.height }
+    fn h(&self) -> usize {
+        self.size.height
+    }
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
@@ -88,7 +95,7 @@ impl WindowFilter for MedianFilter {
         FilterIterator {
             width: self.w(),
             height: self.h(),
-            cur_pos: PixelPos::default()
+            cur_pos: PixelPos::default(),
         }
     }
 }
@@ -97,7 +104,7 @@ impl Filter for MedianFilter {
     fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         process_each_layer(img, self, executor_handle)
     }
-    
+
     fn get_steps_num(&self, img: &Img) -> usize {
         let rows_per_layer = img.h();
         let layers_count = match img.color_depth() {
@@ -110,8 +117,10 @@ impl Filter for MedianFilter {
         layers_count * rows_per_layer
     }
 
-    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
-    
+    fn get_description(&self) -> String {
+        format!("{} {}x{}", &self.name, self.h(), self.w())
+    }
+
     fn get_save_name(&self) -> String {
         "MedianFilter".to_string()
     }
@@ -125,7 +134,9 @@ impl Filter for MedianFilter {
 impl StringFromTo for MedianFilter {
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
         let mut lines_iter = LinesIter::new(string);
-        if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
+        if lines_iter.len() != 2 {
+            return Err(MyError::new("Должно быть 2 строки".to_string()));
+        }
 
         let size = FilterWindowSize::try_from_string(lines_iter.next_or_empty())?
             .check_size_be_3()?
@@ -141,7 +152,11 @@ impl StringFromTo for MedianFilter {
     }
 
     fn params_to_string(&self) -> Option<String> {
-        let params_str = format!("{}\n{}", self.size.content_to_string(), self.extend_value.content_to_string());
+        let params_str = format!(
+            "{}\n{}",
+            self.size.content_to_string(),
+            self.extend_value.content_to_string()
+        );
         Some(params_str)
     }
 }
@@ -155,17 +170,16 @@ impl Default for MedianFilter {
 impl ByLayer for MedianFilter {
     fn process_layer(
         &self,
-        layer: &ImgLayer, 
-        executor_handle: &mut ExecutorHandle) -> Result<ImgLayer, TaskStop>
-    {
+        layer: &ImgLayer,
+        executor_handle: &mut ExecutorHandle,
+    ) -> Result<ImgLayer, TaskStop> {
         let result_mat = {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
-                _ => process_with_window(layer.matrix(), self, 
-                    executor_handle)?,
+                _ => process_with_window(layer.matrix(), self, executor_handle)?,
             }
         };
-        
+
         Ok(ImgLayer::new(result_mat, layer.channel()))
     }
-}   
+}

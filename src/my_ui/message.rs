@@ -7,7 +7,7 @@ pub enum Msg {
 
 #[derive(Debug, Copy, Clone)]
 pub enum Project {
-    Import (ImportType),
+    Import(ImportType),
     SaveProject,
     LoadProject,
     Export,
@@ -16,34 +16,50 @@ pub enum Project {
 #[derive(Debug, Copy, Clone)]
 pub enum StepOp {
     AddStep(AddStep),
-    Edit { step_num: usize }, 
-    Move { step_num: usize, direction: MoveStep }, 
-    Delete { step_num: usize },
+    Edit {
+        step_num: usize,
+    },
+    Move {
+        step_num: usize,
+        direction: MoveStep,
+    },
+    Delete {
+        step_num: usize,
+    },
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum Proc {
-    StartStepsChain { step_num: usize, process_until_end: bool },
+    StartStepsChain {
+        step_num: usize,
+        process_until_end: bool,
+    },
     HaltStepsChain,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum ImportType { File, SystemClipoard }
-
-#[derive(Debug, Copy, Clone)]
-pub enum AddStep {
-    LinCustom, 
-    LinMean, 
-    LinGauss, 
-    Median, 
-    HistogramLocalContrast, 
-    CutBrightness, 
-    HistogramEqualizer, 
-    Rgb2Gray, 
-    NeutralizeChannel, 
-    ExtractChannel, 
-    CannyEdgeDetection, 
+pub enum ImportType {
+    File,
+    SystemClipoard,
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum MoveStep { Up, Down }
+pub enum AddStep {
+    LinCustom,
+    LinMean,
+    LinGauss,
+    Median,
+    HistogramLocalContrast,
+    CutBrightness,
+    HistogramEqualizer,
+    Rgb2Gray,
+    NeutralizeChannel,
+    ExtractChannel,
+    CannyEdgeDetection,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MoveStep {
+    Up,
+    Down,
+}

@@ -1,22 +1,19 @@
-use fltk::enums::ColorDepth;
+use super::img::*;
+use super::traits::*;
+use super::utils::*;
 use crate::img::filter::FilterBase;
 use crate::processing::{ExecutorHandle, TaskStop};
-use super::traits::*;
-use super::img::*;
-use super::utils::*;
-
+use fltk::enums::ColorDepth;
 
 #[derive(Clone)]
-pub struct EqualizeHist {
-
-}
+pub struct EqualizeHist {}
 
 impl Filter for EqualizeHist {
     fn process(&self, img: &Img, executor_handle: &mut ExecutorHandle) -> Result<Img, TaskStop> {
         let mut buffer: HistBuf = [0_f64; PIXEL_VALUES_COUNT];
 
         let mut img_res = img.clone();
-        
+
         'out: for layer in img_res.layers_mut() {
             if layer.channel() == ImgChannel::A {
                 continue 'out;
@@ -42,7 +39,7 @@ impl Filter for EqualizeHist {
                 executor_handle.complete_action()?;
             }
 
-            // apply coeff        
+            // apply coeff
             for pos in layer.get_area().iter_pixels() {
                 let pix_value = layer[pos] as u8 as usize;
                 layer[pos] = buffer[pix_value];
@@ -62,14 +59,14 @@ impl Filter for EqualizeHist {
             ColorDepth::Rgb8 => img.d(),
             ColorDepth::Rgba8 => img.d() - 1,
         };
-        
+
         layers_count * (PIXEL_VALUES_COUNT * 2 + pixels_per_layer)
     }
 
     fn get_description(&self) -> String {
         "Эквализация гистограммы".to_string()
     }
-    
+
     fn get_save_name(&self) -> String {
         "EqualizeHist".to_string()
     }

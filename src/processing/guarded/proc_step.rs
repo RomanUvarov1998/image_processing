@@ -1,9 +1,8 @@
-use crate::img::{Img, filter::FilterBase};
-
+use crate::img::{filter::FilterBase, Img};
 
 pub struct ProcStep {
     pub img: Option<Img>,
-    pub filter: FilterBase
+    pub filter: FilterBase,
 }
 
 impl ProcStep {

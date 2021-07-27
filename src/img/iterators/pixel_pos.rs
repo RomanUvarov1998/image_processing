@@ -1,9 +1,9 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PixelPos { 
+pub struct PixelPos {
     pub row: usize,
-    pub col: usize, 
+    pub col: usize,
 }
 
 impl PixelPos {
@@ -15,41 +15,49 @@ impl PixelPos {
         PixelPos { row: 1, col: 1 }
     }
 
-    pub fn row_vec(&self) -> Self { PixelPos::new(self.row, 0) }
-    pub fn col_vec(&self) -> Self { PixelPos::new(0, self.col) }
+    pub fn row_vec(&self) -> Self {
+        PixelPos::new(self.row, 0)
+    }
+    pub fn col_vec(&self) -> Self {
+        PixelPos::new(0, self.col)
+    }
 
-    pub fn with_row(&self, row: usize) -> Self { PixelPos::new(row, self.col) }
-    pub fn with_col(&self, col: usize) -> Self { PixelPos::new(self.row, col) }
+    pub fn with_row(&self, row: usize) -> Self {
+        PixelPos::new(row, self.col)
+    }
+    pub fn with_col(&self, col: usize) -> Self {
+        PixelPos::new(self.row, col)
+    }
 
     pub fn lefter(&self) -> Self {
         assert!(self.col > 0);
-        PixelPos::new(self.row + 0, self.col - 1) 
+        PixelPos::new(self.row + 0, self.col - 1)
     }
-    pub fn upper_lefter(&self) -> Self { 
+    pub fn upper_lefter(&self) -> Self {
         assert!(self.col > 0);
         assert!(self.row > 0);
-        PixelPos::new(self.row - 1, self.col - 1) 
+        PixelPos::new(self.row - 1, self.col - 1)
     }
-    pub fn upper(&self) -> Self { 
+    pub fn upper(&self) -> Self {
         assert!(self.row > 0);
-        PixelPos::new(self.row - 1, self.col + 0) 
+        PixelPos::new(self.row - 1, self.col + 0)
     }
-    pub fn upper_righter(&self) -> Self { 
+    pub fn upper_righter(&self) -> Self {
         assert!(self.row > 0);
-        PixelPos::new(self.row - 1, self.col + 1) 
+        PixelPos::new(self.row - 1, self.col + 1)
     }
-    pub fn righter(&self) -> Self { 
-        PixelPos::new(self.row + 0, self.col + 1) 
+    pub fn righter(&self) -> Self {
+        PixelPos::new(self.row + 0, self.col + 1)
     }
-    pub fn downer_righter(&self) -> Self { 
-        PixelPos::new(self.row + 1, self.col + 1) 
+    pub fn downer_righter(&self) -> Self {
+        PixelPos::new(self.row + 1, self.col + 1)
     }
-    pub fn downer(&self) -> Self { 
-        PixelPos::new(self.row + 1, self.col + 0) 
+    pub fn downer(&self) -> Self {
+        PixelPos::new(self.row + 1, self.col + 0)
     }
-    pub fn downer_lefter(&self) -> Self { 
+    pub fn downer_lefter(&self) -> Self {
         assert!(self.col > 0);
-        PixelPos::new(self.row + 1, self.col - 1) 
+        PixelPos::new(self.row + 1, self.col - 1)
     }
 }
 
@@ -89,7 +97,6 @@ impl SubAssign for PixelPos {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::PixelPos;
@@ -114,10 +121,10 @@ mod tests {
     #[test]
     fn with_row_and_with_col_ctors() {
         let pos = PixelPos::new(4, 5);
-        
+
         let v1 = pos.with_col(3);
         assert_eq!(v1, PixelPos::new(pos.row, 3));
-        
+
         let v1 = pos.with_row(2);
         assert_eq!(v1, PixelPos::new(2, pos.col));
     }
@@ -127,28 +134,28 @@ mod tests {
         const ROW: usize = 4;
         const COL: usize = 5;
         let pos = PixelPos::new(ROW, COL);
-        
+
         let p = pos.lefter();
         assert_eq!(p, PixelPos::new(ROW, COL - 1));
-        
+
         let p = pos.upper_lefter();
         assert_eq!(p, PixelPos::new(ROW - 1, COL - 1));
-        
+
         let p = pos.upper();
         assert_eq!(p, PixelPos::new(ROW - 1, COL));
-        
+
         let p = pos.upper_righter();
         assert_eq!(p, PixelPos::new(ROW - 1, COL + 1));
-        
+
         let p = pos.righter();
         assert_eq!(p, PixelPos::new(ROW, COL + 1));
-        
+
         let p = pos.downer_righter();
         assert_eq!(p, PixelPos::new(ROW + 1, COL + 1));
-        
+
         let p = pos.downer();
         assert_eq!(p, PixelPos::new(ROW + 1, COL));
-        
+
         let p = pos.downer_lefter();
         assert_eq!(p, PixelPos::new(ROW + 1, COL - 1));
     }
@@ -173,21 +180,21 @@ mod tests {
         let pos = PixelPos::new(0, 3);
         let _n1 = pos.upper_righter();
     }
-    
+
     #[test]
     #[should_panic(expected = "assertion failed")]
     fn cannot_have_upper_lefter_neigbour_if_col_is_0() {
         let pos = PixelPos::new(3, 0);
         let _n1 = pos.upper_lefter();
     }
-    
+
     #[test]
     #[should_panic(expected = "assertion failed")]
     fn cannot_have_lefter_neigbour_if_col_is_0() {
         let pos = PixelPos::new(3, 0);
         let _n1 = pos.lefter();
     }
-    
+
     #[test]
     #[should_panic(expected = "assertion failed")]
     fn cannot_have_downer_lefter_neigbour_if_col_is_0() {

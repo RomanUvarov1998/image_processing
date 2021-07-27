@@ -11,7 +11,7 @@ pub fn show_err_msg(center_pos: Pos, err: MyError) {
 pub fn confirm_with_dlg(center_pos: Pos, question: &str) -> bool {
     let (x, y) = count_box_pos(center_pos, question);
 
-    let ans = fltk::dialog::choice(x, y, &question, "Да", "Нет","");
+    let ans = fltk::dialog::choice(x, y, &question, "Да", "Нет", "");
 
     ans == 0
 }

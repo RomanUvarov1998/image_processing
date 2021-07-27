@@ -1,6 +1,9 @@
-use fltk::{group::{self, PackType}, prelude::{GroupExt, WidgetExt}};
+use fltk::{
+    group::{self, PackType},
+    prelude::{GroupExt, WidgetExt},
+};
 
-use super::{Alignable};
+use super::Alignable;
 
 pub struct MyColumn {
     pack: group::Pack,
@@ -9,8 +12,7 @@ pub struct MyColumn {
 #[allow(unused)]
 impl MyColumn {
     pub fn new(w: i32, h: i32) -> Self {
-        let mut pack = group::Pack::default()
-            .with_size(w, h);
+        let mut pack = group::Pack::default().with_size(w, h);
         pack.set_type(PackType::Vertical);
         const PADDING: i32 = 3;
         pack.set_spacing(PADDING);
@@ -19,43 +21,55 @@ impl MyColumn {
     }
 
     pub fn height_left(&self) -> i32 {
-        let children_height: i32 = (0..self.pack.children()).map(|ch_num| self.pack.child(ch_num).unwrap().h()).sum();
+        let children_height: i32 = (0..self.pack.children())
+            .map(|ch_num| self.pack.child(ch_num).unwrap().h())
+            .sum();
         self.h() - children_height - self.pack.spacing() * (self.pack.children() - 1)
     }
 
-    pub fn end(&mut self) { self.pack.end(); }
-
-    pub fn widget<'own>(&'own self) -> &'own group::Pack { 
-        &self.pack 
+    pub fn end(&mut self) {
+        self.pack.end();
     }
 
-    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
-        &mut self.pack 
+    pub fn widget<'own>(&'own self) -> &'own group::Pack {
+        &self.pack
+    }
+
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack {
+        &mut self.pack
     }
 }
 
 impl Alignable for MyColumn {
-    fn resize(&mut self, w: i32, h: i32) { self.pack.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.pack.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.pack.x() }
+    fn x(&self) -> i32 {
+        self.pack.x()
+    }
 
-    fn y(&self) -> i32 { self.pack.y() }
+    fn y(&self) -> i32 {
+        self.pack.y()
+    }
 
-    fn w(&self) -> i32 { self.pack.w() }
+    fn w(&self) -> i32 {
+        self.pack.w()
+    }
 
-    fn h(&self) -> i32 { self.pack.h() }
+    fn h(&self) -> i32 {
+        self.pack.h()
+    }
 }
 
-
 pub struct MyRow {
-    pack: group::Pack
+    pack: group::Pack,
 }
 
 #[allow(unused)]
 impl MyRow {
     pub fn new(w: i32) -> Self {
-        let mut pack = group::Pack::default()
-            .with_size(w, 0);
+        let mut pack = group::Pack::default().with_size(w, 0);
         pack.set_type(PackType::Horizontal);
         const PADDING: i32 = 3;
         pack.set_spacing(PADDING);
@@ -68,33 +82,44 @@ impl MyRow {
         self
     }
 
-    pub fn end(&mut self) { 
-        self.pack.end(); 
+    pub fn end(&mut self) {
+        self.pack.end();
 
         let mut max_child_height = (0..self.pack.children())
             .map(|ch_num| self.pack.child(ch_num).unwrap().h())
             .max();
 
-        self.pack.set_size(self.pack.w(), max_child_height.unwrap_or(0));
+        self.pack
+            .set_size(self.pack.w(), max_child_height.unwrap_or(0));
     }
 
-    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack { 
-        &mut self.pack 
+    pub fn widget_mut<'own>(&'own mut self) -> &'own mut group::Pack {
+        &mut self.pack
     }
 
-    pub fn widget<'own>(&'own self) -> &'own group::Pack { 
-        &self.pack 
+    pub fn widget<'own>(&'own self) -> &'own group::Pack {
+        &self.pack
     }
 }
 
 impl Alignable for MyRow {
-    fn resize(&mut self, w: i32, h: i32) { self.pack.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.pack.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.pack.x() }
+    fn x(&self) -> i32 {
+        self.pack.x()
+    }
 
-    fn y(&self) -> i32 { self.pack.y() }
-    
-    fn w(&self) -> i32 { self.pack.w() }
+    fn y(&self) -> i32 {
+        self.pack.y()
+    }
 
-    fn h(&self) -> i32 { self.pack.h() }
+    fn w(&self) -> i32 {
+        self.pack.w()
+    }
+
+    fn h(&self) -> i32 {
+        self.pack.h()
+    }
 }

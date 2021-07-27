@@ -1,6 +1,5 @@
 use super::*;
 
-
 #[derive(Clone)]
 pub struct ImgLayer {
     mat: Matrix2D,
@@ -9,24 +8,31 @@ pub struct ImgLayer {
 
 #[allow(unused)]
 impl ImgLayer {
-    pub fn new(layer: Matrix2D, channel: ImgChannel) -> Self {
-        ImgLayer{
-            mat: layer,
-            channel
-        }
+    pub fn new(mat: Matrix2D, channel: ImgChannel) -> Self {
+        ImgLayer { mat, channel }
     }
-    
-    pub fn channel(&self) -> ImgChannel { self.channel }
 
-    pub fn w(&self) -> usize { self.mat.w() }
-    pub fn h(&self) -> usize { self.mat.h() }
+    pub fn channel(&self) -> ImgChannel {
+        self.channel
+    }
 
-    pub fn matrix(&self) -> &Matrix2D { &self.mat }
+    pub fn w(&self) -> usize {
+        self.mat.w()
+    }
+    pub fn h(&self) -> usize {
+        self.mat.h()
+    }
 
-    pub fn matrix_mut(&mut self) -> &mut Matrix2D { &mut self.mat }
+    pub fn matrix(&self) -> &Matrix2D {
+        &self.mat
+    }
+
+    pub fn matrix_mut(&mut self) -> &mut Matrix2D {
+        &mut self.mat
+    }
 
     pub fn get_area(&self) -> PixelsArea {
-        PixelsArea::with_size(self.h(), self.w())
+        PixelsArea::size_of(self.matrix())
     }
 }
 
@@ -51,4 +57,3 @@ impl IndexMut<PixelPos> for ImgLayer {
         &mut self.mat[index]
     }
 }
-

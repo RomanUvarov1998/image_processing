@@ -1,45 +1,58 @@
-use fltk::{app::{Sender}, button, enums::Shortcut, frame, menu, misc, prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt}};
-use crate::{utils::{Pos, WordsIter}};
-use super::embedded_images::{AssetItem, Asset};
+use super::embedded_images::{Asset, AssetItem};
 use super::{Alignable, TEXT_PADDING};
+use crate::utils::{Pos, WordsIter};
+use fltk::{
+    app::Sender,
+    button,
+    enums::Shortcut,
+    frame, menu, misc,
+    prelude::{ImageExt, MenuExt, WidgetBase, WidgetExt},
+};
 
 const IMG_PADDING: i32 = 5;
 
 enum ImgPadding {
-    Sides { left: i32, top: i32, right: i32, bottom: i32 },
-    All (i32)
+    Sides {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    },
+    All(i32),
 }
 
 trait MyComponentWithImage {
     fn set_image_from_asset(&mut self, item: AssetItem, padding: ImgPadding)
     where
-        Self: WidgetExt + WidgetBase
+        Self: WidgetExt + WidgetBase,
     {
         let path = item.to_path();
-        let bytes = Asset::get(path)
-            .expect(&format!("Couldn't load image from embedded asset by path '{}'", path));
-        let mut img = fltk::image::PngImage::from_data(&bytes[..])
-            .expect(&format!("Couldn't load image from embedded bytes by path '{}'", path));
+        let bytes = Asset::get(path).expect(&format!(
+            "Couldn't load image from embedded asset by path '{}'",
+            path
+        ));
+        let mut img = fltk::image::PngImage::from_data(&bytes[..]).expect(&format!(
+            "Couldn't load image from embedded bytes by path '{}'",
+            path
+        ));
 
         let (pl, pt, pr, pb) = match padding {
-            ImgPadding::Sides { left, top, right, bottom } => (left, top, right, bottom),
+            ImgPadding::Sides {
+                left,
+                top,
+                right,
+                bottom,
+            } => (left, top, right, bottom),
             ImgPadding::All(p) => (p, p, p, p),
         };
-    
-        self.set_size(
-            pl + img.w() + pr, 
-            pt + img.h() + pb);
+
+        self.set_size(pl + img.w() + pr, pt + img.h() + pb);
 
         self.draw(move |wid| {
-            img.draw(
-                wid.x() + pl, 
-                wid.y() + pt, 
-                img.w(), 
-                img.h());
+            img.draw(wid.x() + pl, wid.y() + pt, img.w(), img.h());
         });
     }
 }
-
 
 pub struct MyButton {
     btn: button::Button,
@@ -65,8 +78,9 @@ impl MyButton {
         MyButton { btn }
     }
 
-    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg) 
-        where TMsg: 'static + Clone + Copy + Send + Sync
+    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg)
+    where
+        TMsg: 'static + Clone + Copy + Send + Sync,
     {
         self.btn.emit(tx, msg);
     }
@@ -85,19 +99,28 @@ impl MyButton {
 }
 
 impl Alignable for MyButton {
-    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.btn.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.btn.x() }
+    fn x(&self) -> i32 {
+        self.btn.x()
+    }
 
-    fn y(&self) -> i32 { self.btn.y() }
+    fn y(&self) -> i32 {
+        self.btn.y()
+    }
 
-    fn w(&self) -> i32 { self.btn.w() }
+    fn w(&self) -> i32 {
+        self.btn.w()
+    }
 
-    fn h(&self) -> i32 { self.btn.h() }
+    fn h(&self) -> i32 {
+        self.btn.h()
+    }
 }
 
 impl MyComponentWithImage for button::Button {}
-
 
 #[derive(Clone)]
 pub struct MyToggleButton {
@@ -144,8 +167,9 @@ impl MyToggleButton {
         }
     }
 
-    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg) 
-        where TMsg: 'static + Clone + Copy + Send + Sync
+    pub fn set_emit<TMsg>(&mut self, tx: Sender<TMsg>, msg: TMsg)
+    where
+        TMsg: 'static + Clone + Copy + Send + Sync,
     {
         self.btn.emit(tx, msg);
     }
@@ -160,22 +184,32 @@ impl MyToggleButton {
 }
 
 impl Alignable for MyToggleButton {
-    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.btn.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.btn.x() }
+    fn x(&self) -> i32 {
+        self.btn.x()
+    }
 
-    fn y(&self) -> i32 { self.btn.y() }
+    fn y(&self) -> i32 {
+        self.btn.y()
+    }
 
-    fn w(&self) -> i32 { self.btn.w() }
+    fn w(&self) -> i32 {
+        self.btn.w()
+    }
 
-    fn h(&self) -> i32 { self.btn.h() }
+    fn h(&self) -> i32 {
+        self.btn.h()
+    }
 }
 
 impl MyComponentWithImage for button::ToggleButton {}
 
 pub struct MyLabel {
     inner: frame::Frame,
-    text: String
+    text: String,
 }
 
 #[allow(unused)]
@@ -183,7 +217,10 @@ impl MyLabel {
     pub fn new<'text>(text: &'text str, w: i32) -> Self {
         let mut inner = frame::Frame::default();
 
-        let mut label = MyLabel { inner, text: text.to_string() };
+        let mut label = MyLabel {
+            inner,
+            text: text.to_string(),
+        };
 
         let mut cbk = Self::create_draw_callback(text);
         label.inner.set_size(w, 0);
@@ -220,7 +257,7 @@ impl MyLabel {
                 let mut words_iter = WordsIter::new(&content, " ");
                 while let Some(word) = words_iter.next() {
                     let (ww, wh) = draw::measure(&word, true);
-                    
+
                     if acc_w + ww > label.w() {
                         content_wrapped.push_str(&line);
                         content_wrapped.push('\n');
@@ -233,7 +270,7 @@ impl MyLabel {
                     line.push_str(word);
                     line.push(' ');
                 }
-                
+
                 acc_h += space_h;
                 content_wrapped.push_str(&line);
 
@@ -242,10 +279,14 @@ impl MyLabel {
 
             draw::push_clip(label.x(), label.y(), label.w(), label.h());
             draw::set_color_rgb(0, 0, 0);
-            draw::draw_text2(&content_wrapped, 
-                label.x(), label.y(), 
-                label.w(), label.h(), 
-                fltk::enums::Align::Center);
+            draw::draw_text2(
+                &content_wrapped,
+                label.x(),
+                label.y(),
+                label.w(),
+                label.h(),
+                fltk::enums::Align::Center,
+            );
             draw::pop_clip();
         };
 
@@ -254,46 +295,55 @@ impl MyLabel {
 }
 
 impl Alignable for MyLabel {
-    fn resize(&mut self, w: i32, h: i32) { 
+    fn resize(&mut self, w: i32, h: i32) {
         self.inner.set_size(w, h);
         self.inner.redraw();
     }
 
-    fn x(&self) -> i32 { self.inner.x() }
+    fn x(&self) -> i32 {
+        self.inner.x()
+    }
 
-    fn y(&self) -> i32 { self.inner.y() }
+    fn y(&self) -> i32 {
+        self.inner.y()
+    }
 
-    fn w(&self) -> i32 { self.inner.w() }
+    fn w(&self) -> i32 {
+        self.inner.w()
+    }
 
-    fn h(&self) -> i32 { self.inner.h() }
+    fn h(&self) -> i32 {
+        self.inner.h()
+    }
 }
 
-
 pub struct MyMenuBar {
-    mb: menu::MenuBar
+    mb: menu::MenuBar,
 }
 
 #[allow(unused)]
 impl MyMenuBar {
     pub fn new(w: i32) -> Self {
         MyMenuBar {
-            mb: menu::MenuBar::default().with_size(w, 30)
+            mb: menu::MenuBar::default().with_size(w, 30),
         }
     }
 
     pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, tx: Sender<TMsg>, msg: TMsg)
-        where TMsg: 'static + Clone + Copy + Send + Sync
+    where
+        TMsg: 'static + Clone + Copy + Send + Sync,
     {
-        self.mb.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
+        self.mb
+            .add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
     }
 
-    pub fn end(&mut self) { 
-        self.mb.end(); 
+    pub fn end(&mut self) {
+        self.mb.end();
     }
 
     pub fn set_active(&mut self, active: bool) {
-        if active { 
-            self.mb.activate(); 
+        if active {
+            self.mb.activate();
         } else {
             self.mb.deactivate();
         }
@@ -301,20 +351,29 @@ impl MyMenuBar {
 }
 
 impl Alignable for MyMenuBar {
-    fn resize(&mut self, w: i32, h: i32) { self.mb.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.mb.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.mb.x() }
+    fn x(&self) -> i32 {
+        self.mb.x()
+    }
 
-    fn y(&self) -> i32 { self.mb.y() }
+    fn y(&self) -> i32 {
+        self.mb.y()
+    }
 
-    fn w(&self) -> i32 { self.mb.w() }
+    fn w(&self) -> i32 {
+        self.mb.w()
+    }
 
-    fn h(&self) -> i32 { self.mb.h() }
+    fn h(&self) -> i32 {
+        self.mb.h()
+    }
 }
 
-
 pub struct MyMenuButton {
-    btn: menu::MenuButton
+    btn: menu::MenuButton,
 }
 
 #[allow(unused)]
@@ -323,12 +382,14 @@ impl MyMenuButton {
         let mut btn = menu::MenuButton::default();
 
         btn.set_image_from_asset(
-            item, 
-            ImgPadding::Sides { 
-                left: IMG_PADDING, 
-                top: IMG_PADDING, 
-                right: IMG_PADDING + Self::ARROW_WIDTH, 
-                bottom: IMG_PADDING });
+            item,
+            ImgPadding::Sides {
+                left: IMG_PADDING,
+                top: IMG_PADDING,
+                right: IMG_PADDING + Self::ARROW_WIDTH,
+                bottom: IMG_PADDING,
+            },
+        );
 
         btn.set_tooltip(tooltip);
 
@@ -348,14 +409,16 @@ impl MyMenuButton {
     const ARROW_WIDTH: i32 = 30;
 
     pub fn add_emit<'label, TMsg>(&mut self, label: &'label str, tx: Sender<TMsg>, msg: TMsg)
-    where TMsg: 'static + Clone + Copy + Send + Sync
+    where
+        TMsg: 'static + Clone + Copy + Send + Sync,
     {
-        self.btn.add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
+        self.btn
+            .add_emit(label, Shortcut::None, menu::MenuFlag::Normal, tx, msg);
     }
 
     pub fn set_active(&mut self, active: bool) {
-        if active { 
-            self.btn.activate(); 
+        if active {
+            self.btn.activate();
         } else {
             self.btn.deactivate();
         }
@@ -363,36 +426,48 @@ impl MyMenuButton {
 }
 
 impl Alignable for MyMenuButton {
-    fn resize(&mut self, w: i32, h: i32) { self.btn.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.btn.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.btn.x() }
+    fn x(&self) -> i32 {
+        self.btn.x()
+    }
 
-    fn y(&self) -> i32 { self.btn.y() }
+    fn y(&self) -> i32 {
+        self.btn.y()
+    }
 
-    fn w(&self) -> i32 { self.btn.w() }
+    fn w(&self) -> i32 {
+        self.btn.w()
+    }
 
-    fn h(&self) -> i32 { self.btn.h() }
+    fn h(&self) -> i32 {
+        self.btn.h()
+    }
 }
 
 impl MyComponentWithImage for menu::MenuButton {}
 
-
 pub struct MyProgressBar {
     bar: misc::Progress,
     progress_percents: usize,
-    label: String
+    label: String,
 }
 
 #[allow(unused)]
 impl MyProgressBar {
     pub fn new(w: i32, h: i32) -> Self {
-        let mut bar = misc::Progress::default()
-            .with_size(w, h);
+        let mut bar = misc::Progress::default().with_size(w, h);
         bar.set_minimum(0_f64);
         bar.set_maximum(100_f64);
         bar.set_selection_color(fltk::enums::Color::Green);
 
-        MyProgressBar { bar, progress_percents: 0, label: String::new() }
+        MyProgressBar {
+            bar,
+            progress_percents: 0,
+            label: String::new(),
+        }
     }
 
     pub fn set_width(&mut self, new_w: i32) {
@@ -408,28 +483,39 @@ impl MyProgressBar {
         if self.progress_percents != progress_percents {
             self.progress_percents = progress_percents;
             self.bar.set_value(progress_percents as f64);
-            self.bar.set_label(&format!("{}: {}%", self.label, progress_percents));
+            self.bar
+                .set_label(&format!("{}: {}%", self.label, progress_percents));
         }
     }
 
-    pub fn show(&mut self) { 
-        self.bar.show(); 
+    pub fn show(&mut self) {
+        self.bar.show();
         self.bar.parent().as_mut().unwrap().redraw();
     }
-    pub fn hide(&mut self) { 
-        self.bar.hide(); 
+    pub fn hide(&mut self) {
+        self.bar.hide();
         self.bar.parent().as_mut().unwrap().redraw();
     }
 }
 
 impl Alignable for MyProgressBar {
-    fn resize(&mut self, w: i32, h: i32) { self.bar.set_size(w, h); }
+    fn resize(&mut self, w: i32, h: i32) {
+        self.bar.set_size(w, h);
+    }
 
-    fn x(&self) -> i32 { self.bar.x() }
+    fn x(&self) -> i32 {
+        self.bar.x()
+    }
 
-    fn y(&self) -> i32 { self.bar.y() }
+    fn y(&self) -> i32 {
+        self.bar.y()
+    }
 
-    fn w(&self) -> i32 { self.bar.w() }
+    fn w(&self) -> i32 {
+        self.bar.w()
+    }
 
-    fn h(&self) -> i32 { self.bar.h() }
+    fn h(&self) -> i32 {
+        self.bar.h()
+    }
 }

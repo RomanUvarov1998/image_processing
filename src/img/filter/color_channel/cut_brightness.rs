@@ -1,24 +1,27 @@
-use fltk::enums::ColorDepth;
+use super::super::super::Img;
+use super::super::FilterBase;
+use super::super::{process_each_layer, *};
+use super::options::*;
+use super::traits::*;
 use crate::my_err::MyError;
 use crate::processing::{ExecutorHandle, TaskStop};
 use crate::utils::LinesIter;
-use super::traits::*;
-use super::options::*;
-use super::super::{*, process_each_layer};
-use super::super::super::Img;
-use super::super::FilterBase;
-
+use fltk::enums::ColorDepth;
 
 #[derive(Clone)]
 pub struct CutBrightness {
     cut_range: CutBrightnessRange,
     replace_with: ValueRepaceWith,
-    name: String
+    name: String,
 }
 
 impl CutBrightness {
     pub fn new(cut_range: CutBrightnessRange, replace_with: ValueRepaceWith) -> Self {
-        CutBrightness { cut_range, replace_with, name: "Вырезание яркости".to_string() }
+        CutBrightness {
+            cut_range,
+            replace_with,
+            name: "Вырезание яркости".to_string(),
+        }
     }
 }
 
@@ -39,8 +42,13 @@ impl Filter for CutBrightness {
         layers_count * pixels_per_layer
     }
 
-    fn get_description(&self) -> String { format!("{} ({} - {})", &self.name, self.cut_range.min, self.cut_range.max) }
-    
+    fn get_description(&self) -> String {
+        format!(
+            "{} ({} - {})",
+            &self.name, self.cut_range.min, self.cut_range.max
+        )
+    }
+
     fn get_save_name(&self) -> String {
         "CutBrightness".to_string()
     }
@@ -60,7 +68,9 @@ impl Default for CutBrightness {
 impl StringFromTo for CutBrightness {
     fn try_set_from_string(&mut self, string: &str) -> Result<(), MyError> {
         let mut lines_iter = LinesIter::new(string);
-        if lines_iter.len() != 2 { return Err(MyError::new("Должно быть 2 строки".to_string())); }
+        if lines_iter.len() != 2 {
+            return Err(MyError::new("Должно быть 2 строки".to_string()));
+        }
 
         let cut_range = CutBrightnessRange::try_from_string(lines_iter.next_or_empty())?;
 
@@ -73,7 +83,11 @@ impl StringFromTo for CutBrightness {
     }
 
     fn params_to_string(&self) -> Option<String> {
-        let params_str = format!("{}\n{}", self.cut_range.content_to_string(), self.replace_with.content_to_string());
+        let params_str = format!(
+            "{}\n{}",
+            self.cut_range.content_to_string(),
+            self.replace_with.content_to_string()
+        );
         Some(params_str)
     }
 }
@@ -81,14 +95,14 @@ impl StringFromTo for CutBrightness {
 impl ByLayer for CutBrightness {
     fn process_layer(
         &self,
-        layer: &ImgLayer, 
-        executor_handle: &mut ExecutorHandle
+        layer: &ImgLayer,
+        executor_handle: &mut ExecutorHandle,
     ) -> Result<ImgLayer, TaskStop> {
         let mut mat_res = {
             match layer.channel() {
                 ImgChannel::A => {
                     return Ok(layer.clone());
-                },
+                }
                 _ => Matrix2D::empty_size_of(layer.matrix()),
             }
         };
@@ -103,12 +117,11 @@ impl ByLayer for CutBrightness {
             let result = pix_val * (!before_min) as u8 * (!after_max) as u8
                 + self.replace_with.value * before_min as u8 * after_max as u8;
 
-                mat_res[pos] = result as f64;
+            mat_res[pos] = result as f64;
 
             executor_handle.complete_action()?;
         }
-        
+
         Ok(ImgLayer::new(mat_res, layer.channel()))
     }
 }
-

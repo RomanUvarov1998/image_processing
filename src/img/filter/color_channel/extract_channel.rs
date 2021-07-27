@@ -1,15 +1,15 @@
+use super::super::super::Img;
+use super::super::super::ImgChannel;
+use super::super::filter_option::*;
+use super::super::filter_trait::*;
+use super::super::FilterBase;
 use crate::my_err::MyError;
 use crate::processing::ExecutorHandle;
 use crate::processing::TaskStop;
-use super::super::super::ImgChannel;
-use super::super::super::Img;
-use super::super::filter_trait::*;
-use super::super::filter_option::*;
-use super::super::FilterBase;
 
 #[derive(Clone)]
 pub struct ExtractChannel {
-    channel: ImgChannel
+    channel: ImgChannel,
 }
 
 impl ExtractChannel {
@@ -23,7 +23,7 @@ impl Filter for ExtractChannel {
         let mut img_res = img.clone();
 
         for layer in img_res.layers_mut() {
-            if layer.channel() != self.channel && layer.channel() != ImgChannel::A { 
+            if layer.channel() != self.channel && layer.channel() != ImgChannel::A {
                 for pos in layer.get_area().iter_pixels() {
                     layer[pos] = 0_f64;
                 }
@@ -31,7 +31,7 @@ impl Filter for ExtractChannel {
 
             executor_handle.complete_action()?;
         }
-        
+
         Ok(img_res)
     }
 
@@ -42,7 +42,7 @@ impl Filter for ExtractChannel {
     fn get_description(&self) -> String {
         format!("Выделение канала {}", self.channel)
     }
-    
+
     fn get_save_name(&self) -> String {
         "ExtractChannel".to_string()
     }
@@ -72,4 +72,3 @@ impl Default for ExtractChannel {
         ExtractChannel::new(ImgChannel::R)
     }
 }
-

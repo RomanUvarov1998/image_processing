@@ -4,10 +4,10 @@ mod extract_channel;
 mod neutralize_channel;
 mod rgb2gray;
 
-use super::filter_trait as traits;
+use super::super::super::img;
 use super::filter_option as options;
-use super::super::super::img as img;
-use super::utils as utils;
+use super::filter_trait as traits;
+use super::utils;
 
 pub use cut_brightness::CutBrightness;
 pub use equalize_hist::EqualizeHist;

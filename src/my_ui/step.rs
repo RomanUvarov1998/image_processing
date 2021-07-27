@@ -1,7 +1,15 @@
-use fltk::{app::{Sender}, group, image::RgbImage, prelude::{GroupExt}};
-use crate::{img::PixelsArea, my_ui::{Alignable, container::{MyColumn, MyRow}, img_presenter::MyImgPresenter, usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar}}};
-use super::{PADDING, message::*};
 use super::embedded_images::AssetItem;
+use super::{message::*, PADDING};
+use crate::{
+    img::PixelsArea,
+    my_ui::{
+        container::{MyColumn, MyRow},
+        img_presenter::MyImgPresenter,
+        usual::{MyButton, MyLabel, MyMenuButton, MyProgressBar},
+        Alignable,
+    },
+};
+use fltk::{app::Sender, group, image::RgbImage, prelude::GroupExt};
 
 pub struct ProcessingStep {
     step_num: usize,
@@ -28,19 +36,19 @@ impl ProcessingStep {
         let btn_run = MyMenuButton::with_img_and_tooltip(AssetItem::RunStepsChain, "Запустить");
         let btn_edit = MyButton::with_img_and_tooltip(AssetItem::EditStep, "Изменить");
         let btn_delete = MyButton::with_img_and_tooltip(AssetItem::DeleteStep, "Удалить");
-        let btn_reorder = MyMenuButton::with_img_and_tooltip(AssetItem::ReorderSteps, "Переупорядочить");
+        let btn_reorder =
+            MyMenuButton::with_img_and_tooltip(AssetItem::ReorderSteps, "Переупорядочить");
 
-        btns_row.end();        
+        btns_row.end();
 
         let mut prog_bar = MyProgressBar::new(w - PADDING, 30);
         prog_bar.hide();
-            
-        let img_presenter = MyImgPresenter::new(
-            w - PADDING, h - btns_row.h() * 2);
-        
+
+        let img_presenter = MyImgPresenter::new(w - PADDING, h - btns_row.h() * 2);
+
         main_column.end();
-        
-        let mut step = ProcessingStep { 
+
+        let mut step = ProcessingStep {
             main_column,
             btn_run,
             btn_edit,
@@ -48,9 +56,9 @@ impl ProcessingStep {
             btn_reorder,
             label_step_name,
             prog_bar,
-            img_presenter, 
+            img_presenter,
             step_num,
-            tx
+            tx,
         };
 
         step.update_btn_emits(step_num);
@@ -58,12 +66,10 @@ impl ProcessingStep {
         step
     }
 
-
     pub fn remove_self_from(&mut self, pack: &mut group::Pack) {
         pack.remove(self.main_column.widget_mut());
     }
-    
-    
+
     pub fn clear_displayed_result(&mut self) {
         self.img_presenter.clear_image();
     }
@@ -73,14 +79,42 @@ impl ProcessingStep {
     }
 
     pub fn update_btn_emits(&mut self, step_num: usize) {
-        self.btn_run.add_emit("Только этот шаг", self.tx, 
-            Msg::Proc(Proc::StartStepsChain { step_num, process_until_end: false }));
-        self.btn_run.add_emit("Этот шаг и все шаги ниже", self.tx, 
-            Msg::Proc(Proc::StartStepsChain { step_num, process_until_end: true }));
-        self.btn_edit.set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
-        self.btn_delete.set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
-        self.btn_reorder.add_emit("Сдвинуть вверх", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: MoveStep::Up } ));
-        self.btn_reorder.add_emit("Сдвинуть вниз", self.tx, Msg::StepOp(StepOp::Move { step_num, direction: MoveStep::Down } ));
+        self.btn_run.add_emit(
+            "Только этот шаг",
+            self.tx,
+            Msg::Proc(Proc::StartStepsChain {
+                step_num,
+                process_until_end: false,
+            }),
+        );
+        self.btn_run.add_emit(
+            "Этот шаг и все шаги ниже",
+            self.tx,
+            Msg::Proc(Proc::StartStepsChain {
+                step_num,
+                process_until_end: true,
+            }),
+        );
+        self.btn_edit
+            .set_emit(self.tx, Msg::StepOp(StepOp::Edit { step_num }));
+        self.btn_delete
+            .set_emit(self.tx, Msg::StepOp(StepOp::Delete { step_num }));
+        self.btn_reorder.add_emit(
+            "Сдвинуть вверх",
+            self.tx,
+            Msg::StepOp(StepOp::Move {
+                step_num,
+                direction: MoveStep::Up,
+            }),
+        );
+        self.btn_reorder.add_emit(
+            "Сдвинуть вниз",
+            self.tx,
+            Msg::StepOp(StepOp::Move {
+                step_num,
+                direction: MoveStep::Down,
+            }),
+        );
         self.step_num = step_num;
     }
 
@@ -98,7 +132,7 @@ impl ProcessingStep {
     pub fn display_processing_start(&mut self) {
         self.prog_bar.show();
         self.prog_bar.reset("Обработка".to_string());
-        self.img_presenter.clear_image(); 
+        self.img_presenter.clear_image();
     }
 
     pub fn display_progress(&mut self, percents: usize) {
@@ -107,7 +141,7 @@ impl ProcessingStep {
 
     pub fn display_result(&mut self, processed_img: Option<RgbImage>) {
         self.prog_bar.hide();
-                        
+
         match processed_img {
             Some(img) => self.img_presenter.set_img(img),
             None => self.img_presenter.clear_image(),
@@ -119,14 +153,23 @@ impl Alignable for ProcessingStep {
     fn resize(&mut self, w: i32, h: i32) {
         self.label_step_name.resize(w, self.label_step_name.h());
         self.prog_bar.resize(w, self.prog_bar.h());
-        self.img_presenter.resize(w, h - self.label_step_name.h() - self.prog_bar.h());
+        self.img_presenter
+            .resize(w, h - self.label_step_name.h() - self.prog_bar.h());
     }
 
-    fn x(&self) -> i32 { self.main_column.x() }
+    fn x(&self) -> i32 {
+        self.main_column.x()
+    }
 
-    fn y(&self) -> i32 { self.main_column.y() }
+    fn y(&self) -> i32 {
+        self.main_column.y()
+    }
 
-    fn w(&self) -> i32 { self.main_column.w() }
+    fn w(&self) -> i32 {
+        self.main_column.w()
+    }
 
-    fn h(&self) -> i32 { self.main_column.h() }
+    fn h(&self) -> i32 {
+        self.main_column.h()
+    }
 }

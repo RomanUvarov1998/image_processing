@@ -1,11 +1,11 @@
-use fltk::enums::ColorDepth;
+use super::super::super::*;
+use super::super::filter_trait::*;
+use super::super::FilterBase;
+use super::super::*;
 use crate::my_err::MyError;
 use crate::processing::TaskStop;
 use crate::utils::{LinesIter, WordsIter};
-use super::super::super::*;
-use super::super::filter_trait::*;
-use super::super::*;
-use super::super::FilterBase;
+use fltk::enums::ColorDepth;
 
 #[derive(Clone)]
 pub struct LinearCustom {
@@ -14,18 +14,31 @@ pub struct LinearCustom {
     extend_value: ExtendValue,
     coeffs: Vec<f64>,
     normalized: NormalizeOption,
-    name: String
+    name: String,
 }
 
 impl LinearCustom {
-    pub fn with_coeffs(mut coeffs: Vec<f64>, width: usize, height: usize, extend_value: ExtendValue, normalized: NormalizeOption) -> Self {
+    pub fn with_coeffs(
+        mut coeffs: Vec<f64>,
+        width: usize,
+        height: usize,
+        extend_value: ExtendValue,
+        normalized: NormalizeOption,
+    ) -> Self {
         assert!(width > 0);
         assert!(height > 0);
         assert!(coeffs.len() > 0);
 
         normalized.normalize(&mut coeffs[..]);
 
-        LinearCustom { width, height, coeffs, extend_value, normalized, name: "Линейный фильтр".to_string() }
+        LinearCustom {
+            width,
+            height,
+            coeffs,
+            extend_value,
+            normalized,
+            name: "Линейный фильтр".to_string(),
+        }
     }
 }
 
@@ -41,9 +54,13 @@ impl WindowFilter for LinearCustom {
         sum
     }
 
-    fn w(&self) -> usize { self.width }
+    fn w(&self) -> usize {
+        self.width
+    }
 
-    fn h(&self) -> usize { self.height }
+    fn h(&self) -> usize {
+        self.height
+    }
 
     fn get_extend_value(&self) -> ExtendValue {
         self.extend_value
@@ -53,7 +70,7 @@ impl WindowFilter for LinearCustom {
         FilterIterator {
             width: self.w(),
             height: self.h(),
-            cur_pos: PixelPos::default()
+            cur_pos: PixelPos::default(),
         }
     }
 }
@@ -75,7 +92,9 @@ impl Filter for LinearCustom {
         layers_count * rows_per_layer
     }
 
-    fn get_description(&self) -> String { format!("{} {}x{}", &self.name, self.h(), self.w()) }
+    fn get_description(&self) -> String {
+        format!("{} {}x{}", &self.name, self.h(), self.w())
+    }
 
     fn get_save_name(&self) -> String {
         "LinearCustom".to_string()
@@ -93,7 +112,11 @@ impl StringFromTo for LinearCustom {
 
         let mut lines_iter = LinesIter::new(string);
 
-        if lines_iter.len() < 3 { return Err(MyError::new("Нужно ввести матрицу и параметры на следующей строке".to_string())); }
+        if lines_iter.len() < 3 {
+            return Err(MyError::new(
+                "Нужно ввести матрицу и параметры на следующей строке".to_string(),
+            ));
+        }
 
         for _ in 0..lines_iter.len() - 2 {
             let mut row = Vec::<f64>::new();
@@ -102,16 +125,24 @@ impl StringFromTo for LinearCustom {
                 match words_iter.next_or_empty() {
                     "" => break,
                     word => match word.parse::<f64>() {
-                        Ok(value) => { row.push(value) }
-                        Err(_) => { return Err(MyError::new("Некорректный формат чисел".to_string())); }
+                        Ok(value) => row.push(value),
+                        Err(_) => {
+                            return Err(MyError::new("Некорректный формат чисел".to_string()));
+                        }
                     },
                 }
             }
             match rows.last() {
-                Some(last_row) => if row.len() != last_row.len() { return Err(MyError::new("Некорректная разменость матрицы".to_string())); },
+                Some(last_row) => {
+                    if row.len() != last_row.len() {
+                        return Err(MyError::new("Некорректная разменость матрицы".to_string()));
+                    }
+                }
                 None => {}
             }
-            if row.len() < 2 { return Err(MyError::new("Матрица должна иметь размеры > 1".to_string())); }
+            if row.len() < 2 {
+                return Err(MyError::new("Матрица должна иметь размеры > 1".to_string()));
+            }
             rows.push(row);
         }
 
@@ -164,29 +195,30 @@ impl StringFromTo for LinearCustom {
 
 impl Default for LinearCustom {
     fn default() -> Self {
-        let coeffs: Vec<f64> = vec![
-            1.0, 2.0, 1.0,
-            0.0, 0.0, 0.0,
-            -1.0, -2.0, -1.0,
-        ];
-        LinearCustom::with_coeffs(coeffs, 3, 3, ExtendValue::Closest, NormalizeOption::Normalized)
+        let coeffs: Vec<f64> = vec![1.0, 2.0, 1.0, 0.0, 0.0, 0.0, -1.0, -2.0, -1.0];
+        LinearCustom::with_coeffs(
+            coeffs,
+            3,
+            3,
+            ExtendValue::Closest,
+            NormalizeOption::Normalized,
+        )
     }
 }
 
 impl ByLayer for LinearCustom {
     fn process_layer(
         &self,
-        layer: &ImgLayer, 
-        executor_handle: &mut ExecutorHandle
+        layer: &ImgLayer,
+        executor_handle: &mut ExecutorHandle,
     ) -> Result<ImgLayer, TaskStop> {
         let result_mat = {
             match layer.channel() {
                 ImgChannel::A => layer.matrix().clone(),
-                _ => process_with_window(layer.matrix(), self, 
-                    executor_handle)?,
+                _ => process_with_window(layer.matrix(), self, executor_handle)?,
             }
         };
-        
+
         Ok(ImgLayer::new(result_mat, layer.channel()))
     }
 }

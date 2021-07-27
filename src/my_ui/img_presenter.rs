@@ -1,9 +1,19 @@
-use std::{cell::{RefCell}, rc::Rc};
-use fltk::{frame, image::RgbImage, prelude::{ImageExt, WidgetBase, WidgetExt}};
-use crate::{img::{PixelsArea}, my_ui::{container::{MyColumn, MyRow}, usual::{MyButton, MyToggleButton}}, utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect}};
-use super::Alignable;
 use super::embedded_images::AssetItem;
-
+use super::Alignable;
+use crate::{
+    img::PixelsArea,
+    my_ui::{
+        container::{MyColumn, MyRow},
+        usual::{MyButton, MyToggleButton},
+    },
+    utils::{DragPos, DraggableRect, Pos, RectArea, ScalableRect},
+};
+use fltk::{
+    frame,
+    image::RgbImage,
+    prelude::{ImageExt, WidgetBase, WidgetExt},
+};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct MyImgPresenter {
     column: MyColumn,
@@ -12,7 +22,7 @@ pub struct MyImgPresenter {
     btn_toggle_selection: MyToggleButton,
     frame_img: frame::Frame,
     img_pres_rect_rc: Option<Rc<RefCell<ImgPresRect>>>,
-    tx_resized: Option<std::sync::mpsc::Sender<ImgPresMsg>>
+    tx_resized: Option<std::sync::mpsc::Sender<ImgPresMsg>>,
 }
 
 impl MyImgPresenter {
@@ -23,25 +33,29 @@ impl MyImgPresenter {
 
         let mut btn_fit = MyButton::with_img_and_tooltip(AssetItem::FitImage, "Уместить");
         btn_fit.set_active(false);
-        
-        let mut btn_toggle_selection = MyToggleButton::with_img_and_tooltip(AssetItem::CropImage, "Брать выделенное");
+
+        let mut btn_toggle_selection =
+            MyToggleButton::with_img_and_tooltip(AssetItem::CropImage, "Брать выделенное");
         btn_toggle_selection.set_active(false);
 
         btns_row.end();
 
-        let mut frame_img = frame::Frame::default()
-            .with_size(w, h - btns_row.h() - column.widget().spacing() * 3);
-        use fltk::enums::{FrameType, Align};
+        let mut frame_img =
+            frame::Frame::default().with_size(w, h - btns_row.h() - column.widget().spacing() * 3);
+        use fltk::enums::{Align, FrameType};
         frame_img.set_frame(FrameType::EmbossedBox);
-        frame_img.set_align(Align::Center); 
-        
+        frame_img.set_align(Align::Center);
+
         column.end();
 
-        MyImgPresenter { 
+        MyImgPresenter {
             column,
-            btns_row, btn_fit, btn_toggle_selection, 
-            frame_img, img_pres_rect_rc: None,
-            tx_resized: None
+            btns_row,
+            btn_fit,
+            btn_toggle_selection,
+            frame_img,
+            img_pres_rect_rc: None,
+            tx_resized: None,
         }
     }
 
@@ -49,13 +63,15 @@ impl MyImgPresenter {
         self.tx_resized = None;
 
         self.btn_fit.set_active(false);
-        self.btn_fit.widget_mut().set_callback(move |_| { });
+        self.btn_fit.widget_mut().set_callback(move |_| {});
 
         self.btn_toggle_selection.set_active(false);
-        self.btn_toggle_selection.widget_mut().set_callback(move |_| { });
+        self.btn_toggle_selection
+            .widget_mut()
+            .set_callback(move |_| {});
         self.btn_toggle_selection.set_toggle(false);
 
-        self.frame_img.handle(|_, _| { false });
+        self.frame_img.handle(|_, _| false);
         self.frame_img.draw(|_| {});
 
         if let Some(ref rc) = self.img_pres_rect_rc {
@@ -63,7 +79,7 @@ impl MyImgPresenter {
             self.img_pres_rect_rc = None;
         }
 
-        self.frame_img.redraw(); 
+        self.frame_img.redraw();
     }
 
     pub fn set_img(&mut self, img: RgbImage) {
@@ -72,8 +88,9 @@ impl MyImgPresenter {
         }
 
         let pres_rect = ImgPresRect::new(
-            Pos::new(img.w(), img.h()), 
-            RectArea::of_widget(&self.frame_img).with_zero_origin());
+            Pos::new(img.w(), img.h()),
+            RectArea::of_widget(&self.frame_img).with_zero_origin(),
+        );
         let presenter_rc: Rc<RefCell<ImgPresRect>> = Rc::new(RefCell::new(pres_rect));
 
         let (tx, rx) = std::sync::mpsc::channel::<ImgPresMsg>();
@@ -86,18 +103,17 @@ impl MyImgPresenter {
         self.set_btn_fit_cbk(tx.clone());
         self.tx_resized = Some(tx.clone());
         self.set_frame_handle_cbk(tx);
-		
-        self.frame_img.redraw(); 
+
+        self.frame_img.redraw();
     }
 
     fn set_draw_cbk(
-        &mut self, 
-        mut drawable: RgbImage, 
-        presenter_rc: Rc<RefCell<ImgPresRect>>, 
-        rx_draw: std::sync::mpsc::Receiver<ImgPresMsg>
+        &mut self,
+        mut drawable: RgbImage,
+        presenter_rc: Rc<RefCell<ImgPresRect>>,
+        rx_draw: std::sync::mpsc::Receiver<ImgPresMsg>,
     ) {
-        self.frame_img.draw(move |frame| 
-        {
+        self.frame_img.draw(move |frame| {
             let view_area = RectArea::of_widget(frame);
             let view_area_size = view_area.size();
             let draw_position = Pos::of(frame);
@@ -112,8 +128,10 @@ impl MyImgPresenter {
 
             use fltk::draw;
             draw::push_clip(view_area.x(), view_area.y(), view_area.w(), view_area.h());
-            
-            presenter_rc.borrow_mut().draw_img(&mut drawable, draw_position);
+
+            presenter_rc
+                .borrow_mut()
+                .draw_img(&mut drawable, draw_position);
 
             draw::pop_clip();
         });
@@ -122,17 +140,23 @@ impl MyImgPresenter {
     fn set_btn_toggle_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
         let mut frame_copy = self.frame_img.clone();
 
-        self.btn_toggle_selection.widget_mut().set_callback(move |btn| { 
-            let msg = if btn.is_toggled() { ImgPresMsg::SeletionOn } else { ImgPresMsg::SelectionOff };
-            tx.send(msg).unwrap();
-            frame_copy.redraw();
-        });
+        self.btn_toggle_selection
+            .widget_mut()
+            .set_callback(move |btn| {
+                let msg = if btn.is_toggled() {
+                    ImgPresMsg::SeletionOn
+                } else {
+                    ImgPresMsg::SelectionOff
+                };
+                tx.send(msg).unwrap();
+                frame_copy.redraw();
+            });
         self.btn_toggle_selection.set_active(true);
     }
 
     fn set_btn_fit_cbk(&mut self, tx: std::sync::mpsc::Sender<ImgPresMsg>) {
-        let mut frame_copy = self.frame_img.clone();  
-        let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();  
+        let mut frame_copy = self.frame_img.clone();
+        let mut btn_toggle_selection_copy = self.btn_toggle_selection.clone();
 
         self.btn_fit.widget_mut().set_callback(move |_| {
             tx.send(ImgPresMsg::Fit).unwrap();
@@ -155,56 +179,61 @@ impl MyImgPresenter {
                 MouseWheel::None => 0_f32,
                 MouseWheel::Down => SCROLL_DELTA,
                 MouseWheel::Up => -SCROLL_DELTA,
-                MouseWheel::Right | MouseWheel::Left => unreachable!("")
+                MouseWheel::Right | MouseWheel::Left => unreachable!(""),
             };
 
             use fltk::enums::Event;
-			let event_handled = match ev {
+            let event_handled = match ev {
                 Event::Push => {
                     was_mouse_down = true;
-                    tx.send(ImgPresMsg::MouseDown (mouse_pos)).unwrap();
-					true
-                },
+                    tx.send(ImgPresMsg::MouseDown(mouse_pos)).unwrap();
+                    true
+                }
                 Event::Released => {
                     was_mouse_down = false;
                     tx.send(ImgPresMsg::MouseUp).unwrap();
-					true
-                },
+                    true
+                }
                 Event::MouseWheel => {
                     if was_mouse_down {
-                        tx.send(ImgPresMsg::MouseScroll { factor_delta, pos: mouse_pos }).unwrap();
-						true
+                        tx.send(ImgPresMsg::MouseScroll {
+                            factor_delta,
+                            pos: mouse_pos,
+                        })
+                        .unwrap();
+                        true
                     } else {
-						false
+                        false
                     }
-                },
+                }
                 Event::Drag => {
                     was_mouse_down = true;
-                    tx.send(ImgPresMsg::MouseMove (mouse_pos)).unwrap();
+                    tx.send(ImgPresMsg::MouseMove(mouse_pos)).unwrap();
                     true
-                },
-                _ => false
+                }
+                _ => false,
             };
 
-			if event_handled {
-            	f.redraw();
-			}
+            if event_handled {
+                f.redraw();
+            }
 
             event_handled
         });
     }
 
-
-    pub fn get_selection_rect(&self) -> Option<PixelsArea> { 
+    pub fn get_selection_rect(&self) -> Option<PixelsArea> {
         if self.btn_toggle_selection.is_toggled() {
-            let presenter_rc_mut = self.img_pres_rect_rc
+            let presenter_rc_mut = self
+                .img_pres_rect_rc
                 .as_ref()
                 .expect("image_copy(): Presenter rect is None")
                 .try_borrow()
                 .expect("Couldn't get & to presenter from image_copy()");
 
             let scale_rect: &ScalableRect = &presenter_rc_mut.scale_rect;
-            let sel_rect: &SelectionRect = presenter_rc_mut.selection_rect
+            let sel_rect: &SelectionRect = presenter_rc_mut
+                .selection_rect
                 .as_ref()
                 .expect("Selection mode btn is ON but there sel_rect is None");
 
@@ -221,78 +250,84 @@ impl MyImgPresenter {
 }
 
 impl Alignable for MyImgPresenter {
-    fn resize(&mut self, w: i32, h: i32) { 
-        self.frame_img.set_size(w, h - self.btns_row.h() - self.column.widget().spacing() * 3);
-        
+    fn resize(&mut self, w: i32, h: i32) {
+        self.frame_img.set_size(
+            w,
+            h - self.btns_row.h() - self.column.widget().spacing() * 3,
+        );
+
         if let Some(ref tx) = self.tx_resized {
             tx.send(ImgPresMsg::ComponentResized).unwrap();
-            self.frame_img.redraw(); 
+            self.frame_img.redraw();
         }
     }
 
-    fn x(&self) -> i32 { self.frame_img.x() }
+    fn x(&self) -> i32 {
+        self.frame_img.x()
+    }
 
-    fn y(&self) -> i32 { self.frame_img.y() }
+    fn y(&self) -> i32 {
+        self.frame_img.y()
+    }
 
-    fn w(&self) -> i32 { self.frame_img.w() }
+    fn w(&self) -> i32 {
+        self.frame_img.w()
+    }
 
-    fn h(&self) -> i32 { self.frame_img.h() }
+    fn h(&self) -> i32 {
+        self.frame_img.h()
+    }
 }
-
 
 struct ImgPresRect {
     scale_rect: ScalableRect,
     prev_pos: Option<Pos>,
-    selection_rect: Option<SelectionRect>
+    selection_rect: Option<SelectionRect>,
 }
 
 impl ImgPresRect {
     fn new(img_size: Pos, frame_area: RectArea) -> Self {
         let mut rect = ScalableRect::new(0, 0, img_size.x, img_size.y);
         rect.stretch_self_to_area(frame_area);
-        
-        ImgPresRect { 
+
+        ImgPresRect {
             scale_rect: rect,
             prev_pos: None,
-            selection_rect: None
+            selection_rect: None,
         }
     }
 
-
     fn consume_msg(&mut self, msg: ImgPresMsg, current_view_area_size: Pos) {
-        let view_area = RectArea::new(
-            0, 0, 
-            current_view_area_size.x, current_view_area_size.y);
+        let view_area = RectArea::new(0, 0, current_view_area_size.x, current_view_area_size.y);
 
         match msg {
-            ImgPresMsg::MouseDown (pos) => self.start_drag(pos),
-            ImgPresMsg::MouseMove (cur) => self.drag(cur),
+            ImgPresMsg::MouseDown(pos) => self.start_drag(pos),
+            ImgPresMsg::MouseMove(cur) => self.drag(cur),
             ImgPresMsg::MouseUp => self.stop_drag(view_area),
             ImgPresMsg::MouseScroll { factor_delta, pos } => self.scale(pos, factor_delta),
             ImgPresMsg::Fit => {
                 if let Some(ref sel_rect) = self.selection_rect {
                     let center = current_view_area_size.div_f(2_f32);
-                    self.scale_rect.zoom_area(
-                        RectArea::of_draggable_rect(&sel_rect.inner),
-                        center);
+                    self.scale_rect
+                        .zoom_area(RectArea::of_draggable_rect(&sel_rect.inner), center);
                 } else {
                     self.scale_rect.stretch_self_to_area(view_area);
                 }
-            },
+            }
             ImgPresMsg::SeletionOn => {
                 self.selection_rect = Some(SelectionRect::middle_third_of(current_view_area_size));
-            },
+            }
             ImgPresMsg::SelectionOff => {
                 self.selection_rect = None;
             }
             ImgPresMsg::ComponentResized => {
                 let view_size = view_area.size();
                 self.scale_rect.fit_scale(view_size);
-                self.scale_rect.fit_pos(RectArea::new(0, 0, view_size.x, view_size.y));
-            },
+                self.scale_rect
+                    .fit_pos(RectArea::new(0, 0, view_size.x, view_size.y));
+            }
         }
     }
-
 
     fn start_drag(&mut self, pos: Pos) {
         self.prev_pos = Some(pos);
@@ -305,14 +340,16 @@ impl ImgPresRect {
     fn drag(&mut self, to: Pos) {
         let prev = match self.prev_pos {
             Some(pos) => pos,
-            None => { return; },
+            None => {
+                return;
+            }
         };
 
         let delta = to - prev;
         self.prev_pos = Some(to);
 
         if let Some(ref mut sel_rect) = self.selection_rect {
-            if !sel_rect.drag(delta)  {
+            if !sel_rect.drag(delta) {
                 self.scale_rect.translate(delta);
             }
         } else {
@@ -337,14 +374,17 @@ impl ImgPresRect {
         }
     }
 
-
     fn draw_img(&mut self, img: &mut fltk::image::RgbImage, draw_position: Pos) {
-		let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
+        let (im_w, im_h) = (self.scale_rect.scaled_w(), self.scale_rect.scaled_h());
         img.scale(im_w, im_h, true, true);
 
-        
         let im_pos = self.scale_rect.tl();
-        img.draw(draw_position.x + im_pos.x, draw_position.y + im_pos.y, im_w, im_h);
+        img.draw(
+            draw_position.x + im_pos.x,
+            draw_position.y + im_pos.y,
+            im_w,
+            im_h,
+        );
 
         if let Some(ref rect) = self.selection_rect {
             rect.draw(draw_position.x, draw_position.y);
@@ -352,11 +392,10 @@ impl ImgPresRect {
     }
 }
 
-
 #[derive(Debug)]
 struct SelectionRect {
     inner: DraggableRect,
-    drag_pos: Option<DragPos>
+    drag_pos: Option<DragPos>,
 }
 
 impl SelectionRect {
@@ -365,17 +404,25 @@ impl SelectionRect {
         let h = area_size.y / 3;
         let x = w;
         let y = h;
-        
-        SelectionRect { 
-            inner: DraggableRect::new(x, y, w, h) ,
-            drag_pos: None 
+
+        SelectionRect {
+            inner: DraggableRect::new(x, y, w, h),
+            drag_pos: None,
         }
     }
 
-    fn x(&self) -> i32 { self.inner.x() }
-    fn y(&self) -> i32 { self.inner.y() }
-    fn w(&self) -> i32 { self.inner.w() }
-    fn h(&self) -> i32 { self.inner.h() }
+    fn x(&self) -> i32 {
+        self.inner.x()
+    }
+    fn y(&self) -> i32 {
+        self.inner.y()
+    }
+    fn w(&self) -> i32 {
+        self.inner.w()
+    }
+    fn h(&self) -> i32 {
+        self.inner.h()
+    }
 
     const RECT_SIDE: i32 = 10;
 
@@ -383,21 +430,18 @@ impl SelectionRect {
         use fltk::{draw, enums::Color};
 
         draw::draw_rect_with_color(
-            ox + self.x(), oy + self.y(), 
-            self.w(), self.h(),
-            Color::Blue);
+            ox + self.x(),
+            oy + self.y(),
+            self.w(),
+            self.h(),
+            Color::Blue,
+        );
 
         let draw_rect_around = |x: i32, y: i32, fill_color: Color| {
             let (rx, ry) = (x - Self::RECT_SIDE / 2, y - Self::RECT_SIDE / 2);
 
-            draw::draw_rect_fill(
-                rx, ry, 
-                Self::RECT_SIDE, Self::RECT_SIDE, 
-                fill_color);
-            draw::draw_rect_with_color(
-                rx, ry, 
-                Self::RECT_SIDE, Self::RECT_SIDE, 
-                Color::Blue);
+            draw::draw_rect_fill(rx, ry, Self::RECT_SIDE, Self::RECT_SIDE, fill_color);
+            draw::draw_rect_with_color(rx, ry, Self::RECT_SIDE, Self::RECT_SIDE, Color::Blue);
         };
 
         let w_half = self.w() / 2;
@@ -405,21 +449,21 @@ impl SelectionRect {
 
         for x_step in 0..3 {
             for y_step in 0..3 {
-                let fill_color: Color = 
-                    if let Some(dp) = self.drag_pos {
-                        if dp == DragPos::from(x_step, y_step) {
-                            Color::Green 
-                        } else {
-                            Color::Red
-                        }
+                let fill_color: Color = if let Some(dp) = self.drag_pos {
+                    if dp == DragPos::from(x_step, y_step) {
+                        Color::Green
                     } else {
                         Color::Red
-                    };
+                    }
+                } else {
+                    Color::Red
+                };
 
                 draw_rect_around(
-                    ox + self.x() + w_half * x_step, 
+                    ox + self.x() + w_half * x_step,
                     oy + self.y() + h_half * y_step,
-                    fill_color);
+                    fill_color,
+                );
             }
         }
     }
@@ -429,10 +473,10 @@ impl SelectionRect {
         let h_half = self.h() / 2;
 
         let fits_rect = |rcx: i32, rcy: i32, p: Pos| -> bool {
-            p.x >= rcx - Self::RECT_SIDE 
-            && p.x <= rcx + Self::RECT_SIDE
-            && p.y >= rcy - Self::RECT_SIDE 
-            && p.y <= rcy + Self::RECT_SIDE
+            p.x >= rcx - Self::RECT_SIDE
+                && p.x <= rcx + Self::RECT_SIDE
+                && p.y >= rcy - Self::RECT_SIDE
+                && p.y <= rcy + Self::RECT_SIDE
         };
 
         self.drag_pos = None;
@@ -450,7 +494,7 @@ impl SelectionRect {
         self.drag_pos = None;
     }
 
-    fn drag(&mut self, delta: Pos) -> bool  {
+    fn drag(&mut self, delta: Pos) -> bool {
         if let Some(ref mut dt) = self.drag_pos {
             *dt = self.inner.drag(delta, *dt);
             return true;
@@ -459,15 +503,14 @@ impl SelectionRect {
     }
 }
 
-
 #[derive(Clone, Copy, Debug)]
 enum ImgPresMsg {
-    MouseDown (Pos),
-    MouseMove (Pos),
+    MouseDown(Pos),
+    MouseMove(Pos),
     MouseUp,
     MouseScroll { factor_delta: f32, pos: Pos },
     Fit,
-    SeletionOn, SelectionOff,
-    ComponentResized
+    SeletionOn,
+    SelectionOff,
+    ComponentResized,
 }
-
