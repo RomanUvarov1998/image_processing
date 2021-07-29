@@ -242,7 +242,7 @@ impl Filter for CannyEdgeDetection {
             }
             ImgLayer::new(layer_a, ImgChannel::A)
         };
-        let img_res = Img::new(img.w(), img.h(), vec![layer_l, layer_a], ColorDepth::La8);
+        let img_res = Img::from_layers(vec![layer_l, layer_a], ColorDepth::La8);
 
         Ok(img_res)
     }

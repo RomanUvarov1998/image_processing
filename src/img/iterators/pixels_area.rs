@@ -50,6 +50,13 @@ impl PixelsArea {
             && pos.col <= self.bottom_right.col
     }
 
+    pub fn is_inside_of(&self, other: &PixelsArea) -> bool {
+        self.top_left.row >= other.top_left.row
+            && self.top_left.col >= other.top_left.col
+            && self.bottom_right.row <= other.bottom_right.row
+            && self.bottom_right.col <= other.bottom_right.col
+    }
+
     pub fn top_left(&self) -> PixelPos {
         self.top_left
     }
@@ -229,6 +236,39 @@ mod tests {
         assert!(!area.contains(PixelPos::new(4, 3)));
         assert!(!area.contains(PixelPos::new(4, 4)));
         assert!(!area.contains(PixelPos::new(4, 5)));
+    }
+
+    #[test]
+    fn is_inside_of() {
+        let area1 = PixelsArea::new(PixelPos::new(2, 3), PixelPos::new(9, 10));
+
+        assert!(PixelsArea::new(PixelPos::new(2, 3), PixelPos::new(9, 10)).is_inside_of(&area1));
+
+        assert!(PixelsArea::new(PixelPos::new(3, 3), PixelPos::new(8, 10)).is_inside_of(&area1));
+
+        assert!(PixelsArea::new(PixelPos::new(2, 4), PixelPos::new(9, 9)).is_inside_of(&area1));
+
+        assert!(PixelsArea::new(PixelPos::new(3, 4), PixelPos::new(8, 9)).is_inside_of(&area1));
+
+        assert!(
+            PixelsArea::new(PixelPos::new(1, 3), PixelPos::new(9, 10)).is_inside_of(&area1)
+                == false
+        );
+
+        assert!(
+            PixelsArea::new(PixelPos::new(2, 2), PixelPos::new(9, 10)).is_inside_of(&area1)
+                == false
+        );
+
+        assert!(
+            PixelsArea::new(PixelPos::new(2, 3), PixelPos::new(9, 11)).is_inside_of(&area1)
+                == false
+        );
+
+        assert!(
+            PixelsArea::new(PixelPos::new(2, 3), PixelPos::new(10, 10)).is_inside_of(&area1)
+                == false
+        );
     }
 
     #[test]

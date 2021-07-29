@@ -130,7 +130,7 @@ fn process_each_layer<F: ByLayer>(
         res_layers.push(res_layer);
     }
 
-    Ok(Img::new(img.w(), img.h(), res_layers, img.color_depth()))
+    Ok(Img::from_layers(res_layers, img.color_depth()))
 }
 
 use self::{color_channel::*, linear::*, non_linear::*};

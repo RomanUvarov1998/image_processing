@@ -299,6 +299,19 @@ impl Matrix2D {
             self[pos] = value;
         }
     }
+
+    pub fn has_the_same_values_as(&self, other: &Matrix2D) -> bool {
+        if self.w() != other.w() {
+            return false;
+        }
+        if self.h() != other.h() {
+            return false;
+        }
+        self.pixels()
+            .iter()
+            .enumerate()
+            .all(|(ind, p)| (other[ind] - *p).abs() <= std::f64::EPSILON)
+    }
 }
 
 impl Index<PixelPos> for Matrix2D {

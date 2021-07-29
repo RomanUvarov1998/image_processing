@@ -21,7 +21,7 @@ fn create_img(w: usize, h: usize) -> Img {
         create_layer(w, h, ImgChannel::G),
         create_layer(w, h, ImgChannel::B),
     ];
-    Img::new(w, h, layers, ColorDepth::Rgba8)
+    Img::from_layers(layers, ColorDepth::Rgba8)
 }
 
 fn run_filter<F: filter_trait::Filter>(img: &Img, filter: F) {

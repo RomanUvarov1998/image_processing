@@ -252,7 +252,12 @@ impl Guarded {
             return Err(MyError::new("Высота загруженного изображения < 0".to_string()).into());
         }
 
-        let img = Img::from(sh_im);
+        let img = Img::from_pixels(
+            sh_im.w() as usize,
+            sh_im.h() as usize,
+            sh_im.depth(),
+            sh_im.to_rgb_data(),
+        );
 
         initial_img.replace(img);
 

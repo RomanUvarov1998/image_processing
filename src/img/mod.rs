@@ -4,13 +4,8 @@ use crate::my_err::MyError;
 use fltk::{
     enums::ColorDepth,
     image::{self},
-    prelude::ImageExt,
 };
-use std::{
-    ops::{Index, IndexMut},
-    path::PathBuf,
-    result,
-};
+use std::ops::{Index, IndexMut};
 
 pub mod filter;
 mod img;

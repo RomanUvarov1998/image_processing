@@ -55,7 +55,7 @@ impl Filter for Rgb2Gray {
                     }
                 };
 
-                Ok(Img::new(img.w(), img.h(), new_layers, color_depth))
+                Ok(Img::from_layers(new_layers, color_depth))
             }
         }
     }
