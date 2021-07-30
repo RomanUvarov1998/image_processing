@@ -242,7 +242,8 @@ impl ByLayer for HistogramLocalContrast {
             },
         )?;
 
-        mat_c.scalar_transform_self(
+        mat_c.scalar_transform_self_area(
+			mat_c.area().iter_pixels().track_progress(executor_handle),
             |val: &mut f64, pos: PixelPos| {
                 if !inner_area.contains(pos) {
                     *val = 0.0;
@@ -278,7 +279,6 @@ impl ByLayer for HistogramLocalContrast {
 
                 *val = val.powf(c_power);
             },
-            executor_handle,
         )?;
 
         //-------------------------------- create result ---------------------------------

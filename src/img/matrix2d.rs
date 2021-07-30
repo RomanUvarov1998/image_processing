@@ -69,71 +69,20 @@ impl Matrix2D {
         PixelsArea::size_of(self)
     }
 
-    pub fn scalar_transform_area_into<Tr: Fn(&Matrix2D, PixelPos) -> f64>(
-        &self,
-        area: PixelsArea,
-        tr: Tr,
-        dest_matrix: &mut Matrix2D,
-        executor_handle: &mut ExecutorHandle,
-    ) -> Result<(), TaskStop> {
-        for row in area.get_rows_range() {
-            for col in area.get_cols_range() {
-                let pos = PixelPos::new(row, col);
-                dest_matrix[pos] = tr(dest_matrix, pos);
-            }
-            executor_handle.complete_action()?;
-        }
-        Ok(())
-    }
-
-    pub fn scalar_transform_area_to_copy<Tr: Fn(&Matrix2D, PixelPos) -> f64>(
-        &self,
-        area: PixelsArea,
-        tr: Tr,
-        executor_handle: &mut ExecutorHandle,
-    ) -> Result<Self, TaskStop> {
-        let mut transformed = Self::empty_size_of(self);
-        self.scalar_transform_area_into(area, tr, &mut transformed, executor_handle)?;
-        Ok(transformed)
-    }
-
-    pub fn scalar_transform_self<Tr: Fn(&mut f64, PixelPos) -> ()>(
+    pub fn scalar_transform_self_area<'area, Tr, Iter>(
         &mut self,
+		iter: Iter,
         tr: Tr,
-        executor_handle: &mut ExecutorHandle,
-    ) -> Result<(), TaskStop> {
-        let area = PixelsArea::size_of(self);
-        self.scalar_transform_self_area(area, tr, executor_handle)
-    }
-
-    pub fn scalar_transform_self_area<Tr: Fn(&mut f64, PixelPos) -> ()>(
-        &mut self,
-        area: PixelsArea,
-        tr: Tr,
-        executor_handle: &mut ExecutorHandle,
-    ) -> Result<(), TaskStop> {
-        for row in area.get_rows_range() {
-            for col in area.get_cols_range() {
-                let pos = PixelPos::new(row, col);
-                tr(&mut self[pos], pos);
-            }
-            executor_handle.complete_action()?;
+    ) -> Result<(), TaskStop>
+	where
+		Tr: Fn(&mut f64, PixelPos) -> (),
+		Iter: PixelsAreaIter<'area>
+	{
+        for pos in iter {
+			tr(&mut self[pos], pos);
         }
-        Ok(())
-    }
 
-    pub fn get_drawable_copy(&self) -> Result<image::RgbImage, MyError> {
-        let im_rgb = image::RgbImage::new(
-            self.pixels
-                .iter()
-                .map(|v| *v as u8)
-                .collect::<Vec<u8>>()
-                .as_slice(),
-            self.width as i32,
-            self.height as i32,
-            ColorDepth::L8,
-        )?;
-        Ok(im_rgb)
+		Ok(())
     }
 
     pub fn pixels<'own>(&'own self) -> &'own Vec<f64> {
@@ -416,4 +365,96 @@ mod tests {
             assert_eq!(m[i], i as f64);
         }
     }
+
+	#[test]
+	fn w_h_size_vec_max_col_max_row() {
+		const W: usize = 2;
+		const H: usize = 3;
+        let m = Matrix2D::empty_with_size(W, H);
+		assert_eq!(m.w(), W);
+		assert_eq!(m.h(), H);
+		assert_eq!(m.size_vec(), PixelPos::new(H, W));
+		assert_eq!(m.max_col(), W - 1);
+		assert_eq!(m.max_row(), H - 1);
+	}
+
+	#[test]
+	fn fits() {
+		const W: usize = 2;
+		const H: usize = 3;
+        let m = Matrix2D::empty_with_size(W, H);
+
+		for pos in PixelsArea::with_size(4, 5).iter_pixels() {
+			let fits: bool = pos.col < W && pos.row < H;
+			assert_eq!(m.fits(pos), fits);
+		}
+	}
+
+	#[test]
+	fn area() {
+		const W: usize = 2;
+		const H: usize = 3;
+        let m = Matrix2D::empty_with_size(W, H);
+		assert_eq!(
+			m.area(), 
+			PixelsArea::new(
+				PixelPos::new(0, 0), 
+				PixelPos::new(H - 1, W - 1)));
+	}
+
+	#[test]
+	fn scalar_transform_self_area() {
+		const W: usize = 2;
+		const H: usize = 3;
+        let mut m = Matrix2D::empty_with_size(W, H);
+		let mut val = 0_f64;
+		for pos in m.area().iter_pixels() {
+			m[pos] = val;
+			val += 1.0;
+		}
+
+		let mut m2 = m.clone();
+		m2.scalar_transform_self_area(
+			m.area().iter_pixels(), 
+			|val, _pos| {
+				*val *= 2.0
+			}).unwrap();
+		
+		assert!(m.pixels().iter().enumerate()
+			.all(|(ind, p)| (m2[ind] - *p * 2.0).abs() <= std::f64::EPSILON));
+	}
+
+	#[test]
+	fn get_max() {
+		const W: usize = 2;
+		const H: usize = 3;
+		let pixels: Vec<f64> = (1..=W * H).map(|v| v as f64).collect();
+		let _mat = Matrix2D {
+			width: W,
+			height: H,
+			pixels,
+		};
+		unimplemented!()
+		// assert_eq!(mat.get_max(executor_handle))
+	}
+
+	#[test]
+	fn extended_for_window_filter() {
+		unimplemented!()
+	}
+
+	#[test]
+	fn extended() {
+		unimplemented!()
+	}
+
+	#[test]
+	fn set_rect() {
+		unimplemented!()
+	}
+
+	#[test]
+	fn has_the_same_values_as() {
+		unimplemented!()
+	}
 }

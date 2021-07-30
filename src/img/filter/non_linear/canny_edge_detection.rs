@@ -89,11 +89,11 @@ impl Filter for CannyEdgeDetection {
 
             let g_max: f64 = grad.get_max(executor_handle)?;
 
-            grad.scalar_transform_self(
+            grad.scalar_transform_self_area(
+				grad.area().iter_pixels().track_progress(executor_handle),
                 |val, _| {
                     *val = *val / g_max * 255.0;
                 },
-                executor_handle,
             )?;
 
             grad
