@@ -301,7 +301,7 @@ impl ProcessingLine {
                 });
             }
             ImportType::SystemClipoard => {
-                todo!()
+                return Err(MyError::new("Not implemented!".to_string()));
             }
         };
 
