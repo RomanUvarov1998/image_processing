@@ -40,7 +40,7 @@ impl Index<usize> for ImgLayer {
     type Output = f64;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.mat.pixels()[index]
+        &self.mat[index]
     }
 }
 

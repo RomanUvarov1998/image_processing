@@ -5,28 +5,28 @@ use crate::processing::{ExecutorHandle, TaskStop};
 pub struct Matrix2D {
     width: usize,
     height: usize,
-    pixels: Vec<f64>,
+    vals: Vec<f64>,
 }
 
 #[allow(unused)]
 impl Matrix2D {
     pub fn empty_with_size(width: usize, height: usize) -> Self {
-        let mut pixels = Vec::<f64>::new();
-        pixels.resize(width * height, 0_f64);
+        let mut vals = Vec::<f64>::new();
+        vals.resize(width * height, 0_f64);
         Matrix2D {
             width,
             height,
-            pixels,
+            vals,
         }
     }
 
     pub fn empty_size_of(other: &Matrix2D) -> Self {
-        let mut pixels = Vec::<f64>::new();
-        pixels.resize(other.w() * other.h(), 0_f64);
+        let mut vals = Vec::<f64>::new();
+        vals.resize(other.w() * other.h(), 0_f64);
         Matrix2D {
             width: other.w(),
             height: other.h(),
-            pixels,
+            vals,
         }
     }
 
@@ -85,12 +85,12 @@ impl Matrix2D {
 		Ok(())
     }
 
-    pub fn pixels<'own>(&'own self) -> &'own Vec<f64> {
-        &self.pixels
+    pub fn vals<'own>(&'own self) -> &'own Vec<f64> {
+        &self.vals
     }
 
     pub fn get_max(&self, executor_handle: &mut ExecutorHandle) -> Result<f64, TaskStop> {
-        let mut max = self.pixels[0];
+        let mut max = self.vals[0];
 
         for row in 0..self.h() {
             for col in 0..self.w() {
@@ -256,7 +256,7 @@ impl Matrix2D {
         if self.h() != other.h() {
             return false;
         }
-        self.pixels()
+        self.vals()
             .iter()
             .enumerate()
             .all(|(ind, p)| (other[ind] - *p).abs() <= std::f64::EPSILON)
@@ -275,7 +275,7 @@ impl Index<PixelPos> for Matrix2D {
                 self.max_row()
             );
         }
-        &self.pixels[index.row * self.width + index.col]
+        &self.vals[index.row * self.width + index.col]
     }
 }
 
@@ -289,7 +289,7 @@ impl IndexMut<PixelPos> for Matrix2D {
                 self.max_row()
             );
         }
-        &mut self.pixels[index.row * self.width + index.col]
+        &mut self.vals[index.row * self.width + index.col]
     }
 }
 
@@ -297,13 +297,13 @@ impl Index<usize> for Matrix2D {
     type Output = f64;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.pixels[index]
+        &self.vals[index]
     }
 }
 
 impl IndexMut<usize> for Matrix2D {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.pixels[index]
+        &mut self.vals[index]
     }
 }
 
@@ -319,7 +319,7 @@ mod tests {
         assert_eq!(m.w(), 2);
         assert_eq!(m.h(), 3);
 
-        for v in m.pixels {
+        for v in m.vals {
             assert!(v.abs() < 1e-14);
         }
     }
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(m2.w(), m.w());
         assert_eq!(m2.h(), m.h());
 
-        for v in m2.pixels {
+        for v in m2.vals {
             assert!(v.abs() < 1e-14);
         }
     }
@@ -420,7 +420,7 @@ mod tests {
 				*val *= 2.0
 			}).unwrap();
 		
-		assert!(m.pixels().iter().enumerate()
+		assert!(m.vals().iter().enumerate()
 			.all(|(ind, p)| (m2[ind] - *p * 2.0).abs() <= std::f64::EPSILON));
 	}
 
@@ -428,11 +428,11 @@ mod tests {
 	fn get_max() {
 		const W: usize = 2;
 		const H: usize = 3;
-		let pixels: Vec<f64> = (1..=W * H).map(|v| v as f64).collect();
+		let vals: Vec<f64> = (1..=W * H).map(|v| v as f64).collect();
 		let _mat = Matrix2D {
 			width: W,
 			height: H,
-			pixels,
+			vals,
 		};
 		unimplemented!()
 		// assert_eq!(mat.get_max(executor_handle))

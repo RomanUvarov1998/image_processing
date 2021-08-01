@@ -275,7 +275,7 @@ impl Img {
                 let vals: Vec<u8> = self
                     .layer(0)
                     .matrix()
-                    .pixels()
+                    .vals()
                     .iter()
                     .map(|p| *p as u8)
                     .collect();
@@ -285,9 +285,9 @@ impl Img {
             ColorDepth::Rgb8 | ColorDepth::Rgba8 => {
                 let mut vals = Vec::<u8>::with_capacity(self.w() * self.h() * 3);
 
-                let r = self.layer(0).matrix().pixels();
-                let g = self.layer(1).matrix().pixels();
-                let b = self.layer(2).matrix().pixels();
+                let r = self.layer(0).matrix().vals();
+                let g = self.layer(1).matrix().vals();
+                let b = self.layer(2).matrix().vals();
 
                 for pix_num in 0..self.w() * self.h() {
                     vals.push(r[pix_num] as u8);
