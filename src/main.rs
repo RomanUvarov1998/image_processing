@@ -40,6 +40,12 @@ fn main() -> Result<(), MyError> {
                 }
                 Err(_) => false,
             },
+						Event::KeyDown => {
+							match fltk::app::event_key() {
+								fltk::enums::Key::Escape  => true,
+								_ => false,
+							}
+						},
             _ => false,
         }
     });
